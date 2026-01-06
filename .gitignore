@@ -1,0 +1,22 @@
+# General
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.log
+
+# Build outputs
+dist/
+bin/
+build/
+out/
+target/
+
+# Dependencies
+node_modules/
+vendor/
+
+# Environment
+.env
+.env.*
+!.env.example
