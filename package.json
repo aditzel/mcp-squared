@@ -1,0 +1,44 @@
+{
+  "name": "mcp-squared",
+  "version": "0.1.0",
+  "description": "MCP² (Mercury Control Plane) - A local-first meta-server and proxy for the Model Context Protocol",
+  "author": "allan",
+  "license": "Apache-2.0",
+  "type": "module",
+  "module": "src/index.ts",
+  "main": "src/index.ts",
+  "bin": {
+    "mcp-squared": "src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.5",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "tools",
+    "proxy",
+    "meta-server"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/allan/mcp-squared"
+  }
+}
