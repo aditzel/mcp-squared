@@ -20,3 +20,14 @@ vendor/
 .env
 .env.*
 !.env.example
+
+# Bun
+bun.lockb
+*.bun
+
+# TypeScript
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+.nyc_output/
