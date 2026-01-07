@@ -2,7 +2,7 @@
   "name": "mcp-squared",
   "version": "0.1.0",
   "description": "MCP² (Mercury Control Plane) - A local-first meta-server and proxy for the Model Context Protocol",
-  "author": "allan",
+  "author": "aditzel",
   "license": "Apache-2.0",
   "type": "module",
   "module": "src/index.ts",
@@ -23,6 +23,7 @@
     "clean": "rm -rf dist"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@types/bun": "^1.3.5",
     "typescript": "^5.9.3"
   },
@@ -39,6 +40,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/allan/mcp-squared"
+    "url": "https://github.com/aditzel/mcp-squared"
   }
 }

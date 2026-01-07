@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { VERSION } from "../src/index";
+import { VERSION } from "@/index";
 
 describe("mcp-squared", () => {
   test("VERSION is defined", () => {
