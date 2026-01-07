@@ -15,6 +15,6 @@
     "indentWidth": 2
   },
   "files": {
-    "ignore": ["dist/", "node_modules/", ".beads/", "bun.lock"]
+    "ignore": ["dist/", "node_modules/", ".beads/", "bun.lockb"]
   }
 }
