@@ -2,19 +2,43 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { VERSION } from "../index.js";
+import { Retriever } from "../retriever/index.js";
+import { Cataloger } from "../upstream/index.js";
 
 export interface McpSquaredServerOptions {
   name?: string;
   version?: string;
+  cataloger?: Cataloger;
+  indexDbPath?: string;
+  defaultLimit?: number;
+  maxLimit?: number;
 }
 
 export class McpSquaredServer {
   private readonly mcpServer: McpServer;
+  private readonly cataloger: Cataloger;
+  private readonly retriever: Retriever;
   private transport: StdioServerTransport | null = null;
+  private readonly ownsCataloger: boolean;
 
   constructor(options: McpSquaredServerOptions = {}) {
     const name = options.name ?? "mcp-squared";
     const version = options.version ?? VERSION;
+
+    // Use provided cataloger or create a new one
+    if (options.cataloger) {
+      this.cataloger = options.cataloger;
+      this.ownsCataloger = false;
+    } else {
+      this.cataloger = new Cataloger();
+      this.ownsCataloger = true;
+    }
+
+    this.retriever = new Retriever(this.cataloger, {
+      indexDbPath: options.indexDbPath,
+      defaultLimit: options.defaultLimit ?? 5,
+      maxLimit: options.maxLimit ?? 50,
+    });
 
     this.mcpServer = new McpServer(
       { name, version },
@@ -48,15 +72,16 @@ export class McpSquaredServer {
         },
       },
       async (args) => {
+        const result = this.retriever.search(args.query, args.limit);
+
         return {
           content: [
             {
               type: "text" as const,
               text: JSON.stringify({
-                message: "find_tools not yet implemented",
-                query: args.query,
-                limit: args.limit,
-                results: [],
+                query: result.query,
+                totalMatches: result.totalMatches,
+                tools: result.tools,
               }),
             },
           ],
@@ -78,14 +103,26 @@ export class McpSquaredServer {
         },
       },
       async (args) => {
+        const tools = this.retriever.getTools(args.tool_names);
+
+        const schemas = tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          serverKey: tool.serverKey,
+          inputSchema: tool.inputSchema,
+        }));
+
+        const notFound = args.tool_names.filter(
+          (name) => !tools.some((t) => t.name === name),
+        );
+
         return {
           content: [
             {
               type: "text" as const,
               text: JSON.stringify({
-                message: "describe_tools not yet implemented",
-                tool_names: args.tool_names,
-                schemas: [],
+                schemas,
+                notFound: notFound.length > 0 ? notFound : undefined,
               }),
             },
           ],
@@ -107,20 +144,61 @@ export class McpSquaredServer {
         },
       },
       async (args) => {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                message: "execute not yet implemented",
-                tool_name: args.tool_name,
-                arguments: args.arguments,
-              }),
-            },
-          ],
-        };
+        try {
+          const result = await this.cataloger.callTool(
+            args.tool_name,
+            args.arguments,
+          );
+
+          return {
+            content: result.content.map((c) => {
+              if (typeof c === "object" && c !== null && "type" in c) {
+                return c as { type: "text"; text: string };
+              }
+              return {
+                type: "text" as const,
+                text: JSON.stringify(c),
+              };
+            }),
+            isError: result.isError,
+          };
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  error: errorMessage,
+                }),
+              },
+            ],
+            isError: true,
+          };
+        }
       },
     );
+  }
+
+  /**
+   * Sync tools from the cataloger to the index
+   */
+  syncIndex(): void {
+    this.retriever.syncFromCataloger();
+  }
+
+  /**
+   * Get the cataloger instance
+   */
+  getCataloger(): Cataloger {
+    return this.cataloger;
+  }
+
+  /**
+   * Get the retriever instance
+   */
+  getRetriever(): Retriever {
+    return this.retriever;
   }
 
   async start(): Promise<void> {
@@ -130,6 +208,10 @@ export class McpSquaredServer {
 
   async stop(): Promise<void> {
     await this.mcpServer.close();
+    this.retriever.close();
+    if (this.ownsCataloger) {
+      await this.cataloger.disconnectAll();
+    }
     this.transport = null;
   }
 

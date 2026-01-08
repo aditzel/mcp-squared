@@ -1,8 +1,8 @@
 import { parseArgs, printHelp } from "./cli/index.js";
-import { loadConfig, type McpSquaredConfig } from "./config/index.js";
+import { type McpSquaredConfig, loadConfig } from "./config/index.js";
 import { McpSquaredServer } from "./server/index.js";
 import { runConfigTui } from "./tui/config.js";
-import { testUpstreamConnection, type TestResult } from "./upstream/index.js";
+import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
 
 export const VERSION = "0.1.0";
 
