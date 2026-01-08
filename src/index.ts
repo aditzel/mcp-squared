@@ -3,11 +3,24 @@
  * @module mcp-squared
  */
 
+import { McpSquaredServer } from "./server/index.js";
+
 export const VERSION = "0.1.0";
 
 async function main(): Promise<void> {
-  console.log(`MCP² v${VERSION}`);
-  console.log("Mercury Control Plane - Starting...");
+  const server = new McpSquaredServer();
+
+  process.on("SIGINT", async () => {
+    await server.stop();
+    process.exit(0);
+  });
+
+  process.on("SIGTERM", async () => {
+    await server.stop();
+    process.exit(0);
+  });
+
+  await server.start();
 }
 
 main().catch((error: unknown) => {

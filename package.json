@@ -41,5 +41,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/aditzel/mcp-squared"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "zod": "^4.3.5"
   }
 }
