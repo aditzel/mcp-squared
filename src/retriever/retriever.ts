@@ -134,6 +134,12 @@ export class Retriever {
 
     const searchResults = this.indexStore.search(query, effectiveLimit);
 
+    // Get accurate total count if results are limited
+    const totalMatches =
+      searchResults.length < effectiveLimit
+        ? searchResults.length
+        : this.indexStore.searchCount(query);
+
     return {
       tools: searchResults.map((r) => ({
         name: r.name,
@@ -141,7 +147,7 @@ export class Retriever {
         serverKey: r.serverKey,
       })),
       query,
-      totalMatches: searchResults.length,
+      totalMatches,
     };
   }
 

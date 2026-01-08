@@ -10,7 +10,7 @@
  * @module config/paths
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -164,6 +164,6 @@ export function getDefaultConfigPath(): ConfigPathResult {
 export function ensureConfigDir(configPath: string): void {
   const dir = dirname(configPath);
   if (!existsSync(dir)) {
-    Bun.spawnSync(["mkdir", "-p", dir]);
+    mkdirSync(dir, { recursive: true });
   }
 }

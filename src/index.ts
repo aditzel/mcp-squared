@@ -32,14 +32,26 @@ async function startServer(): Promise<void> {
 
   const server = new McpSquaredServer({ config });
 
-  process.on("SIGINT", async () => {
-    await server.stop();
-    process.exit(0);
+  // Track if shutdown is already in progress to prevent double cleanup
+  let isShuttingDown = false;
+
+  const gracefulShutdown = async () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    try {
+      await server.stop();
+    } finally {
+      process.exit(0);
+    }
+  };
+
+  process.on("SIGINT", () => {
+    gracefulShutdown();
   });
 
-  process.on("SIGTERM", async () => {
-    await server.stop();
-    process.exit(0);
+  process.on("SIGTERM", () => {
+    gracefulShutdown();
   });
 
   await server.start();
@@ -92,10 +104,10 @@ async function runTest(targetName: string | undefined): Promise<void> {
   try {
     const loaded = await loadConfig();
     config = loaded.config;
-  } catch {
-    console.error(
-      "Error: No configuration found. Run 'mcp-squared config' first.",
-    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Error loading configuration: ${message}`);
+    console.error("Run 'mcp-squared config' to create or fix your configuration.");
     process.exit(1);
   }
 

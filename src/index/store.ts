@@ -262,6 +262,29 @@ export class IndexStore {
   }
 
   /**
+   * Counts the total number of tools matching a search query.
+   * Use this to get accurate totalMatches when limiting search results.
+   *
+   * @param query - Search query string
+   * @returns Total count of matching tools
+   */
+  searchCount(query: string): number {
+    if (!query.trim()) {
+      return 0;
+    }
+
+    const ftsQuery = this.prepareFtsQuery(query);
+
+    const result = this.db
+      .query<{ count: number }, [string]>(
+        `SELECT COUNT(*) as count FROM tools_fts WHERE tools_fts MATCH ?`,
+      )
+      .get(ftsQuery);
+
+    return result?.count ?? 0;
+  }
+
+  /**
    * Gets a tool by name, optionally filtering by server.
    *
    * @param name - Tool name to look up

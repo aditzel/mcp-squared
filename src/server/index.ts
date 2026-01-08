@@ -64,6 +64,7 @@ export class McpSquaredServer {
   private readonly cataloger: Cataloger;
   private readonly retriever: Retriever;
   private readonly config: McpSquaredConfig;
+  private readonly maxLimit: number;
   private transport: StdioServerTransport | null = null;
   private readonly ownsCataloger: boolean;
 
@@ -87,10 +88,13 @@ export class McpSquaredServer {
 
     this.config = options.config ?? DEFAULT_CONFIG;
 
+    // Use config values for retriever limits, with options as overrides
+    const findToolsConfig = this.config.operations.findTools;
+    this.maxLimit = options.maxLimit ?? findToolsConfig.maxLimit;
     this.retriever = new Retriever(this.cataloger, {
       indexDbPath: options.indexDbPath,
-      defaultLimit: options.defaultLimit ?? 5,
-      maxLimit: options.maxLimit ?? 50,
+      defaultLimit: options.defaultLimit ?? findToolsConfig.defaultLimit,
+      maxLimit: this.maxLimit,
     });
 
     this.mcpServer = new McpServer(
@@ -125,8 +129,8 @@ export class McpSquaredServer {
             .number()
             .int()
             .min(1)
-            .max(50)
-            .default(5)
+            .max(this.maxLimit)
+            .default(this.config.operations.findTools.defaultLimit)
             .describe("Maximum number of results to return"),
         },
       },
@@ -333,10 +337,28 @@ export class McpSquaredServer {
 
   /**
    * Starts the MCP server and begins listening for client connections via stdio.
+   * Automatically connects to all enabled upstream servers and syncs the tool index.
    *
    * @returns Promise that resolves when the server is ready
    */
   async start(): Promise<void> {
+    // Connect to all enabled upstream servers from config
+    const upstreamEntries = Object.entries(this.config.upstreams);
+    for (const [key, upstream] of upstreamEntries) {
+      if (upstream.enabled) {
+        try {
+          await this.cataloger.connect(key, upstream);
+        } catch {
+          // Log error but continue with other upstreams
+          // Individual upstream failures shouldn't prevent server startup
+        }
+      }
+    }
+
+    // Sync the tool index after connecting to upstreams
+    this.syncIndex();
+
+    // Start the MCP transport
     this.transport = new StdioServerTransport();
     await this.mcpServer.connect(this.transport);
   }

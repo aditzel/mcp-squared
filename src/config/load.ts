@@ -7,7 +7,7 @@
  * @module config/load
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { parse as parseToml } from "smol-toml";
 import { ZodError } from "zod";
 import { type RawConfig, migrateConfig } from "./migrations/index.js";
@@ -190,6 +190,7 @@ export function loadConfigSync(cwd?: string): LoadConfigResult {
  * @param filePath - Path to the config file
  * @param source - Source type for the config
  * @returns Loaded and validated configuration
+ * @throws ConfigNotFoundError if file doesn't exist
  * @throws ConfigParseError if TOML parsing fails
  * @throws ConfigValidationError if schema validation fails
  */
@@ -197,6 +198,10 @@ export function loadConfigFromPathSync(
   filePath: string,
   source: ConfigSource,
 ): LoadConfigResult {
+  if (!existsSync(filePath)) {
+    throw new ConfigNotFoundError();
+  }
+
   let content: string;
   try {
     content = readFileSync(filePath, "utf-8");
