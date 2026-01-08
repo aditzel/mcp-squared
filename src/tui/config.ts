@@ -3,7 +3,6 @@ import {
   BoxRenderable,
   type CliRenderer,
   InputRenderable,
-  InputRenderableEvents,
   type KeyEvent,
   RGBA,
   type SelectOption,
@@ -345,7 +344,7 @@ class ConfigTuiApp {
     const formBox = new BoxRenderable(this.renderer, {
       id: "add-upstream-box",
       width: 60,
-      height: 20,
+      height: 22,
       border: true,
       borderStyle: "single",
       borderColor: "#475569",
@@ -376,41 +375,10 @@ class ConfigTuiApp {
     });
     formBox.add(nameInput);
 
-    const transportLabel = new TextRenderable(this.renderer, {
-      id: "transport-label",
-      content: "Transport type:",
-      fg: "#94a3b8",
-      marginBottom: 0,
-    });
-    formBox.add(transportLabel);
-
-    const transportOptions: SelectOption[] = [
-      {
-        name: "stdio - Local process (recommended)",
-        description: "",
-        value: "stdio",
-      },
-      { name: "sse - Remote HTTP server", description: "", value: "sse" },
-    ];
-
-    const transportSelect = new SelectRenderable(this.renderer, {
-      id: "transport-select",
-      width: "100%",
-      height: 3,
-      options: transportOptions,
-      backgroundColor: "#0f172a",
-      selectedBackgroundColor: "#334155",
-      textColor: "#e2e8f0",
-      selectedTextColor: "#38bdf8",
-      wrapSelection: true,
-    });
-    formBox.add(transportSelect);
-
     const commandLabel = new TextRenderable(this.renderer, {
       id: "command-label",
-      content: "Command (for stdio):",
+      content: "Command (stdio transport):",
       fg: "#94a3b8",
-      marginTop: 1,
     });
     formBox.add(commandLabel);
 
@@ -427,7 +395,7 @@ class ConfigTuiApp {
 
     const envLabel = new TextRenderable(this.renderer, {
       id: "env-label",
-      content: "Environment variables (KEY=VALUE, comma-separated):",
+      content: "Environment variables (optional, comma-separated):",
       fg: "#94a3b8",
       marginBottom: 0,
     });
@@ -440,18 +408,36 @@ class ConfigTuiApp {
       backgroundColor: "#0f172a",
       focusedBackgroundColor: "#1e293b",
       textColor: "#e2e8f0",
+      marginBottom: 1,
     });
     formBox.add(envInput);
 
-    nameInput.focus();
+    const submitOptions: SelectOption[] = [
+      { name: "[ Save Upstream ]", description: "", value: "save" },
+      { name: "[ Cancel ]", description: "", value: "cancel" },
+    ];
 
-    let selectedTransport = "stdio";
-    transportSelect.on(
-      SelectRenderableEvents.ITEM_SELECTED,
-      (_i: number, opt: SelectOption) => {
-        selectedTransport = opt.value as string;
-      },
-    );
+    const submitSelect = new SelectRenderable(this.renderer, {
+      id: "submit-select",
+      width: "100%",
+      height: 3,
+      options: submitOptions,
+      backgroundColor: "transparent",
+      selectedBackgroundColor: "#334155",
+      textColor: "#e2e8f0",
+      selectedTextColor: "#38bdf8",
+      wrapSelection: true,
+    });
+    formBox.add(submitSelect);
+
+    const fields = [nameInput, commandInput, envInput, submitSelect] as const;
+    let focusIndex = 0;
+
+    const focusField = (index: number) => {
+      focusIndex = index;
+      const field = fields[index];
+      if (field) field.focus();
+    };
 
     const parseEnvVars = (input: string): Record<string, string> => {
       const env: Record<string, string> = {};
@@ -474,38 +460,73 @@ class ConfigTuiApp {
       return env;
     };
 
-    nameInput.on(InputRenderableEvents.CHANGE, (value: string) => {
-      const trimmedName = value.trim();
+    const saveUpstream = () => {
+      const trimmedName = nameInput.value?.trim() || "";
       const trimmedCommand = commandInput.value?.trim() || "";
-      const envVars = parseEnvVars(envInput.value || "");
 
-      if (trimmedName && trimmedCommand && selectedTransport === "stdio") {
-        const parts = trimmedCommand.split(/\s+/);
-        const command = parts[0] || "";
-        const args = parts.slice(1);
-
-        this.state.config.upstreams[trimmedName] = {
-          transport: "stdio",
-          enabled: true,
-          env: envVars,
-          stdio: { command, args },
-        };
-        this.state.isDirty = true;
-        this.showUpstreamsScreen();
+      if (!trimmedName) {
+        nameInput.focus();
+        return;
       }
-    });
+      if (!trimmedCommand) {
+        commandInput.focus();
+        return;
+      }
 
-    this.addInstructions(
-      "Tab to switch fields | Enter to save | Esc to cancel",
+      const envVars = parseEnvVars(envInput.value || "");
+      const parts = trimmedCommand.split(/\s+/);
+      const command = parts[0] || "";
+      const args = parts.slice(1);
+
+      this.state.config.upstreams[trimmedName] = {
+        transport: "stdio",
+        enabled: true,
+        env: envVars,
+        stdio: { command, args },
+      };
+      this.state.isDirty = true;
+      cleanup();
+      this.showUpstreamsScreen();
+    };
+
+    submitSelect.on(
+      SelectRenderableEvents.ITEM_SELECTED,
+      (_i: number, opt: SelectOption) => {
+        if (opt.value === "save") {
+          saveUpstream();
+        } else {
+          cleanup();
+          this.showUpstreamsScreen();
+        }
+      },
     );
 
-    const handleEscape = (key: KeyEvent) => {
+    const handleKeypress = (key: KeyEvent) => {
       if (key.name === "escape") {
-        this.renderer.keyInput.off("keypress", handleEscape);
+        cleanup();
         this.showUpstreamsScreen();
+        return;
+      }
+
+      if (key.name === "tab" && !key.shift) {
+        focusField((focusIndex + 1) % fields.length);
+        return;
+      }
+
+      if (key.name === "tab" && key.shift) {
+        focusField((focusIndex - 1 + fields.length) % fields.length);
+        return;
       }
     };
-    this.renderer.keyInput.on("keypress", handleEscape);
+
+    const cleanup = () => {
+      this.renderer.keyInput.off("keypress", handleKeypress);
+    };
+
+    this.renderer.keyInput.on("keypress", handleKeypress);
+    focusField(0);
+
+    this.addInstructions("Tab: next field | Shift+Tab: prev | Esc: cancel");
   }
 
   showEditUpstreamScreen(name: string): void {
