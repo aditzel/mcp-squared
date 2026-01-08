@@ -41,17 +41,21 @@ async function startServer(): Promise<void> {
 
     try {
       await server.stop();
-    } finally {
       process.exit(0);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Error during shutdown: ${message}`);
+      process.exit(1);
     }
   };
 
+  // Use void operator to explicitly mark the promise as intentionally not awaited
   process.on("SIGINT", () => {
-    gracefulShutdown();
+    void gracefulShutdown();
   });
 
   process.on("SIGTERM", () => {
-    gracefulShutdown();
+    void gracefulShutdown();
   });
 
   await server.start();
