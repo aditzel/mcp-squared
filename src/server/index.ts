@@ -1,3 +1,17 @@
+/**
+ * MCP² Server module - The core MCP meta-server implementation.
+ *
+ * This module implements the MCP server that exposes three meta-tools:
+ * - find_tools: Search for tools across all upstream servers
+ * - describe_tools: Get detailed schemas for specific tools
+ * - execute: Execute tools on upstream servers with security policy enforcement
+ *
+ * The server acts as a proxy/gateway to multiple upstream MCP servers,
+ * providing unified tool discovery and execution with security controls.
+ *
+ * @module server
+ */
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -7,16 +21,44 @@ import { Retriever } from "../retriever/index.js";
 import { evaluatePolicy } from "../security/index.js";
 import { Cataloger } from "../upstream/index.js";
 
+/**
+ * Configuration options for creating an MCP² server instance.
+ */
 export interface McpSquaredServerOptions {
+  /** Server name reported to clients (default: "mcp-squared") */
   name?: string;
+  /** Server version reported to clients (default: package version) */
   version?: string;
+  /** Pre-configured cataloger instance (creates new if not provided) */
   cataloger?: Cataloger;
+  /** MCP² configuration for security policies and operations */
   config?: McpSquaredConfig;
+  /** Path to the SQLite index database (default: in-memory) */
   indexDbPath?: string;
+  /** Default number of results for find_tools (default: 5) */
   defaultLimit?: number;
+  /** Maximum allowed results for find_tools (default: 50) */
   maxLimit?: number;
 }
 
+/**
+ * The main MCP² server class that implements the meta-server functionality.
+ *
+ * This server exposes three tools to MCP clients:
+ * - `find_tools`: Natural language search for tools across upstream servers
+ * - `describe_tools`: Get full JSON schemas for specific tools
+ * - `execute`: Execute tools with security policy enforcement
+ *
+ * @example
+ * ```ts
+ * const server = new McpSquaredServer({
+ *   config: await loadConfig(),
+ *   defaultLimit: 10,
+ * });
+ *
+ * await server.start();
+ * ```
+ */
 export class McpSquaredServer {
   private readonly mcpServer: McpServer;
   private readonly cataloger: Cataloger;
@@ -25,6 +67,11 @@ export class McpSquaredServer {
   private transport: StdioServerTransport | null = null;
   private readonly ownsCataloger: boolean;
 
+  /**
+   * Creates a new MCP² server instance.
+   *
+   * @param options - Server configuration options
+   */
   constructor(options: McpSquaredServerOptions = {}) {
     const name = options.name ?? "mcp-squared";
     const version = options.version ?? VERSION;
@@ -58,6 +105,12 @@ export class McpSquaredServer {
     this.registerMetaTools();
   }
 
+  /**
+   * Registers the three meta-tools: find_tools, describe_tools, and execute.
+   * These tools provide the core functionality for tool discovery and execution.
+   *
+   * @internal
+   */
   private registerMetaTools(): void {
     this.mcpServer.registerTool(
       "find_tools",
@@ -252,31 +305,48 @@ export class McpSquaredServer {
   }
 
   /**
-   * Sync tools from the cataloger to the index
+   * Synchronizes tools from the cataloger to the full-text search index.
+   * Call this after connecting to upstream servers to enable tool search.
    */
   syncIndex(): void {
     this.retriever.syncFromCataloger();
   }
 
   /**
-   * Get the cataloger instance
+   * Returns the cataloger instance used by this server.
+   * Use this to manage upstream connections directly.
+   *
+   * @returns The Cataloger instance
    */
   getCataloger(): Cataloger {
     return this.cataloger;
   }
 
   /**
-   * Get the retriever instance
+   * Returns the retriever instance used for tool search.
+   *
+   * @returns The Retriever instance
    */
   getRetriever(): Retriever {
     return this.retriever;
   }
 
+  /**
+   * Starts the MCP server and begins listening for client connections via stdio.
+   *
+   * @returns Promise that resolves when the server is ready
+   */
   async start(): Promise<void> {
     this.transport = new StdioServerTransport();
     await this.mcpServer.connect(this.transport);
   }
 
+  /**
+   * Stops the server and cleans up all resources.
+   * Closes the MCP connection, retriever index, and disconnects all upstreams.
+   *
+   * @returns Promise that resolves when shutdown is complete
+   */
   async stop(): Promise<void> {
     await this.mcpServer.close();
     this.retriever.close();
@@ -286,6 +356,11 @@ export class McpSquaredServer {
     this.transport = null;
   }
 
+  /**
+   * Checks if the server is currently connected to a client.
+   *
+   * @returns true if connected, false otherwise
+   */
   isConnected(): boolean {
     return this.mcpServer.isConnected();
   }

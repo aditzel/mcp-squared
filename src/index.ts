@@ -1,11 +1,31 @@
+/**
+ * MCP² (Mercury Control Plane) - Main entry point.
+ *
+ * MCP² is a local-first meta-server that aggregates multiple upstream MCP servers
+ * and provides unified tool discovery and execution. It supports:
+ *
+ * - Multi-scope configuration (env, project, user)
+ * - Security policies (allow/block/confirm)
+ * - Full-text tool search via SQLite FTS5
+ * - stdio and SSE transport types
+ *
+ * @module mcp-squared
+ */
+
 import { parseArgs, printHelp } from "./cli/index.js";
 import { type McpSquaredConfig, loadConfig } from "./config/index.js";
 import { McpSquaredServer } from "./server/index.js";
 import { runConfigTui } from "./tui/config.js";
 import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
 
+/** Current version of MCP² */
 export const VERSION = "0.1.0";
 
+/**
+ * Starts the MCP server in stdio mode.
+ * Loads configuration, sets up signal handlers, and begins listening.
+ * @internal
+ */
 async function startServer(): Promise<void> {
   // Load configuration
   const { config } = await loadConfig();
@@ -25,6 +45,14 @@ async function startServer(): Promise<void> {
   await server.start();
 }
 
+/**
+ * Formats and prints a test result to stdout.
+ * Shows success/failure status, server info, and available tools.
+ *
+ * @param name - The upstream server name
+ * @param result - The test result to format
+ * @internal
+ */
 function formatTestResult(name: string, result: TestResult): void {
   const status = result.success ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m";
   console.log(`\n${status} ${name}`);
@@ -52,6 +80,13 @@ function formatTestResult(name: string, result: TestResult): void {
   }
 }
 
+/**
+ * Runs connection tests against upstream servers.
+ * Tests a specific server if name provided, or all enabled servers.
+ *
+ * @param targetName - Optional specific server name to test
+ * @internal
+ */
 async function runTest(targetName: string | undefined): Promise<void> {
   let config: McpSquaredConfig;
   try {
@@ -107,6 +142,11 @@ async function runTest(targetName: string | undefined): Promise<void> {
   process.exit(allSuccess ? 0 : 1);
 }
 
+/**
+ * Main entry point for the MCP² CLI.
+ * Parses arguments and dispatches to the appropriate mode.
+ * @internal
+ */
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 

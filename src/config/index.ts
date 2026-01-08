@@ -1,3 +1,15 @@
+/**
+ * Configuration module exports.
+ *
+ * This module provides complete configuration management for MCP²:
+ * - Multi-scope path discovery (env, project, user)
+ * - TOML parsing with Zod schema validation
+ * - Schema versioning and migrations
+ * - Async and sync load/save operations
+ *
+ * @module config
+ */
+
 export {
   ConfigSchema,
   DEFAULT_CONFIG,

@@ -1,10 +1,40 @@
+/**
+ * Command-line interface argument parsing.
+ *
+ * This module handles parsing command-line arguments for the mcp-squared CLI.
+ * Supports server mode (default), config TUI, and connection testing.
+ *
+ * @module cli
+ */
+
+/**
+ * Parsed command-line arguments.
+ */
 export interface CliArgs {
+  /** Operating mode: server, config TUI, or test */
   mode: "server" | "config" | "test";
+  /** Whether --help was requested */
   help: boolean;
+  /** Whether --version was requested */
   version: boolean;
+  /** Target upstream server name for test mode (optional) */
   testTarget: string | undefined;
 }
 
+/**
+ * Parses command-line arguments into structured CliArgs.
+ *
+ * @param args - Array of command-line arguments (without node/script)
+ * @returns Parsed CLI arguments
+ *
+ * @example
+ * ```ts
+ * const args = parseArgs(process.argv.slice(2));
+ * if (args.mode === "config") {
+ *   // Launch config TUI
+ * }
+ * ```
+ */
 export function parseArgs(args: string[]): CliArgs {
   const result: CliArgs = {
     mode: "server",
@@ -46,6 +76,10 @@ export function parseArgs(args: string[]): CliArgs {
   return result;
 }
 
+/**
+ * Prints the help message to stdout.
+ * Shows available commands, options, and examples.
+ */
 export function printHelp(): void {
   console.log(`
 MCP² (Mercury Control Plane) - Meta-server for Model Context Protocol

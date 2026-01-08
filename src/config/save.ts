@@ -1,9 +1,22 @@
+/**
+ * Configuration saving utilities.
+ *
+ * This module handles serializing and writing configuration files
+ * in TOML format. Supports both async and sync saving.
+ *
+ * @module config/save
+ */
+
 import { stringify as stringifyToml } from "smol-toml";
 import { ensureConfigDir } from "./paths.js";
 import type { McpSquaredConfig } from "./schema.js";
 
+/**
+ * Error thrown when configuration cannot be saved.
+ */
 export class ConfigSaveError extends Error {
   constructor(
+    /** Path to the file that failed to save */
     public readonly filePath: string,
     cause: unknown,
   ) {
@@ -13,6 +26,14 @@ export class ConfigSaveError extends Error {
   }
 }
 
+/**
+ * Saves configuration to a file in TOML format.
+ * Creates parent directories if they don't exist.
+ *
+ * @param filePath - Path to save the config file
+ * @param config - Configuration to save
+ * @throws ConfigSaveError if serialization or writing fails
+ */
 export async function saveConfig(
   filePath: string,
   config: McpSquaredConfig,
@@ -33,6 +54,14 @@ export async function saveConfig(
   }
 }
 
+/**
+ * Synchronously saves configuration to a file in TOML format.
+ * Creates parent directories if they don't exist.
+ *
+ * @param filePath - Path to save the config file
+ * @param config - Configuration to save
+ * @throws ConfigSaveError if serialization or writing fails
+ */
 export function saveConfigSync(
   filePath: string,
   config: McpSquaredConfig,

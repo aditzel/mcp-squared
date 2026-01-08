@@ -1,3 +1,13 @@
+/**
+ * Cataloger module for managing connections to upstream MCP servers.
+ *
+ * This module provides the core functionality for connecting to and managing
+ * multiple upstream MCP servers. It handles both stdio and SSE transport types,
+ * maintains connection state, and provides tool discovery and execution capabilities.
+ *
+ * @module upstream/cataloger
+ */
+
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -9,42 +19,97 @@ import type {
 } from "../config/schema.js";
 import { sanitizeDescription } from "../security/index.js";
 
+/**
+ * Connection status for an upstream server.
+ *
+ * - `disconnected`: No active connection
+ * - `connecting`: Connection attempt in progress
+ * - `connected`: Successfully connected and ready
+ * - `error`: Connection failed or encountered an error
+ */
 export type ConnectionStatus =
   | "disconnected"
   | "connecting"
   | "connected"
   | "error";
 
+/**
+ * JSON Schema for tool input parameters.
+ * Follows the JSON Schema specification with type "object".
+ */
 export interface ToolInputSchema {
+  /** Must be "object" for MCP tool schemas */
   type: "object";
+  /** Property definitions for the tool's parameters */
   properties?: Record<string, unknown>;
+  /** List of required property names */
   required?: string[];
+  /** Additional schema properties */
   [key: string]: unknown;
 }
 
+/**
+ * A tool that has been cataloged from an upstream MCP server.
+ * Contains sanitized metadata and the server it originated from.
+ */
 export interface CatalogedTool {
+  /** Unique tool name (unique per server) */
   name: string;
+  /** Sanitized tool description (may be undefined if not provided) */
   description: string | undefined;
+  /** JSON Schema defining the tool's input parameters */
   inputSchema: ToolInputSchema;
+  /** Key identifying the upstream server this tool belongs to */
   serverKey: string;
 }
 
+/**
+ * Represents the state of a connection to an upstream MCP server.
+ * Tracks connection status, available tools, and client/transport references.
+ */
 export interface ServerConnection {
+  /** Unique key identifying this server connection */
   key: string;
+  /** Configuration used to establish the connection */
   config: UpstreamServerConfig;
+  /** Current connection status */
   status: ConnectionStatus;
+  /** Error message if status is "error" */
   error: string | undefined;
+  /** Name reported by the server (if connected) */
   serverName: string | undefined;
+  /** Version reported by the server (if connected) */
   serverVersion: string | undefined;
+  /** Tools available from this server */
   tools: CatalogedTool[];
+  /** MCP client instance (null if not connected) */
   client: Client | null;
+  /** Transport layer (stdio or SSE) */
   transport: StdioClientTransport | SSEClientTransport | null;
 }
 
+/**
+ * Configuration options for the Cataloger.
+ */
 export interface CatalogerOptions {
+  /** Connection timeout in milliseconds (default: 30000) */
   connectTimeoutMs?: number;
 }
 
+/**
+ * Resolves environment variable references in a configuration object.
+ * Values starting with "$" are replaced with the corresponding environment variable.
+ *
+ * @param env - Object with values that may contain environment variable references
+ * @returns Object with resolved environment variable values
+ *
+ * @example
+ * ```ts
+ * const env = { API_KEY: "$MY_API_KEY" };
+ * const resolved = resolveEnvVars(env);
+ * // resolved.API_KEY === process.env.MY_API_KEY
+ * ```
+ */
 function resolveEnvVars(env: Record<string, string>): Record<string, string> {
   const resolved: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
@@ -58,16 +123,44 @@ function resolveEnvVars(env: Record<string, string>): Record<string, string> {
   return resolved;
 }
 
+/**
+ * Manages connections to upstream MCP servers and catalogs their available tools.
+ *
+ * The Cataloger is the central component for:
+ * - Establishing connections to multiple upstream MCP servers
+ * - Discovering and cataloging tools from connected servers
+ * - Executing tool calls on the appropriate upstream server
+ * - Managing connection lifecycle (connect, disconnect, refresh)
+ *
+ * @example
+ * ```ts
+ * const cataloger = new Cataloger({ connectTimeoutMs: 10000 });
+ * await cataloger.connectAll(config);
+ *
+ * const tools = cataloger.getAllTools();
+ * const result = await cataloger.callTool("some_tool", { arg: "value" });
+ * ```
+ */
 export class Cataloger {
   private readonly connections = new Map<string, ServerConnection>();
   private readonly connectTimeoutMs: number;
 
+  /**
+   * Creates a new Cataloger instance.
+   *
+   * @param options - Configuration options
+   * @param options.connectTimeoutMs - Connection timeout in milliseconds (default: 30000)
+   */
   constructor(options: CatalogerOptions = {}) {
     this.connectTimeoutMs = options.connectTimeoutMs ?? 30_000;
   }
 
   /**
-   * Connect to all enabled upstream servers from config
+   * Connects to all enabled upstream servers defined in the configuration.
+   * Connections are made in parallel for efficiency.
+   *
+   * @param config - The MCP² configuration containing upstream server definitions
+   * @returns Promise that resolves when all connection attempts have completed
    */
   async connectAll(config: McpSquaredConfig): Promise<void> {
     const connectPromises: Promise<void>[] = [];
@@ -82,7 +175,13 @@ export class Cataloger {
   }
 
   /**
-   * Connect to a single upstream server
+   * Connects to a single upstream MCP server.
+   * If a connection with the same key exists, it will be disconnected first.
+   * Tool descriptions are sanitized to prevent prompt injection attacks.
+   *
+   * @param key - Unique identifier for this connection
+   * @param config - Server configuration (stdio or SSE transport)
+   * @returns Promise that resolves when connection is established or fails
    */
   async connect(key: string, config: UpstreamServerConfig): Promise<void> {
     // Disconnect existing connection if any
@@ -156,7 +255,10 @@ export class Cataloger {
   }
 
   /**
-   * Disconnect from a specific upstream server
+   * Disconnects from a specific upstream server and cleans up resources.
+   *
+   * @param key - The server key to disconnect
+   * @returns Promise that resolves when disconnection is complete
    */
   async disconnect(key: string): Promise<void> {
     const connection = this.connections.get(key);
@@ -169,7 +271,9 @@ export class Cataloger {
   }
 
   /**
-   * Disconnect from all upstream servers
+   * Disconnects from all upstream servers and cleans up all resources.
+   *
+   * @returns Promise that resolves when all disconnections are complete
    */
   async disconnectAll(): Promise<void> {
     const disconnectPromises = Array.from(this.connections.keys()).map((key) =>
@@ -179,7 +283,9 @@ export class Cataloger {
   }
 
   /**
-   * Get all tools from all connected servers
+   * Returns all tools from all connected upstream servers.
+   *
+   * @returns Array of cataloged tools from all connected servers
    */
   getAllTools(): CatalogedTool[] {
     const allTools: CatalogedTool[] = [];
@@ -192,7 +298,10 @@ export class Cataloger {
   }
 
   /**
-   * Get tools from a specific server
+   * Returns tools from a specific upstream server.
+   *
+   * @param key - The server key to get tools from
+   * @returns Array of tools from the specified server (empty if not connected)
    */
   getToolsForServer(key: string): CatalogedTool[] {
     const connection = this.connections.get(key);
@@ -203,7 +312,11 @@ export class Cataloger {
   }
 
   /**
-   * Find a tool by name across all servers
+   * Finds a tool by name across all connected servers.
+   * Returns the first matching tool found.
+   *
+   * @param toolName - The name of the tool to find
+   * @returns The tool if found, undefined otherwise
    */
   findTool(toolName: string): CatalogedTool | undefined {
     for (const connection of this.connections.values()) {
@@ -216,7 +329,9 @@ export class Cataloger {
   }
 
   /**
-   * Get the status of all connections
+   * Returns the connection status of all upstream servers.
+   *
+   * @returns Map of server keys to their connection status and error (if any)
    */
   getStatus(): Map<
     string,
@@ -236,14 +351,19 @@ export class Cataloger {
   }
 
   /**
-   * Get a specific connection
+   * Returns the connection object for a specific upstream server.
+   *
+   * @param key - The server key to look up
+   * @returns The server connection if it exists, undefined otherwise
    */
   getConnection(key: string): ServerConnection | undefined {
     return this.connections.get(key);
   }
 
   /**
-   * Check if any servers are connected
+   * Checks if any upstream servers are currently connected.
+   *
+   * @returns true if at least one server is connected, false otherwise
    */
   hasConnections(): boolean {
     for (const connection of this.connections.values()) {
@@ -255,7 +375,13 @@ export class Cataloger {
   }
 
   /**
-   * Call a tool on its upstream server
+   * Executes a tool call on the appropriate upstream server.
+   * The tool is located by name and the call is forwarded to its server.
+   *
+   * @param toolName - Name of the tool to execute
+   * @param args - Arguments to pass to the tool
+   * @returns Promise resolving to the tool result with content and error flag
+   * @throws Error if tool is not found or server is not connected
    */
   async callTool(
     toolName: string,
@@ -283,7 +409,12 @@ export class Cataloger {
   }
 
   /**
-   * Refresh tools from a specific server
+   * Refreshes the tool list from a specific upstream server.
+   * Updates the cached tools with the latest from the server.
+   * Tool descriptions are sanitized during refresh.
+   *
+   * @param key - The server key to refresh tools from
+   * @returns Promise that resolves when refresh is complete
    */
   async refreshTools(key: string): Promise<void> {
     const connection = this.connections.get(key);
@@ -306,7 +437,10 @@ export class Cataloger {
   }
 
   /**
-   * Refresh tools from all connected servers
+   * Refreshes the tool lists from all connected upstream servers.
+   * Updates are performed in parallel for efficiency.
+   *
+   * @returns Promise that resolves when all refresh operations complete
    */
   async refreshAllTools(): Promise<void> {
     const refreshPromises: Promise<void>[] = [];
@@ -316,6 +450,13 @@ export class Cataloger {
     await Promise.allSettled(refreshPromises);
   }
 
+  /**
+   * Creates a stdio transport for connecting to a local MCP server process.
+   *
+   * @param config - Stdio server configuration
+   * @returns Configured stdio client transport
+   * @internal
+   */
   private createStdioTransport(
     config: UpstreamStdioServerConfig,
   ): StdioClientTransport {
@@ -334,6 +475,13 @@ export class Cataloger {
     });
   }
 
+  /**
+   * Creates an SSE transport for connecting to a remote MCP server over HTTP.
+   *
+   * @param config - SSE server configuration with URL and optional headers
+   * @returns Configured SSE client transport
+   * @internal
+   */
   private createSseTransport(
     config: UpstreamSseServerConfig,
   ): SSEClientTransport {
@@ -357,6 +505,13 @@ export class Cataloger {
     });
   }
 
+  /**
+   * Cleans up resources for a connection (closes client and transport).
+   *
+   * @param connection - The server connection to clean up
+   * @returns Promise that resolves when cleanup is complete
+   * @internal
+   */
   private async cleanupConnection(connection: ServerConnection): Promise<void> {
     if (connection.client) {
       try {

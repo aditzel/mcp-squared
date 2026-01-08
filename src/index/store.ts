@@ -1,41 +1,103 @@
+/**
+ * SQLite-based index store for tool search using FTS5.
+ *
+ * This module provides persistent storage and full-text search
+ * capabilities for cataloged tools. It uses SQLite's FTS5 extension
+ * for efficient natural language search across tool names and descriptions.
+ *
+ * @module index/store
+ */
+
 import { Database } from "bun:sqlite";
 import type { CatalogedTool, ToolInputSchema } from "../upstream/cataloger.js";
 
+/**
+ * Tool data stored in the SQLite index.
+ */
 export interface IndexedTool {
+  /** Auto-generated row ID */
   id: number;
+  /** Tool name */
   name: string;
+  /** Tool description (may be null) */
   description: string | null;
+  /** JSON-serialized input schema */
   inputSchema: string;
+  /** Key identifying the upstream server */
   serverKey: string;
+  /** Hash of the input schema for change detection */
   schemaHash: string;
+  /** Unix timestamp when first indexed */
   createdAt: number;
+  /** Unix timestamp when last updated */
   updatedAt: number;
 }
 
+/**
+ * Tool search result with relevance score.
+ */
 export interface ToolSearchResult {
+  /** Tool name */
   name: string;
+  /** Tool description (may be null) */
   description: string | null;
+  /** Key identifying the upstream server */
   serverKey: string;
+  /** FTS5 relevance score (higher is better) */
   score: number;
 }
 
+/**
+ * Configuration options for IndexStore.
+ */
 export interface IndexStoreOptions {
+  /** Path to SQLite database file (default: ":memory:") */
   dbPath?: string | undefined;
 }
 
+/**
+ * Generates a hash of a tool's input schema for change detection.
+ * @internal
+ */
 function hashSchema(schema: ToolInputSchema): string {
   return Bun.hash(JSON.stringify(schema)).toString(16);
 }
 
+/**
+ * SQLite-based storage for indexed tools with full-text search.
+ *
+ * The IndexStore maintains a SQLite database with:
+ * - A `tools` table for tool metadata and schemas
+ * - An FTS5 virtual table for full-text search
+ * - Triggers to keep the FTS index in sync
+ *
+ * @example
+ * ```ts
+ * const store = new IndexStore({ dbPath: "./tools.db" });
+ * store.indexTools(cataloger.getAllTools());
+ *
+ * const results = store.search("file operations", 10);
+ * ```
+ */
 export class IndexStore {
   private readonly db: Database;
 
+  /**
+   * Creates a new IndexStore instance.
+   *
+   * @param options - Configuration options
+   * @param options.dbPath - Path to SQLite database (default: in-memory)
+   */
   constructor(options: IndexStoreOptions = {}) {
     const dbPath = options.dbPath ?? ":memory:";
     this.db = new Database(dbPath);
     this.initSchema();
   }
 
+  /**
+   * Initializes the database schema including tables, indexes, and FTS.
+   * @internal
+   */
   private initSchema(): void {
     this.db.run(`
       CREATE TABLE IF NOT EXISTS tools (
@@ -91,7 +153,10 @@ export class IndexStore {
   }
 
   /**
-   * Index a tool from the cataloger
+   * Indexes a single tool, updating if it already exists.
+   * Uses upsert to handle both insert and update cases.
+   *
+   * @param tool - The tool to index
    */
   indexTool(tool: CatalogedTool): void {
     const schemaHash = hashSchema(tool.inputSchema);
@@ -118,7 +183,10 @@ export class IndexStore {
   }
 
   /**
-   * Index multiple tools at once
+   * Indexes multiple tools in a single transaction for efficiency.
+   * Uses prepared statements and transactions for bulk operations.
+   *
+   * @param tools - Array of tools to index
    */
   indexTools(tools: CatalogedTool[]): void {
     const insertStmt = this.db.prepare(`
@@ -149,7 +217,12 @@ export class IndexStore {
   }
 
   /**
-   * Search tools using full-text search
+   * Searches for tools using FTS5 full-text search.
+   * Supports prefix matching for partial word matches.
+   *
+   * @param query - Search query string
+   * @param limit - Maximum results to return (default: 10)
+   * @returns Array of matching tools with relevance scores
    */
   search(query: string, limit = 10): ToolSearchResult[] {
     if (!query.trim()) {
@@ -189,7 +262,11 @@ export class IndexStore {
   }
 
   /**
-   * Get a tool by name
+   * Gets a tool by name, optionally filtering by server.
+   *
+   * @param name - Tool name to look up
+   * @param serverKey - Optional server key to narrow search
+   * @returns The indexed tool if found, null otherwise
    */
   getTool(name: string, serverKey?: string): IndexedTool | null {
     let query: string;
@@ -234,7 +311,10 @@ export class IndexStore {
   }
 
   /**
-   * Get all tools for a server
+   * Gets all tools indexed for a specific server.
+   *
+   * @param serverKey - Server key to get tools for
+   * @returns Array of all indexed tools for that server
    */
   getToolsForServer(serverKey: string): IndexedTool[] {
     const rows = this.db
@@ -266,7 +346,9 @@ export class IndexStore {
   }
 
   /**
-   * Get all indexed tools
+   * Gets all indexed tools from all servers.
+   *
+   * @returns Array of all indexed tools
    */
   getAllTools(): IndexedTool[] {
     const rows = this.db
@@ -298,7 +380,10 @@ export class IndexStore {
   }
 
   /**
-   * Remove all tools for a server
+   * Removes all tools for a specific server.
+   *
+   * @param serverKey - Server key to remove tools for
+   * @returns Number of tools removed
    */
   removeToolsForServer(serverKey: string): number {
     // Count first since triggers affect the changes count
@@ -314,7 +399,11 @@ export class IndexStore {
   }
 
   /**
-   * Remove a specific tool
+   * Removes a specific tool from the index.
+   *
+   * @param name - Tool name to remove
+   * @param serverKey - Server key the tool belongs to
+   * @returns true if tool was removed, false if not found
    */
   removeTool(name: string, serverKey: string): boolean {
     // Check existence first since triggers affect the changes count
@@ -336,7 +425,9 @@ export class IndexStore {
   }
 
   /**
-   * Get the count of indexed tools
+   * Returns the total count of indexed tools.
+   *
+   * @returns Number of tools in the index
    */
   getToolCount(): number {
     const result = this.db
@@ -346,19 +437,29 @@ export class IndexStore {
   }
 
   /**
-   * Clear all indexed tools
+   * Clears all tools from the index.
+   * The FTS index is automatically updated via triggers.
    */
   clear(): void {
     this.db.run("DELETE FROM tools");
   }
 
   /**
-   * Close the database connection
+   * Closes the database connection and releases resources.
+   * Call this when shutting down the application.
    */
   close(): void {
     this.db.close();
   }
 
+  /**
+   * Prepares a user query string for FTS5 matching.
+   * Escapes special characters and adds prefix matching.
+   *
+   * @param query - User's search query
+   * @returns FTS5-safe query string
+   * @internal
+   */
   private prepareFtsQuery(query: string): string {
     // Remove special FTS5 operators and escape quotes
     const cleaned = query
