@@ -7,6 +7,7 @@ import type {
   UpstreamSseServerConfig,
   UpstreamStdioServerConfig,
 } from "../config/schema.js";
+import { sanitizeDescription } from "../security/index.js";
 
 export type ConnectionStatus =
   | "disconnected"
@@ -139,7 +140,7 @@ export class Cataloger {
       const { tools } = await client.listTools();
       connection.tools = tools.map((tool) => ({
         name: tool.name,
-        description: tool.description,
+        description: sanitizeDescription(tool.description),
         inputSchema: tool.inputSchema as ToolInputSchema,
         serverKey: key,
       }));
@@ -294,7 +295,7 @@ export class Cataloger {
       const { tools } = await connection.client.listTools();
       connection.tools = tools.map((tool) => ({
         name: tool.name,
-        description: tool.description,
+        description: sanitizeDescription(tool.description),
         inputSchema: tool.inputSchema as ToolInputSchema,
         serverKey: key,
       }));

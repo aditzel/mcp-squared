@@ -1,14 +1,17 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { DEFAULT_CONFIG, type McpSquaredConfig } from "../config/schema.js";
 import { VERSION } from "../index.js";
 import { Retriever } from "../retriever/index.js";
+import { evaluatePolicy } from "../security/index.js";
 import { Cataloger } from "../upstream/index.js";
 
 export interface McpSquaredServerOptions {
   name?: string;
   version?: string;
   cataloger?: Cataloger;
+  config?: McpSquaredConfig;
   indexDbPath?: string;
   defaultLimit?: number;
   maxLimit?: number;
@@ -18,6 +21,7 @@ export class McpSquaredServer {
   private readonly mcpServer: McpServer;
   private readonly cataloger: Cataloger;
   private readonly retriever: Retriever;
+  private readonly config: McpSquaredConfig;
   private transport: StdioServerTransport | null = null;
   private readonly ownsCataloger: boolean;
 
@@ -33,6 +37,8 @@ export class McpSquaredServer {
       this.cataloger = new Cataloger();
       this.ownsCataloger = true;
     }
+
+    this.config = options.config ?? DEFAULT_CONFIG;
 
     this.retriever = new Retriever(this.cataloger, {
       indexDbPath: options.indexDbPath,
@@ -141,10 +147,75 @@ export class McpSquaredServer {
             .record(z.string(), z.unknown())
             .default({})
             .describe("Arguments to pass to the tool"),
+          confirmation_token: z
+            .string()
+            .optional()
+            .describe(
+              "Optional confirmation token for tools that require explicit confirmation",
+            ),
         },
       },
       async (args) => {
         try {
+          // Look up the tool to get its server key
+          const tool = this.cataloger.findTool(args.tool_name);
+          if (!tool) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: `Tool not found: ${args.tool_name}`,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          // Evaluate security policy
+          const policyResult = evaluatePolicy(
+            {
+              serverKey: tool.serverKey,
+              toolName: args.tool_name,
+              confirmationToken: args.confirmation_token,
+            },
+            this.config,
+          );
+
+          // Handle policy decision
+          if (policyResult.decision === "block") {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: policyResult.reason,
+                    blocked: true,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          if (policyResult.decision === "confirm") {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    requires_confirmation: true,
+                    confirmation_token: policyResult.confirmationToken,
+                    message: policyResult.reason,
+                  }),
+                },
+              ],
+              isError: false,
+            };
+          }
+
+          // Policy allows execution - proceed
           const result = await this.cataloger.callTool(
             args.tool_name,
             args.arguments,

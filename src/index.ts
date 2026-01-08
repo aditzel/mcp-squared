@@ -7,7 +7,10 @@ import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
 export const VERSION = "0.1.0";
 
 async function startServer(): Promise<void> {
-  const server = new McpSquaredServer();
+  // Load configuration
+  const { config } = await loadConfig();
+
+  const server = new McpSquaredServer({ config });
 
   process.on("SIGINT", async () => {
     await server.stop();
