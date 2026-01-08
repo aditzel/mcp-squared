@@ -44,6 +44,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",
+    "@opentui/core": "^0.1.69",
     "zod": "^4.3.5"
   }
 }
