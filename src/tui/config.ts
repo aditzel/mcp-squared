@@ -21,6 +21,7 @@ import {
   saveConfig,
 } from "../config/index.js";
 import { VERSION } from "../index.js";
+import { testUpstreamConnection } from "../upstream/index.js";
 
 const PROJECT_DESCRIPTION = "Mercury Control Plane";
 
@@ -631,6 +632,11 @@ class ConfigTuiApp {
 
     const options: SelectOption[] = [
       {
+        name: "Test Connection",
+        description: "Connect and list available tools",
+        value: "test",
+      },
+      {
         name: upstream.enabled ? "Disable" : "Enable",
         description: upstream.enabled
           ? "Stop using this upstream"
@@ -668,6 +674,9 @@ class ConfigTuiApp {
       SelectRenderableEvents.ITEM_SELECTED,
       (_index: number, option: SelectOption) => {
         switch (option.value) {
+          case "test":
+            this.showTestScreen(name, upstream);
+            break;
           case "toggle":
             upstream.enabled = !upstream.enabled;
             this.state.isDirty = true;
@@ -687,6 +696,144 @@ class ConfigTuiApp {
 
     menu.focus();
     this.addInstructions("↑↓ Navigate | Enter Select | Esc Back");
+  }
+
+  private async showTestScreen(
+    name: string,
+    upstream: UpstreamServerConfig,
+  ): Promise<void> {
+    this.clearScreen();
+    this.addHeader();
+    if (!this.container) return;
+
+    const testBox = new BoxRenderable(this.renderer, {
+      id: "test-box",
+      width: 60,
+      height: 16,
+      border: true,
+      borderStyle: "single",
+      borderColor: "#475569",
+      title: `Testing: ${name}`,
+      titleAlignment: "center",
+      backgroundColor: "#1e293b",
+      flexDirection: "column",
+      padding: 1,
+    });
+    this.container.add(testBox);
+
+    const statusText = new TextRenderable(this.renderer, {
+      id: "test-status",
+      content: "Connecting...",
+      fg: "#fbbf24",
+    });
+    testBox.add(statusText);
+
+    this.addInstructions("Please wait...");
+
+    const result = await testUpstreamConnection(name, upstream);
+
+    this.clearScreen();
+    this.addHeader();
+    if (!this.container) return;
+
+    const resultBox = new BoxRenderable(this.renderer, {
+      id: "result-box",
+      width: 60,
+      height: 18,
+      border: true,
+      borderStyle: "single",
+      borderColor: result.success ? "#4ade80" : "#f87171",
+      title: result.success ? `✓ ${name} - Success` : `✗ ${name} - Failed`,
+      titleAlignment: "center",
+      backgroundColor: "#1e293b",
+      flexDirection: "column",
+      padding: 1,
+    });
+    this.container.add(resultBox);
+
+    if (result.success) {
+      if (result.serverName) {
+        const serverText = new TextRenderable(this.renderer, {
+          id: "test-server",
+          content: `Server: ${result.serverName}${result.serverVersion ? ` v${result.serverVersion}` : ""}`,
+          fg: "#94a3b8",
+        });
+        resultBox.add(serverText);
+      }
+
+      const toolsHeader = new TextRenderable(this.renderer, {
+        id: "test-tools-header",
+        content: `Tools available: ${result.tools.length}`,
+        fg: "#e2e8f0",
+        marginTop: 1,
+      });
+      resultBox.add(toolsHeader);
+
+      for (const tool of result.tools.slice(0, 8)) {
+        const toolText = new TextRenderable(this.renderer, {
+          id: `test-tool-${tool.name}`,
+          content: `  • ${tool.name}`,
+          fg: "#94a3b8",
+        });
+        resultBox.add(toolText);
+      }
+
+      if (result.tools.length > 8) {
+        const moreText = new TextRenderable(this.renderer, {
+          id: "test-tools-more",
+          content: `  ... and ${result.tools.length - 8} more`,
+          fg: "#64748b",
+        });
+        resultBox.add(moreText);
+      }
+
+      const timeText = new TextRenderable(this.renderer, {
+        id: "test-time",
+        content: `Time: ${result.durationMs}ms`,
+        fg: "#64748b",
+        marginTop: 1,
+      });
+      resultBox.add(timeText);
+    } else {
+      const errorText = new TextRenderable(this.renderer, {
+        id: "test-error",
+        content: `Error: ${result.error}`,
+        fg: "#f87171",
+      });
+      resultBox.add(errorText);
+
+      const timeText = new TextRenderable(this.renderer, {
+        id: "test-time",
+        content: `Time: ${result.durationMs}ms`,
+        fg: "#64748b",
+        marginTop: 1,
+      });
+      resultBox.add(timeText);
+    }
+
+    const backOption: SelectOption[] = [
+      { name: "← Back", description: "", value: "back" },
+    ];
+
+    const backMenu = new SelectRenderable(this.renderer, {
+      id: "test-back",
+      width: "100%",
+      height: 2,
+      options: backOption,
+      backgroundColor: "transparent",
+      selectedBackgroundColor: "#334155",
+      textColor: "#e2e8f0",
+      selectedTextColor: "#38bdf8",
+      marginTop: 1,
+    });
+    resultBox.add(backMenu);
+
+    backMenu.on(SelectRenderableEvents.ITEM_SELECTED, () => {
+      this.showEditUpstreamScreen(name);
+    });
+
+    backMenu.focus();
+    this.addInstructions("Enter to go back");
   }
 
   showSecurityScreen(): void {
