@@ -4,6 +4,7 @@ import {
   type CliRenderer,
   InputRenderable,
   type KeyEvent,
+  type PasteEvent,
   RGBA,
   type SelectOption,
   SelectRenderable,
@@ -372,6 +373,9 @@ class ConfigTuiApp {
       focusedBackgroundColor: "#1e293b",
       textColor: "#e2e8f0",
       marginBottom: 1,
+      onPaste: (event: PasteEvent) => {
+        nameInput.value = (nameInput.value || "") + event.text;
+      },
     });
     formBox.add(nameInput);
 
@@ -390,6 +394,9 @@ class ConfigTuiApp {
       focusedBackgroundColor: "#1e293b",
       textColor: "#e2e8f0",
       marginBottom: 1,
+      onPaste: (event: PasteEvent) => {
+        commandInput.value = (commandInput.value || "") + event.text;
+      },
     });
     formBox.add(commandInput);
 
@@ -409,6 +416,9 @@ class ConfigTuiApp {
       focusedBackgroundColor: "#1e293b",
       textColor: "#e2e8f0",
       marginBottom: 1,
+      onPaste: (event: PasteEvent) => {
+        envInput.value = (envInput.value || "") + event.text;
+      },
     });
     formBox.add(envInput);
 
