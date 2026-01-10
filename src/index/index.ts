@@ -11,5 +11,6 @@ export {
   IndexStore,
   type IndexedTool,
   type IndexStoreOptions,
+  type SemanticSearchResult,
   type ToolSearchResult,
 } from "./store.js";

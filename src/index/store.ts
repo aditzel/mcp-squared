@@ -31,6 +31,22 @@ export interface IndexedTool {
   createdAt: number;
   /** Unix timestamp when last updated */
   updatedAt: number;
+  /** Vector embedding for semantic search (may be null) */
+  embedding: Float32Array | null;
+}
+
+/**
+ * Semantic search result with similarity score.
+ */
+export interface SemanticSearchResult {
+  /** Tool name */
+  name: string;
+  /** Tool description (may be null) */
+  description: string | null;
+  /** Key identifying the upstream server */
+  serverKey: string;
+  /** Cosine similarity score (0-1, higher is better) */
+  similarity: number;
 }
 
 /**
@@ -61,6 +77,36 @@ export interface IndexStoreOptions {
  */
 function hashSchema(schema: ToolInputSchema): string {
   return Bun.hash(JSON.stringify(schema)).toString(16);
+}
+
+/**
+ * Converts a Float32Array to a Buffer for SQLite BLOB storage.
+ * @internal
+ */
+function embeddingToBuffer(embedding: Float32Array): Buffer {
+  return Buffer.from(embedding.buffer);
+}
+
+/**
+ * Converts a SQLite BLOB (Buffer) back to a Float32Array.
+ * @internal
+ */
+function bufferToEmbedding(buffer: Buffer | null): Float32Array | null {
+  if (!buffer) return null;
+  return new Float32Array(buffer.buffer, buffer.byteOffset, buffer.length / 4);
+}
+
+/**
+ * Computes cosine similarity between two embedding vectors.
+ * Assumes vectors are already normalized (which BGE embeddings are).
+ * @internal
+ */
+function cosineSimilarity(a: Float32Array, b: Float32Array): number {
+  let dotProduct = 0;
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i]! * b[i]!;
+  }
+  return dotProduct;
 }
 
 /**
@@ -107,11 +153,19 @@ export class IndexStore {
         input_schema TEXT NOT NULL,
         server_key TEXT NOT NULL,
         schema_hash TEXT NOT NULL,
+        embedding BLOB,
         created_at INTEGER NOT NULL DEFAULT (unixepoch()),
         updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
         UNIQUE(name, server_key)
       )
     `);
+
+    // Migration: Add embedding column if it doesn't exist (for existing databases)
+    try {
+      this.db.run(`ALTER TABLE tools ADD COLUMN embedding BLOB`);
+    } catch {
+      // Column already exists, ignore error
+    }
 
     this.db.run(`
       CREATE INDEX IF NOT EXISTS idx_tools_server_key ON tools(server_key)
@@ -312,6 +366,7 @@ export class IndexStore {
           input_schema: string;
           server_key: string;
           schema_hash: string;
+          embedding: Buffer | null;
           created_at: number;
           updated_at: number;
         },
@@ -328,6 +383,7 @@ export class IndexStore {
       inputSchema: row.input_schema,
       serverKey: row.server_key,
       schemaHash: row.schema_hash,
+      embedding: bufferToEmbedding(row.embedding),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -349,6 +405,7 @@ export class IndexStore {
           input_schema: string;
           server_key: string;
           schema_hash: string;
+          embedding: Buffer | null;
           created_at: number;
           updated_at: number;
         },
@@ -363,6 +420,7 @@ export class IndexStore {
       inputSchema: row.input_schema,
       serverKey: row.server_key,
       schemaHash: row.schema_hash,
+      embedding: bufferToEmbedding(row.embedding),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));
@@ -383,6 +441,7 @@ export class IndexStore {
           input_schema: string;
           server_key: string;
           schema_hash: string;
+          embedding: Buffer | null;
           created_at: number;
           updated_at: number;
         },
@@ -397,6 +456,7 @@ export class IndexStore {
       inputSchema: row.input_schema,
       serverKey: row.server_key,
       schemaHash: row.schema_hash,
+      embedding: bufferToEmbedding(row.embedding),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));
@@ -497,5 +557,159 @@ export class IndexStore {
 
     // Use prefix matching for partial word matches
     return terms.map((t) => `"${t}"*`).join(" OR ");
+  }
+
+  // ============================================================
+  // Vector Embedding Methods
+  // ============================================================
+
+  /**
+   * Updates the embedding for a specific tool.
+   *
+   * @param name - Tool name
+   * @param serverKey - Server key the tool belongs to
+   * @param embedding - The embedding vector to store
+   * @returns true if updated, false if tool not found
+   */
+  updateEmbedding(
+    name: string,
+    serverKey: string,
+    embedding: Float32Array,
+  ): boolean {
+    const buffer = embeddingToBuffer(embedding);
+    const result = this.db.run(
+      "UPDATE tools SET embedding = ?, updated_at = unixepoch() WHERE name = ? AND server_key = ?",
+      [buffer, name, serverKey],
+    );
+    return result.changes > 0;
+  }
+
+  /**
+   * Updates embeddings for multiple tools in a single transaction.
+   *
+   * @param embeddings - Array of {name, serverKey, embedding} objects
+   * @returns Number of tools updated
+   */
+  updateEmbeddings(
+    embeddings: Array<{
+      name: string;
+      serverKey: string;
+      embedding: Float32Array;
+    }>,
+  ): number {
+    const updateStmt = this.db.prepare(
+      "UPDATE tools SET embedding = ?, updated_at = unixepoch() WHERE name = ? AND server_key = ?",
+    );
+
+    let updated = 0;
+    const transaction = this.db.transaction(
+      (
+        items: Array<{
+          name: string;
+          serverKey: string;
+          embedding: Float32Array;
+        }>,
+      ) => {
+        for (const item of items) {
+          const buffer = embeddingToBuffer(item.embedding);
+          const result = updateStmt.run(buffer, item.name, item.serverKey);
+          if (result.changes > 0) updated++;
+        }
+      },
+    );
+
+    transaction(embeddings);
+    return updated;
+  }
+
+  /**
+   * Performs semantic search using cosine similarity.
+   * Returns tools ranked by similarity to the query embedding.
+   *
+   * @param queryEmbedding - The query's embedding vector
+   * @param limit - Maximum results to return (default: 10)
+   * @returns Array of tools with similarity scores, sorted by similarity
+   */
+  searchSemantic(
+    queryEmbedding: Float32Array,
+    limit = 10,
+  ): SemanticSearchResult[] {
+    // Fetch all tools with embeddings
+    const rows = this.db
+      .query<
+        {
+          name: string;
+          description: string | null;
+          server_key: string;
+          embedding: Buffer;
+        },
+        []
+      >("SELECT name, description, server_key, embedding FROM tools WHERE embedding IS NOT NULL")
+      .all();
+
+    // Compute similarities and rank
+    const results: SemanticSearchResult[] = [];
+    for (const row of rows) {
+      const embedding = bufferToEmbedding(row.embedding);
+      if (!embedding) continue;
+
+      const similarity = cosineSimilarity(queryEmbedding, embedding);
+      results.push({
+        name: row.name,
+        description: row.description,
+        serverKey: row.server_key,
+        similarity,
+      });
+    }
+
+    // Sort by similarity (descending) and limit
+    results.sort((a, b) => b.similarity - a.similarity);
+    return results.slice(0, limit);
+  }
+
+  /**
+   * Returns count of tools that have embeddings stored.
+   *
+   * @returns Number of tools with embeddings
+   */
+  getEmbeddingCount(): number {
+    const result = this.db
+      .query<{ count: number }, []>(
+        "SELECT COUNT(*) as count FROM tools WHERE embedding IS NOT NULL",
+      )
+      .get();
+    return result?.count ?? 0;
+  }
+
+  /**
+   * Returns tools that don't have embeddings yet.
+   * Useful for batch embedding generation.
+   *
+   * @returns Array of tools missing embeddings
+   */
+  getToolsWithoutEmbeddings(): Array<{
+    name: string;
+    description: string | null;
+    serverKey: string;
+  }> {
+    return this.db
+      .query<
+        { name: string; description: string | null; server_key: string },
+        []
+      >("SELECT name, description, server_key FROM tools WHERE embedding IS NULL")
+      .all()
+      .map((row) => ({
+        name: row.name,
+        description: row.description,
+        serverKey: row.server_key,
+      }));
+  }
+
+  /**
+   * Clears all embeddings from tools.
+   * Useful for re-generating embeddings with a different model.
+   */
+  clearEmbeddings(): void {
+    this.db.run("UPDATE tools SET embedding = NULL");
   }
 }
