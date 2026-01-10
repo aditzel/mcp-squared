@@ -2,12 +2,14 @@
  * Tool retriever module for searching and retrieving tools from the index.
  *
  * This module provides natural language search capabilities over the indexed
- * tools using SQLite FTS5. It bridges the Cataloger (live tool data) with
- * the IndexStore (search index).
+ * tools using SQLite FTS5 and optional semantic search with embeddings.
+ * It bridges the Cataloger (live tool data) with the IndexStore (search index).
  *
  * @module retriever
  */
 
+import type { SearchMode } from "../config/schema.js";
+import { EmbeddingGenerator } from "../embeddings/index.js";
 import { IndexStore } from "../index/index.js";
 import type { CatalogedTool, Cataloger } from "../upstream/index.js";
 
@@ -36,6 +38,16 @@ export interface RetrieveResult {
 }
 
 /**
+ * Search options for a single search call.
+ */
+export interface SearchOptions {
+  /** Maximum results to return */
+  limit?: number | undefined;
+  /** Search mode override (default: uses retriever's defaultMode) */
+  mode?: SearchMode | undefined;
+}
+
+/**
  * Configuration options for the Retriever.
  */
 export interface RetrieverOptions {
@@ -45,6 +57,8 @@ export interface RetrieverOptions {
   defaultLimit?: number;
   /** Maximum allowed result limit (default: 50) */
   maxLimit?: number;
+  /** Default search mode (default: "fast") */
+  defaultMode?: SearchMode;
 }
 
 /**
@@ -68,6 +82,8 @@ export class Retriever {
   private readonly cataloger: Cataloger;
   private readonly defaultLimit: number;
   private readonly maxLimit: number;
+  private readonly defaultMode: SearchMode;
+  private embeddingGenerator: EmbeddingGenerator | null = null;
 
   /**
    * Creates a new Retriever instance.
@@ -80,6 +96,7 @@ export class Retriever {
     this.indexStore = new IndexStore({ dbPath: options.indexDbPath });
     this.defaultLimit = options.defaultLimit ?? 5;
     this.maxLimit = options.maxLimit ?? 50;
+    this.defaultMode = options.defaultMode ?? "fast";
   }
 
   /**
@@ -107,14 +124,28 @@ export class Retriever {
 
   /**
    * Searches for tools matching a natural language query.
-   * Uses FTS5 full-text search with prefix matching.
+   *
+   * Supports three search modes:
+   * - "fast": FTS5 full-text search (default, fastest)
+   * - "semantic": Vector similarity search using embeddings
+   * - "hybrid": FTS5 search with embedding-based reranking (best quality)
    *
    * @param query - Natural language search query
-   * @param limit - Maximum results to return (capped at maxLimit)
+   * @param options - Search options (limit, mode) or just a limit number for backwards compatibility
    * @returns Search results with matching tools
    */
-  search(query: string, limit?: number): RetrieveResult {
-    const effectiveLimit = Math.min(limit ?? this.defaultLimit, this.maxLimit);
+  async search(
+    query: string,
+    options?: SearchOptions | number,
+  ): Promise<RetrieveResult> {
+    // Support both new SearchOptions and legacy number parameter
+    const opts: SearchOptions =
+      typeof options === "number" ? { limit: options } : options ?? {};
+    const effectiveLimit = Math.min(
+      opts.limit ?? this.defaultLimit,
+      this.maxLimit,
+    );
+    const mode = opts.mode ?? this.defaultMode;
 
     if (!query.trim()) {
       // Return top tools when no query provided
@@ -132,11 +163,28 @@ export class Retriever {
       };
     }
 
-    const searchResults = this.indexStore.search(query, effectiveLimit);
+    // Dispatch to appropriate search implementation
+    switch (mode) {
+      case "semantic":
+        return this.searchSemantic(query, effectiveLimit);
+      case "hybrid":
+        return this.searchHybrid(query, effectiveLimit);
+      case "fast":
+      default:
+        return this.searchFast(query, effectiveLimit);
+    }
+  }
+
+  /**
+   * Fast search using FTS5 full-text search.
+   * @internal
+   */
+  private searchFast(query: string, limit: number): RetrieveResult {
+    const searchResults = this.indexStore.search(query, limit);
 
     // Get accurate total count if results are limited
     const totalMatches =
-      searchResults.length < effectiveLimit
+      searchResults.length < limit
         ? searchResults.length
         : this.indexStore.searchCount(query);
 
@@ -148,6 +196,122 @@ export class Retriever {
       })),
       query,
       totalMatches,
+    };
+  }
+
+  /**
+   * Semantic search using embedding similarity.
+   * Falls back to fast search if embeddings are not available.
+   * @internal
+   */
+  private async searchSemantic(
+    query: string,
+    limit: number,
+  ): Promise<RetrieveResult> {
+    // Check if we have embeddings available
+    if (
+      !this.embeddingGenerator ||
+      this.indexStore.getEmbeddingCount() === 0
+    ) {
+      // Fall back to fast search if embeddings not available
+      return this.searchFast(query, limit);
+    }
+
+    // Generate query embedding
+    const result = await this.embeddingGenerator.embed(query, true);
+    const queryEmbedding = result.embedding;
+
+    const results = this.indexStore.searchSemantic(queryEmbedding, limit);
+
+    return {
+      tools: results.map((r) => ({
+        name: r.name,
+        description: r.description,
+        serverKey: r.serverKey,
+      })),
+      query,
+      totalMatches: results.length,
+    };
+  }
+
+  /**
+   * Hybrid search: FTS5 first, then rerank with embeddings.
+   * Falls back to fast search if embeddings are not available.
+   * @internal
+   */
+  private async searchHybrid(
+    query: string,
+    limit: number,
+  ): Promise<RetrieveResult> {
+    // Check if we have embeddings available
+    if (
+      !this.embeddingGenerator ||
+      this.indexStore.getEmbeddingCount() === 0
+    ) {
+      // Fall back to fast search if embeddings not available
+      return this.searchFast(query, limit);
+    }
+
+    // Get more candidates from FTS5 than needed
+    const candidateLimit = Math.min(limit * 3, 100);
+    const ftsResults = this.indexStore.search(query, candidateLimit);
+
+    if (ftsResults.length === 0) {
+      return { tools: [], query, totalMatches: 0 };
+    }
+
+    // Generate query embedding
+    const result = await this.embeddingGenerator.embed(query, true);
+    const queryEmbedding = result.embedding;
+
+    // Score and rerank FTS results using embeddings
+    const reranked: Array<{
+      name: string;
+      description: string | null;
+      serverKey: string;
+      score: number;
+    }> = [];
+
+    for (const ftsResult of ftsResults) {
+      const tool = this.indexStore.getTool(ftsResult.name, ftsResult.serverKey);
+      if (tool?.embedding) {
+        const similarity = EmbeddingGenerator.cosineSimilarity(
+          queryEmbedding,
+          tool.embedding,
+        );
+        // Combine FTS score (normalized) with similarity
+        // FTS scores vary widely, so we normalize roughly
+        const normalizedFtsScore = Math.min(ftsResult.score / 10, 1);
+        const combinedScore = 0.3 * normalizedFtsScore + 0.7 * similarity;
+        reranked.push({
+          name: ftsResult.name,
+          description: ftsResult.description,
+          serverKey: ftsResult.serverKey,
+          score: combinedScore,
+        });
+      } else {
+        // No embedding, use only FTS score
+        reranked.push({
+          name: ftsResult.name,
+          description: ftsResult.description,
+          serverKey: ftsResult.serverKey,
+          score: ftsResult.score / 10,
+        });
+      }
+    }
+
+    // Sort by combined score (descending) and take top results
+    reranked.sort((a, b) => b.score - a.score);
+    const topResults = reranked.slice(0, limit);
+
+    return {
+      tools: topResults.map((r) => ({
+        name: r.name,
+        description: r.description,
+        serverKey: r.serverKey,
+      })),
+      query,
+      totalMatches: ftsResults.length,
     };
   }
 
@@ -201,6 +365,80 @@ export class Retriever {
    */
   clearIndex(): void {
     this.indexStore.clear();
+  }
+
+  /**
+   * Initializes the embedding generator for semantic search.
+   * Must be called before using semantic or hybrid search modes.
+   *
+   * @returns Promise that resolves when model is loaded
+   */
+  async initializeEmbeddings(): Promise<void> {
+    if (this.embeddingGenerator) {
+      return;
+    }
+
+    this.embeddingGenerator = new EmbeddingGenerator();
+    await this.embeddingGenerator.initialize();
+  }
+
+  /**
+   * Generates embeddings for all indexed tools that don't have them.
+   * Call this after syncing tools and initializing embeddings.
+   *
+   * @returns Number of tools that had embeddings generated
+   */
+  async generateToolEmbeddings(): Promise<number> {
+    if (!this.embeddingGenerator) {
+      await this.initializeEmbeddings();
+    }
+
+    const toolsWithoutEmbeddings = this.indexStore.getToolsWithoutEmbeddings();
+    if (toolsWithoutEmbeddings.length === 0) {
+      return 0;
+    }
+
+    // Generate text for each tool (name + description)
+    const texts = toolsWithoutEmbeddings.map((t) => {
+      const desc = t.description ?? "";
+      return `${t.name}: ${desc}`.trim();
+    });
+
+    // Generate embeddings in batch (not as queries, so no "query: " prefix)
+    const result = await this.embeddingGenerator!.embedBatch(texts, false);
+
+    // Update embeddings in the store
+    const embeddings = toolsWithoutEmbeddings.map((tool, i) => ({
+      name: tool.name,
+      serverKey: tool.serverKey,
+      embedding: result.embeddings[i]!,
+    }));
+
+    return this.indexStore.updateEmbeddings(embeddings);
+  }
+
+  /**
+   * Returns the count of tools with embeddings.
+   */
+  getEmbeddingCount(): number {
+    return this.indexStore.getEmbeddingCount();
+  }
+
+  /**
+   * Returns whether embeddings are available for search.
+   */
+  hasEmbeddings(): boolean {
+    return (
+      this.embeddingGenerator !== null &&
+      this.indexStore.getEmbeddingCount() > 0
+    );
+  }
+
+  /**
+   * Returns the current default search mode.
+   */
+  getDefaultMode(): SearchMode {
+    return this.defaultMode;
   }
 
   /**

@@ -26,14 +26,14 @@ describe("Retriever", () => {
   });
 
   describe("search", () => {
-    test("returns empty results for empty index", () => {
-      const result = retriever.search("test");
+    test("returns empty results for empty index", async () => {
+      const result = await retriever.search("test");
       expect(result.tools).toEqual([]);
       expect(result.query).toBe("test");
     });
 
-    test("returns all tools for empty query", () => {
-      const result = retriever.search("");
+    test("returns all tools for empty query", async () => {
+      const result = await retriever.search("");
       expect(result.tools).toEqual([]);
       expect(result.totalMatches).toBe(0);
     });
@@ -75,21 +75,74 @@ describe("Retriever", () => {
   });
 
   describe("with custom options", () => {
-    test("respects default limit", () => {
+    test("respects default limit", async () => {
       const customRetriever = new Retriever(cataloger, { defaultLimit: 3 });
-      const result = customRetriever.search("");
+      const result = await customRetriever.search("");
       expect(result.tools.length).toBeLessThanOrEqual(3);
       customRetriever.close();
     });
 
-    test("respects max limit", () => {
+    test("respects max limit", async () => {
       const customRetriever = new Retriever(cataloger, {
         defaultLimit: 100,
         maxLimit: 10,
       });
-      const result = customRetriever.search("");
+      const result = await customRetriever.search("");
       expect(result.tools.length).toBeLessThanOrEqual(10);
       customRetriever.close();
+    });
+  });
+
+  describe("search modes", () => {
+    test("supports SearchOptions object", async () => {
+      const result = await retriever.search("test", { limit: 5 });
+      expect(result.tools).toEqual([]);
+      expect(result.query).toBe("test");
+    });
+
+    test("supports legacy number parameter for limit", async () => {
+      const result = await retriever.search("test", 5);
+      expect(result.tools).toEqual([]);
+      expect(result.query).toBe("test");
+    });
+
+    test("returns default mode as fast", () => {
+      expect(retriever.getDefaultMode()).toBe("fast");
+    });
+
+    test("respects custom default mode", () => {
+      const customRetriever = new Retriever(cataloger, { defaultMode: "hybrid" });
+      expect(customRetriever.getDefaultMode()).toBe("hybrid");
+      customRetriever.close();
+    });
+
+    test("fast mode search works", async () => {
+      const result = await retriever.search("test", { mode: "fast" });
+      expect(result).toHaveProperty("tools");
+      expect(result).toHaveProperty("query");
+      expect(result).toHaveProperty("totalMatches");
+    });
+
+    test("semantic mode falls back to fast when no embeddings", async () => {
+      // Without embeddings initialized, semantic falls back to fast
+      const result = await retriever.search("test", { mode: "semantic" });
+      expect(result).toHaveProperty("tools");
+      expect(result).toHaveProperty("query");
+    });
+
+    test("hybrid mode falls back to fast when no embeddings", async () => {
+      // Without embeddings initialized, hybrid falls back to fast
+      const result = await retriever.search("test", { mode: "hybrid" });
+      expect(result).toHaveProperty("tools");
+      expect(result).toHaveProperty("query");
+    });
+
+    test("hasEmbeddings returns false initially", () => {
+      expect(retriever.hasEmbeddings()).toBe(false);
+    });
+
+    test("getEmbeddingCount returns 0 initially", () => {
+      expect(retriever.getEmbeddingCount()).toBe(0);
     });
   });
 });

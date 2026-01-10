@@ -15,7 +15,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { DEFAULT_CONFIG, type McpSquaredConfig } from "../config/schema.js";
+import {
+  DEFAULT_CONFIG,
+  SearchModeSchema,
+  type McpSquaredConfig,
+} from "../config/schema.js";
 import { VERSION } from "../index.js";
 import { Retriever } from "../retriever/index.js";
 import { evaluatePolicy } from "../security/index.js";
@@ -95,6 +99,7 @@ export class McpSquaredServer {
       indexDbPath: options.indexDbPath,
       defaultLimit: options.defaultLimit ?? findToolsConfig.defaultLimit,
       maxLimit: this.maxLimit,
+      defaultMode: findToolsConfig.defaultMode,
     });
 
     this.mcpServer = new McpServer(
@@ -132,10 +137,16 @@ export class McpSquaredServer {
             .max(this.maxLimit)
             .default(this.config.operations.findTools.defaultLimit)
             .describe("Maximum number of results to return"),
+          mode: SearchModeSchema.optional().describe(
+            'Search mode: "fast" (FTS5), "semantic" (embeddings), or "hybrid" (FTS5 + rerank)',
+          ),
         },
       },
       async (args) => {
-        const result = this.retriever.search(args.query, args.limit);
+        const result = await this.retriever.search(args.query, {
+          limit: args.limit,
+          mode: args.mode,
+        });
 
         return {
           content: [

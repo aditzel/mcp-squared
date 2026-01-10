@@ -11,5 +11,6 @@ export {
   Retriever,
   type RetrieveResult,
   type RetrieverOptions,
+  type SearchOptions,
   type ToolSummary,
 } from "./retriever.js";

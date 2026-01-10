@@ -100,10 +100,22 @@ export const SecuritySchema = z
     tools: { allow: ["*:*"], block: [], confirm: [] },
   });
 
+/**
+ * Search modes for find_tools operation.
+ * - fast: FTS5 full-text search only (fastest, default)
+ * - semantic: Vector similarity search only (requires embeddings)
+ * - hybrid: FTS5 + rerank with embeddings (best quality)
+ */
+export const SearchModeSchema = z.enum(["fast", "semantic", "hybrid"]);
+
+/** Available search modes for find_tools */
+export type SearchMode = z.infer<typeof SearchModeSchema>;
+
 /** Schema for find_tools operation configuration */
 export const FindToolsSchema = z.object({
   defaultLimit: z.number().int().min(1).default(5),
   maxLimit: z.number().int().min(1).max(200).default(50),
+  defaultMode: SearchModeSchema.default("fast"),
 });
 
 /** Schema for index refresh configuration */
@@ -122,12 +134,16 @@ export const LoggingSchema = z.object({
  */
 export const OperationsSchema = z
   .object({
-    findTools: FindToolsSchema.default({ defaultLimit: 5, maxLimit: 50 }),
+    findTools: FindToolsSchema.default({
+      defaultLimit: 5,
+      maxLimit: 50,
+      defaultMode: "fast",
+    }),
     index: IndexSchema.default({ refreshIntervalMs: 30_000 }),
     logging: LoggingSchema.default({ level: "info" }),
   })
   .default({
-    findTools: { defaultLimit: 5, maxLimit: 50 },
+    findTools: { defaultLimit: 5, maxLimit: 50, defaultMode: "fast" },
     index: { refreshIntervalMs: 30_000 },
     logging: { level: "info" },
   });

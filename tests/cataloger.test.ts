@@ -77,7 +77,7 @@ describe("Cataloger", () => {
         upstreams: {},
         security: { tools: { allow: ["*:*"], block: [], confirm: [] } },
         operations: {
-          findTools: { defaultLimit: 5, maxLimit: 50 },
+          findTools: { defaultLimit: 5, maxLimit: 50, defaultMode: "fast" },
           index: { refreshIntervalMs: 30000 },
           logging: { level: "info" },
         },
@@ -103,7 +103,7 @@ describe("Cataloger", () => {
         },
         security: { tools: { allow: ["*:*"], block: [], confirm: [] } },
         operations: {
-          findTools: { defaultLimit: 5, maxLimit: 50 },
+          findTools: { defaultLimit: 5, maxLimit: 50, defaultMode: "fast" },
           index: { refreshIntervalMs: 30000 },
           logging: { level: "info" },
         },
@@ -150,7 +150,7 @@ describe("Cataloger", () => {
       // Check initial status (should be connecting or error depending on timing)
       const connection = cataloger.getConnection("test");
       expect(connection).toBeDefined();
-      expect(["connecting", "error"]).toContain(connection?.status);
+      expect(["connecting", "error"]).toContain(connection!.status);
 
       await connectPromise;
     });
