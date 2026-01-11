@@ -18,6 +18,10 @@ import type {
   UpstreamStdioServerConfig,
 } from "../config/schema.js";
 import { sanitizeDescription } from "../security/index.js";
+import {
+  formatQualifiedName,
+  parseQualifiedName,
+} from "../utils/tool-names.js";
 
 /**
  * Connection status for an upstream server.
@@ -312,20 +316,78 @@ export class Cataloger {
   }
 
   /**
-   * Finds a tool by name across all connected servers.
-   * Returns the first matching tool found.
+   * Finds all tools matching a bare tool name across all connected servers.
+   * Use this to detect ambiguity when a tool name exists on multiple servers.
    *
-   * @param toolName - The name of the tool to find
-   * @returns The tool if found, undefined otherwise
+   * @param toolName - The bare tool name to search for
+   * @returns Array of matching tools (may contain 0, 1, or multiple matches)
    */
-  findTool(toolName: string): CatalogedTool | undefined {
+  findToolsByName(toolName: string): CatalogedTool[] {
+    const matches: CatalogedTool[] = [];
     for (const connection of this.connections.values()) {
       if (connection.status === "connected") {
         const tool = connection.tools.find((t) => t.name === toolName);
-        if (tool) return tool;
+        if (tool) {
+          matches.push(tool);
+        }
       }
     }
-    return undefined;
+    return matches;
+  }
+
+  /**
+   * Finds a tool by name, supporting both qualified and bare names.
+   *
+   * Qualified format: `serverKey:toolName` - returns exact match
+   * Bare format: `toolName` - returns match if unambiguous
+   *
+   * @param name - Tool name (qualified or bare)
+   * @returns Object with tool (if found) and ambiguous flag with alternatives
+   *
+   * @example
+   * ```ts
+   * // Qualified lookup - exact match
+   * const result = cataloger.findTool("filesystem:read_file");
+   * // { tool: {...}, ambiguous: false, alternatives: [] }
+   *
+   * // Bare lookup - ambiguous
+   * const result = cataloger.findTool("read_file");
+   * // { tool: undefined, ambiguous: true, alternatives: ["filesystem:read_file", "github:read_file"] }
+   * ```
+   */
+  findTool(name: string): {
+    tool: CatalogedTool | undefined;
+    ambiguous: boolean;
+    alternatives: string[];
+  } {
+    const parsed = parseQualifiedName(name);
+
+    if (parsed.serverKey !== null) {
+      // Qualified name - exact lookup
+      const connection = this.connections.get(parsed.serverKey);
+      if (!connection || connection.status !== "connected") {
+        return { tool: undefined, ambiguous: false, alternatives: [] };
+      }
+      const tool = connection.tools.find((t) => t.name === parsed.toolName);
+      return { tool, ambiguous: false, alternatives: [] };
+    }
+
+    // Bare name - check for ambiguity
+    const matches = this.findToolsByName(parsed.toolName);
+
+    if (matches.length === 0) {
+      return { tool: undefined, ambiguous: false, alternatives: [] };
+    }
+
+    if (matches.length === 1) {
+      return { tool: matches[0], ambiguous: false, alternatives: [] };
+    }
+
+    // Multiple matches - ambiguous
+    const alternatives = matches.map((t) =>
+      formatQualifiedName(t.serverKey, t.name),
+    );
+    return { tool: undefined, ambiguous: true, alternatives };
   }
 
   /**
@@ -375,36 +437,104 @@ export class Cataloger {
   }
 
   /**
+   * Detects tool name conflicts across connected servers.
+   * Returns a map of tool names that exist on multiple servers.
+   *
+   * @returns Map where keys are conflicting tool names and values are arrays of qualified names
+   *
+   * @example
+   * ```ts
+   * const conflicts = cataloger.getConflictingTools();
+   * // Map { "read_file" => ["filesystem:read_file", "github:read_file"] }
+   * ```
+   */
+  getConflictingTools(): Map<string, string[]> {
+    const toolServers = new Map<string, string[]>();
+    const conflicts = new Map<string, string[]>();
+
+    // Build map of tool name -> list of servers that have it
+    for (const connection of this.connections.values()) {
+      if (connection.status === "connected") {
+        for (const tool of connection.tools) {
+          const servers = toolServers.get(tool.name) ?? [];
+          servers.push(connection.key);
+          toolServers.set(tool.name, servers);
+        }
+      }
+    }
+
+    // Extract conflicts (tools with >1 server)
+    for (const [toolName, servers] of toolServers) {
+      if (servers.length > 1) {
+        conflicts.set(
+          toolName,
+          servers.map((serverKey) => formatQualifiedName(serverKey, toolName)),
+        );
+      }
+    }
+
+    return conflicts;
+  }
+
+  /**
+   * Logs warnings for any tool name conflicts.
+   * Call this after connecting to new servers to alert about potential ambiguities.
+   */
+  logConflicts(): void {
+    const conflicts = this.getConflictingTools();
+    if (conflicts.size > 0) {
+      console.warn(
+        `[mcp²] Tool name conflicts detected. Use qualified names to avoid ambiguity:`,
+      );
+      for (const [toolName, qualified] of conflicts) {
+        console.warn(`  - "${toolName}" available as: ${qualified.join(", ")}`);
+      }
+    }
+  }
+
+  /**
    * Executes a tool call on the appropriate upstream server.
    * The tool is located by name and the call is forwarded to its server.
+   * Supports both qualified (`serverKey:toolName`) and bare tool names.
    *
-   * @param toolName - Name of the tool to execute
+   * @param toolName - Name of the tool to execute (qualified or bare)
    * @param args - Arguments to pass to the tool
    * @returns Promise resolving to the tool result with content and error flag
-   * @throws Error if tool is not found or server is not connected
+   * @throws Error if tool is not found, ambiguous, or server is not connected
    */
   async callTool(
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<{ content: unknown[]; isError: boolean | undefined }> {
-    const tool = this.findTool(toolName);
-    if (!tool) {
+    const result = this.findTool(toolName);
+
+    if (result.ambiguous) {
+      throw new Error(
+        `Ambiguous tool name "${toolName}". Use a qualified name: ${result.alternatives.join(", ")}`,
+      );
+    }
+
+    if (!result.tool) {
       throw new Error(`Tool not found: ${toolName}`);
     }
 
-    const connection = this.connections.get(tool.serverKey);
+    const connection = this.connections.get(result.tool.serverKey);
     if (!connection?.client || connection.status !== "connected") {
-      throw new Error(`Server not connected: ${tool.serverKey}`);
+      throw new Error(`Server not connected: ${result.tool.serverKey}`);
     }
 
-    const result = await connection.client.callTool({
-      name: toolName,
+    // Use the bare tool name when calling upstream (they don't know about our namespacing)
+    const parsed = parseQualifiedName(toolName);
+    const bareToolName = parsed.toolName;
+
+    const callResult = await connection.client.callTool({
+      name: bareToolName,
       arguments: args,
     });
 
     return {
-      content: result.content as unknown[],
-      isError: result.isError as boolean | undefined,
+      content: callResult.content as unknown[],
+      isError: callResult.isError as boolean | undefined,
     };
   }
 

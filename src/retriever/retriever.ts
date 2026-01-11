@@ -317,38 +317,56 @@ export class Retriever {
 
   /**
    * Gets full tool details by name from the cataloger.
+   * Supports both qualified (`serverKey:toolName`) and bare names.
    *
-   * @param name - Tool name to look up
-   * @param serverKey - Optional server key to narrow search
-   * @returns Full tool details if found, undefined otherwise
+   * @param name - Tool name to look up (qualified or bare)
+   * @param serverKey - Optional server key to narrow search (overrides qualified name)
+   * @returns Object with tool (if found), ambiguous flag, and alternatives
    */
-  getTool(name: string, serverKey?: string): CatalogedTool | undefined {
-    // First check the cataloger for live data
+  getTool(
+    name: string,
+    serverKey?: string,
+  ): {
+    tool: CatalogedTool | undefined;
+    ambiguous: boolean;
+    alternatives: string[];
+  } {
+    // If explicit serverKey provided, use it directly
     if (serverKey) {
       const tools = this.cataloger.getToolsForServer(serverKey);
-      return tools.find((t) => t.name === name);
+      const tool = tools.find((t) => t.name === name);
+      return { tool, ambiguous: false, alternatives: [] };
     }
 
+    // Use cataloger's qualified name handling
     return this.cataloger.findTool(name);
   }
 
   /**
    * Gets full details for multiple tools by name.
+   * Supports both qualified (`serverKey:toolName`) and bare names.
+   * Ambiguous bare names are reported separately.
    *
    * @param names - Array of tool names to look up
-   * @returns Array of found tools (missing tools are omitted)
+   * @returns Object with found tools and any ambiguous names
    */
-  getTools(names: string[]): CatalogedTool[] {
-    const result: CatalogedTool[] = [];
+  getTools(names: string[]): {
+    tools: CatalogedTool[];
+    ambiguous: { name: string; alternatives: string[] }[];
+  } {
+    const tools: CatalogedTool[] = [];
+    const ambiguous: { name: string; alternatives: string[] }[] = [];
 
     for (const name of names) {
-      const tool = this.cataloger.findTool(name);
-      if (tool) {
-        result.push(tool);
+      const result = this.cataloger.findTool(name);
+      if (result.ambiguous) {
+        ambiguous.push({ name, alternatives: result.alternatives });
+      } else if (result.tool) {
+        tools.push(result.tool);
       }
     }
 
-    return result;
+    return { tools, ambiguous };
   }
 
   /**

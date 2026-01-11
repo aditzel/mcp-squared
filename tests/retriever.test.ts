@@ -40,16 +40,19 @@ describe("Retriever", () => {
   });
 
   describe("getTool", () => {
-    test("returns undefined for non-existent tool", () => {
-      const tool = retriever.getTool("nonexistent");
-      expect(tool).toBeUndefined();
+    test("returns tool: undefined for non-existent tool", () => {
+      const result = retriever.getTool("nonexistent");
+      expect(result.tool).toBeUndefined();
+      expect(result.ambiguous).toBe(false);
+      expect(result.alternatives).toEqual([]);
     });
   });
 
   describe("getTools", () => {
-    test("returns empty array for non-existent tools", () => {
-      const tools = retriever.getTools(["tool1", "tool2"]);
-      expect(tools).toEqual([]);
+    test("returns empty tools array for non-existent tools", () => {
+      const result = retriever.getTools(["tool1", "tool2"]);
+      expect(result.tools).toEqual([]);
+      expect(result.ambiguous).toEqual([]);
     });
   });
 

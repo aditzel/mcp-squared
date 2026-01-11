@@ -40,9 +40,12 @@ describe("Cataloger", () => {
   });
 
   describe("findTool", () => {
-    test("returns undefined for non-existent tool", () => {
+    test("returns tool: undefined for non-existent tool", () => {
       const cataloger = new Cataloger();
-      expect(cataloger.findTool("nonexistent")).toBeUndefined();
+      const result = cataloger.findTool("nonexistent");
+      expect(result.tool).toBeUndefined();
+      expect(result.ambiguous).toBe(false);
+      expect(result.alternatives).toEqual([]);
     });
   });
 
@@ -178,6 +181,49 @@ describe("Cataloger", () => {
       const cataloger = new Cataloger();
       await cataloger.refreshAllTools();
       // Should not throw
+    });
+  });
+
+  describe("findToolsByName", () => {
+    test("returns empty array when no connections", () => {
+      const cataloger = new Cataloger();
+      expect(cataloger.findToolsByName("any_tool")).toEqual([]);
+    });
+  });
+
+  describe("findTool with qualified names", () => {
+    test("parses qualified name and looks up by server key", () => {
+      const cataloger = new Cataloger();
+      const result = cataloger.findTool("nonexistent_server:some_tool");
+      // Server doesn't exist, so tool is undefined
+      expect(result.tool).toBeUndefined();
+      expect(result.ambiguous).toBe(false);
+      expect(result.alternatives).toEqual([]);
+    });
+
+    test("handles bare name with no matches", () => {
+      const cataloger = new Cataloger();
+      const result = cataloger.findTool("some_tool");
+      expect(result.tool).toBeUndefined();
+      expect(result.ambiguous).toBe(false);
+      expect(result.alternatives).toEqual([]);
+    });
+  });
+
+  describe("getConflictingTools", () => {
+    test("returns empty map when no connections", () => {
+      const cataloger = new Cataloger();
+      const conflicts = cataloger.getConflictingTools();
+      expect(conflicts.size).toBe(0);
+    });
+  });
+
+  describe("callTool with qualified names", () => {
+    test("throws error for non-existent qualified tool", async () => {
+      const cataloger = new Cataloger();
+      await expect(
+        cataloger.callTool("server:nonexistent", {}),
+      ).rejects.toThrow("Tool not found: server:nonexistent");
     });
   });
 });

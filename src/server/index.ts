@@ -17,8 +17,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import {
   DEFAULT_CONFIG,
-  SearchModeSchema,
   type McpSquaredConfig,
+  SearchModeSchema,
 } from "../config/schema.js";
 import { VERSION } from "../index.js";
 import { Retriever } from "../retriever/index.js";
@@ -177,17 +177,21 @@ export class McpSquaredServer {
         },
       },
       async (args) => {
-        const tools = this.retriever.getTools(args.tool_names);
+        const result = this.retriever.getTools(args.tool_names);
 
-        const schemas = tools.map((tool) => ({
+        const schemas = result.tools.map((tool) => ({
           name: tool.name,
+          qualifiedName: `${tool.serverKey}:${tool.name}`,
           description: tool.description,
           serverKey: tool.serverKey,
           inputSchema: tool.inputSchema,
         }));
 
+        // Find names that weren't found (not in tools and not ambiguous)
+        const foundNames = new Set(result.tools.map((t) => t.name));
+        const ambiguousNames = new Set(result.ambiguous.map((a) => a.name));
         const notFound = args.tool_names.filter(
-          (name) => !tools.some((t) => t.name === name),
+          (name) => !foundNames.has(name) && !ambiguousNames.has(name),
         );
 
         return {
@@ -196,6 +200,8 @@ export class McpSquaredServer {
               type: "text" as const,
               text: JSON.stringify({
                 schemas,
+                ambiguous:
+                  result.ambiguous.length > 0 ? result.ambiguous : undefined,
                 notFound: notFound.length > 0 ? notFound : undefined,
               }),
             },
@@ -225,9 +231,25 @@ export class McpSquaredServer {
       },
       async (args) => {
         try {
-          // Look up the tool to get its server key
-          const tool = this.cataloger.findTool(args.tool_name);
-          if (!tool) {
+          // Look up the tool to get its server key (supports qualified names)
+          const lookupResult = this.cataloger.findTool(args.tool_name);
+
+          if (lookupResult.ambiguous) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify({
+                    error: `Ambiguous tool name "${args.tool_name}". Use a qualified name.`,
+                    alternatives: lookupResult.alternatives,
+                  }),
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          if (!lookupResult.tool) {
             return {
               content: [
                 {
@@ -240,6 +262,8 @@ export class McpSquaredServer {
               isError: true,
             };
           }
+
+          const tool = lookupResult.tool;
 
           // Evaluate security policy
           const policyResult = evaluatePolicy(
