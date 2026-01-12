@@ -15,29 +15,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { IndexRefreshManager } from "../background/index.js";
-import { SelectionTracker } from "../caching/index.js";
 import {
   DEFAULT_CONFIG,
-  type DetailLevel,
-  DetailLevelSchema,
   type McpSquaredConfig,
   SearchModeSchema,
 } from "../config/schema.js";
 import { VERSION } from "../index.js";
-import {
-  Retriever,
-  type ToolFullSchema,
-  type ToolIdentity,
-  type ToolResult,
-  type ToolSummary,
-} from "../retriever/index.js";
-import {
-  compilePolicy,
-  evaluatePolicy,
-  getToolVisibilityCompiled,
-  type CompiledPolicy,
-} from "../security/index.js";
+import { Retriever } from "../retriever/index.js";
+import { evaluatePolicy } from "../security/index.js";
 import { Cataloger } from "../upstream/index.js";
 
 /**
@@ -86,9 +71,6 @@ export class McpSquaredServer {
   private readonly maxLimit: number;
   private transport: StdioServerTransport | null = null;
   private readonly ownsCataloger: boolean;
-  private readonly selectionTracker: SelectionTracker;
-  private readonly compiledPolicy: CompiledPolicy;
-  private readonly indexRefreshManager: IndexRefreshManager;
 
   /**
    * Creates a new MCP² server instance.
@@ -129,43 +111,7 @@ export class McpSquaredServer {
       },
     );
 
-    this.selectionTracker = new SelectionTracker();
-    this.compiledPolicy = compilePolicy(this.config);
-    this.indexRefreshManager = new IndexRefreshManager({
-      cataloger: this.cataloger,
-      retriever: this.retriever,
-      refreshIntervalMs: this.config.operations.index.refreshIntervalMs,
-    });
-
     this.registerMetaTools();
-  }
-
-  /**
-   * Filters tools based on security policy visibility.
-   * Removes blocked tools and marks confirm-required tools.
-   *
-   * @param tools - Array of tools to filter
-   * @returns Filtered array with requiresConfirmation flag added where applicable
-   * @internal
-   */
-  private filterToolsByPolicy<T extends { name: string; serverKey: string }>(
-    tools: T[],
-  ): Array<T & { requiresConfirmation?: boolean }> {
-    return tools
-      .map((tool) => {
-        const visibility = getToolVisibilityCompiled(
-          tool.serverKey,
-          tool.name,
-          this.compiledPolicy,
-        );
-        if (!visibility.visible) {
-          return null;
-        }
-        return visibility.requiresConfirmation
-          ? { ...tool, requiresConfirmation: true as const }
-          : tool;
-      })
-      .filter((t): t is T & { requiresConfirmation?: boolean } => t !== null);
   }
 
   /**
@@ -194,9 +140,6 @@ export class McpSquaredServer {
           mode: SearchModeSchema.optional().describe(
             'Search mode: "fast" (FTS5), "semantic" (embeddings), or "hybrid" (FTS5 + rerank)',
           ),
-          detail_level: DetailLevelSchema.optional().describe(
-            'Level of detail: "L0" (name only), "L1" (summary with description, default), "L2" (full schema)',
-          ),
         },
       },
       async (args) => {
@@ -205,46 +148,14 @@ export class McpSquaredServer {
           mode: args.mode,
         });
 
-        // Apply security policy filtering
-        const filteredTools = this.filterToolsByPolicy(result.tools);
-
-        const detailLevel: DetailLevel =
-          args.detail_level ??
-          this.config.operations.findTools.defaultDetailLevel;
-        const tools = this.formatToolsForDetailLevel(filteredTools, detailLevel);
-
-        // Get bundle suggestions if selection caching is enabled
-        const selectionCacheConfig = this.config.operations.selectionCache;
-        let suggestedBundles: Array<{ tools: string[]; frequency: number }> | undefined;
-
-        if (selectionCacheConfig.enabled && selectionCacheConfig.maxBundleSuggestions > 0) {
-          const toolKeys = filteredTools.map((t) => `${t.serverKey}:${t.name}`);
-          const suggestions = this.retriever
-            .getIndexStore()
-            .getSuggestedBundles(
-              toolKeys,
-              selectionCacheConfig.minCooccurrenceThreshold,
-              selectionCacheConfig.maxBundleSuggestions,
-            );
-
-          if (suggestions.length > 0) {
-            suggestedBundles = suggestions.map((s) => ({
-              tools: [s.toolKey],
-              frequency: s.count,
-            }));
-          }
-        }
-
         return {
           content: [
             {
               type: "text" as const,
               text: JSON.stringify({
                 query: result.query,
-                totalMatches: filteredTools.length,
-                detailLevel,
-                tools,
-                ...(suggestedBundles && { suggestedBundles }),
+                totalMatches: result.totalMatches,
+                tools: result.tools,
               }),
             },
           ],
@@ -268,23 +179,13 @@ export class McpSquaredServer {
       async (args) => {
         const result = this.retriever.getTools(args.tool_names);
 
-        // Apply security policy filtering
-        const filteredTools = this.filterToolsByPolicy(result.tools);
-
-        const schemas = filteredTools.map((tool) => ({
+        const schemas = result.tools.map((tool) => ({
           name: tool.name,
           qualifiedName: `${tool.serverKey}:${tool.name}`,
           description: tool.description,
           serverKey: tool.serverKey,
           inputSchema: tool.inputSchema,
-          ...(tool.requiresConfirmation && { requiresConfirmation: true }),
         }));
-
-        // Find blocked tools (requested but filtered out by policy)
-        const filteredNames = new Set(filteredTools.map((t) => t.name));
-        const blocked = result.tools
-          .filter((t) => !filteredNames.has(t.name))
-          .map((t) => `${t.serverKey}:${t.name}`);
 
         // Find names that weren't found (not in tools and not ambiguous)
         const foundNames = new Set(result.tools.map((t) => t.name));
@@ -302,7 +203,6 @@ export class McpSquaredServer {
                 ambiguous:
                   result.ambiguous.length > 0 ? result.ambiguous : undefined,
                 notFound: notFound.length > 0 ? notFound : undefined,
-                blocked: blocked.length > 0 ? blocked : undefined,
               }),
             },
           ],
@@ -413,17 +313,6 @@ export class McpSquaredServer {
             args.arguments,
           );
 
-          // Track tool usage for selection caching (only on success)
-          if (!result.isError && this.config.operations.selectionCache.enabled) {
-            const toolKey = `${tool.serverKey}:${tool.name}`;
-            this.selectionTracker.trackToolUsage(toolKey);
-
-            // Flush co-occurrences if we have multiple tools in session
-            if (this.selectionTracker.getSessionToolCount() >= 2) {
-              this.selectionTracker.flushToStore(this.retriever.getIndexStore());
-            }
-          }
-
           return {
             content: result.content.map((c) => {
               if (typeof c === "object" && c !== null && "type" in c) {
@@ -452,158 +341,6 @@ export class McpSquaredServer {
         }
       },
     );
-
-    this.mcpServer.registerTool(
-      "clear_selection_cache",
-      {
-        description:
-          "Clears all learned tool co-occurrence patterns. Use this to reset the selection cache if suggestions become stale or irrelevant.",
-        inputSchema: {},
-      },
-      async () => {
-        const countBefore = this.retriever.getIndexStore().getCooccurrenceCount();
-        this.retriever.getIndexStore().clearCooccurrences();
-        this.selectionTracker.reset();
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                message: "Selection cache cleared",
-                patternsRemoved: countBefore,
-              }),
-            },
-          ],
-        };
-      },
-    );
-
-    this.mcpServer.registerTool(
-      "list_namespaces",
-      {
-        description:
-          "Lists all available namespaces (upstream MCP servers). Use this to discover available servers and understand which namespaces are available when disambiguating tool names with qualified format (namespace:tool_name).",
-        inputSchema: {
-          include_tools: z
-            .boolean()
-            .default(false)
-            .describe(
-              "If true, includes the list of tool names available in each namespace",
-            ),
-        },
-      },
-      async (args) => {
-        const status = this.cataloger.getStatus();
-        const namespaces: Array<{
-          name: string;
-          status: string;
-          toolCount: number;
-          error?: string;
-          tools?: string[];
-        }> = [];
-
-        for (const [key, info] of status) {
-          const tools = this.cataloger.getToolsForServer(key);
-          const namespace: {
-            name: string;
-            status: string;
-            toolCount: number;
-            error?: string;
-            tools?: string[];
-          } = {
-            name: key,
-            status: info.status,
-            toolCount: tools.length,
-          };
-
-          if (info.error) {
-            namespace.error = info.error;
-          }
-
-          if (args.include_tools && tools.length > 0) {
-            namespace.tools = tools.map((t) => t.name);
-          }
-
-          namespaces.push(namespace);
-        }
-
-        // Also detect tool conflicts to help with disambiguation
-        const conflicts = this.cataloger.getConflictingTools();
-        const conflictingTools: Record<string, string[]> = {};
-        for (const [toolName, qualifiedNames] of conflicts) {
-          conflictingTools[toolName] = qualifiedNames;
-        }
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                namespaces,
-                totalNamespaces: namespaces.length,
-                connectedCount: namespaces.filter((n) => n.status === "connected")
-                  .length,
-                ...(Object.keys(conflictingTools).length > 0 && {
-                  conflictingTools,
-                  conflictNote:
-                    "These tools exist on multiple servers. Use qualified names (namespace:tool_name) to disambiguate.",
-                }),
-              }),
-            },
-          ],
-        };
-      },
-    );
-  }
-
-  /**
-   * Formats tool results based on the requested detail level.
-   * Preserves the requiresConfirmation flag through formatting.
-   *
-   * @param tools - Array of tool summaries from search results (may include requiresConfirmation)
-   * @param level - Detail level (L0, L1, or L2)
-   * @returns Formatted tools at the requested detail level
-   * @internal
-   */
-  private formatToolsForDetailLevel(
-    tools: Array<ToolSummary & { requiresConfirmation?: boolean }>,
-    level: DetailLevel,
-  ): ToolResult[] {
-    switch (level) {
-      case "L0":
-        // Name only - minimal context footprint
-        return tools.map(
-          (t): ToolIdentity & { requiresConfirmation?: boolean } => ({
-            name: t.name,
-            serverKey: t.serverKey,
-            ...(t.requiresConfirmation && { requiresConfirmation: true }),
-          }),
-        );
-
-      case "L2": {
-        // Full schema - include inputSchema for immediate execution
-        return tools.map((t): ToolFullSchema & { requiresConfirmation?: boolean } => {
-          const { tool } = this.cataloger.findTool(`${t.serverKey}:${t.name}`);
-          return {
-            name: t.name,
-            description: t.description,
-            serverKey: t.serverKey,
-            inputSchema: tool?.inputSchema ?? { type: "object" },
-            ...(t.requiresConfirmation && { requiresConfirmation: true }),
-          };
-        });
-      }
-
-      default:
-        // L1: Summary (default) - name + description
-        return tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          serverKey: t.serverKey,
-          ...(t.requiresConfirmation && { requiresConfirmation: true }),
-        }));
-    }
   }
 
   /**
@@ -656,9 +393,6 @@ export class McpSquaredServer {
     // Sync the tool index after connecting to upstreams
     this.syncIndex();
 
-    // Start background index refresh
-    this.indexRefreshManager.start();
-
     // Start the MCP transport
     this.transport = new StdioServerTransport();
     await this.mcpServer.connect(this.transport);
@@ -671,9 +405,6 @@ export class McpSquaredServer {
    * @returns Promise that resolves when shutdown is complete
    */
   async stop(): Promise<void> {
-    // Stop background refresh first
-    this.indexRefreshManager.stop();
-
     await this.mcpServer.close();
     this.retriever.close();
     if (this.ownsCataloger) {
