@@ -15,22 +15,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { SelectionTracker } from "../caching/index.js";
 import {
   DEFAULT_CONFIG,
-  type DetailLevel,
-  DetailLevelSchema,
   type McpSquaredConfig,
   SearchModeSchema,
 } from "../config/schema.js";
 import { VERSION } from "../index.js";
-import {
-  Retriever,
-  type ToolFullSchema,
-  type ToolIdentity,
-  type ToolResult,
-  type ToolSummary,
-} from "../retriever/index.js";
+import { Retriever } from "../retriever/index.js";
 import { evaluatePolicy } from "../security/index.js";
 import { Cataloger } from "../upstream/index.js";
 
@@ -80,7 +71,6 @@ export class McpSquaredServer {
   private readonly maxLimit: number;
   private transport: StdioServerTransport | null = null;
   private readonly ownsCataloger: boolean;
-  private readonly selectionTracker: SelectionTracker;
 
   /**
    * Creates a new MCP² server instance.
@@ -121,8 +111,6 @@ export class McpSquaredServer {
       },
     );
 
-    this.selectionTracker = new SelectionTracker();
-
     this.registerMetaTools();
   }
 
@@ -152,9 +140,6 @@ export class McpSquaredServer {
           mode: SearchModeSchema.optional().describe(
             'Search mode: "fast" (FTS5), "semantic" (embeddings), or "hybrid" (FTS5 + rerank)',
           ),
-          detail_level: DetailLevelSchema.optional().describe(
-            'Level of detail: "L0" (name only), "L1" (summary with description, default), "L2" (full schema)',
-          ),
         },
       },
       async (args) => {
@@ -163,33 +148,6 @@ export class McpSquaredServer {
           mode: args.mode,
         });
 
-        const detailLevel: DetailLevel =
-          args.detail_level ??
-          this.config.operations.findTools.defaultDetailLevel;
-        const tools = this.formatToolsForDetailLevel(result.tools, detailLevel);
-
-        // Get bundle suggestions if selection caching is enabled
-        const selectionCacheConfig = this.config.operations.selectionCache;
-        let suggestedBundles: Array<{ tools: string[]; frequency: number }> | undefined;
-
-        if (selectionCacheConfig.enabled && selectionCacheConfig.maxBundleSuggestions > 0) {
-          const toolKeys = result.tools.map((t) => `${t.serverKey}:${t.name}`);
-          const suggestions = this.retriever
-            .getIndexStore()
-            .getSuggestedBundles(
-              toolKeys,
-              selectionCacheConfig.minCooccurrenceThreshold,
-              selectionCacheConfig.maxBundleSuggestions,
-            );
-
-          if (suggestions.length > 0) {
-            suggestedBundles = suggestions.map((s) => ({
-              tools: [s.toolKey],
-              frequency: s.count,
-            }));
-          }
-        }
-
         return {
           content: [
             {
@@ -197,9 +155,7 @@ export class McpSquaredServer {
               text: JSON.stringify({
                 query: result.query,
                 totalMatches: result.totalMatches,
-                detailLevel,
-                tools,
-                ...(suggestedBundles && { suggestedBundles }),
+                tools: result.tools,
               }),
             },
           ],
@@ -357,17 +313,6 @@ export class McpSquaredServer {
             args.arguments,
           );
 
-          // Track tool usage for selection caching (only on success)
-          if (!result.isError && this.config.operations.selectionCache.enabled) {
-            const toolKey = `${tool.serverKey}:${tool.name}`;
-            this.selectionTracker.trackToolUsage(toolKey);
-
-            // Flush co-occurrences if we have multiple tools in session
-            if (this.selectionTracker.getSessionToolCount() >= 2) {
-              this.selectionTracker.flushToStore(this.retriever.getIndexStore());
-            }
-          }
-
           return {
             content: result.content.map((c) => {
               if (typeof c === "object" && c !== null && "type" in c) {
@@ -396,73 +341,6 @@ export class McpSquaredServer {
         }
       },
     );
-
-    this.mcpServer.registerTool(
-      "clear_selection_cache",
-      {
-        description:
-          "Clears all learned tool co-occurrence patterns. Use this to reset the selection cache if suggestions become stale or irrelevant.",
-        inputSchema: {},
-      },
-      async () => {
-        const countBefore = this.retriever.getIndexStore().getCooccurrenceCount();
-        this.retriever.getIndexStore().clearCooccurrences();
-        this.selectionTracker.reset();
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                message: "Selection cache cleared",
-                patternsRemoved: countBefore,
-              }),
-            },
-          ],
-        };
-      },
-    );
-  }
-
-  /**
-   * Formats tool results based on the requested detail level.
-   *
-   * @param tools - Array of tool summaries from search results
-   * @param level - Detail level (L0, L1, or L2)
-   * @returns Formatted tools at the requested detail level
-   * @internal
-   */
-  private formatToolsForDetailLevel(
-    tools: ToolSummary[],
-    level: DetailLevel,
-  ): ToolResult[] {
-    switch (level) {
-      case "L0":
-        // Name only - minimal context footprint
-        return tools.map(
-          (t): ToolIdentity => ({
-            name: t.name,
-            serverKey: t.serverKey,
-          }),
-        );
-
-      case "L2": {
-        // Full schema - include inputSchema for immediate execution
-        return tools.map((t): ToolFullSchema => {
-          const { tool } = this.cataloger.findTool(`${t.serverKey}:${t.name}`);
-          return {
-            name: t.name,
-            description: t.description,
-            serverKey: t.serverKey,
-            inputSchema: tool?.inputSchema ?? { type: "object" },
-          };
-        });
-      }
-
-      default:
-        // L1: Summary (default) - name + description
-        return tools as ToolResult[];
-    }
   }
 
   /**
