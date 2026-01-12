@@ -1,27 +1,74 @@
+/**
+ * MCP² (Mercury Control Plane) - Main entry point.
+ *
+ * MCP² is a local-first meta-server that aggregates multiple upstream MCP servers
+ * and provides unified tool discovery and execution. It supports:
+ *
+ * - Multi-scope configuration (env, project, user)
+ * - Security policies (allow/block/confirm)
+ * - Full-text tool search via SQLite FTS5
+ * - stdio and SSE transport types
+ *
+ * @module mcp-squared
+ */
+
 import { parseArgs, printHelp } from "./cli/index.js";
-import { loadConfig, type McpSquaredConfig } from "./config/index.js";
+import { type McpSquaredConfig, loadConfig } from "./config/index.js";
 import { McpSquaredServer } from "./server/index.js";
 import { runConfigTui } from "./tui/config.js";
-import { testUpstreamConnection, type TestResult } from "./upstream/index.js";
+import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
 
+/** Current version of MCP² */
 export const VERSION = "0.1.0";
 
+/**
+ * Starts the MCP server in stdio mode.
+ * Loads configuration, sets up signal handlers, and begins listening.
+ * @internal
+ */
 async function startServer(): Promise<void> {
-  const server = new McpSquaredServer();
+  // Load configuration
+  const { config } = await loadConfig();
 
-  process.on("SIGINT", async () => {
-    await server.stop();
-    process.exit(0);
+  const server = new McpSquaredServer({ config });
+
+  // Track if shutdown is already in progress to prevent double cleanup
+  let isShuttingDown = false;
+
+  const gracefulShutdown = async () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    try {
+      await server.stop();
+      process.exit(0);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Error during shutdown: ${message}`);
+      process.exit(1);
+    }
+  };
+
+  // Use void operator to explicitly mark the promise as intentionally not awaited
+  process.on("SIGINT", () => {
+    void gracefulShutdown();
   });
 
-  process.on("SIGTERM", async () => {
-    await server.stop();
-    process.exit(0);
+  process.on("SIGTERM", () => {
+    void gracefulShutdown();
   });
 
   await server.start();
 }
 
+/**
+ * Formats and prints a test result to stdout.
+ * Shows success/failure status, server info, and available tools.
+ *
+ * @param name - The upstream server name
+ * @param result - The test result to format
+ * @internal
+ */
 function formatTestResult(name: string, result: TestResult): void {
   const status = result.success ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m";
   console.log(`\n${status} ${name}`);
@@ -49,15 +96,22 @@ function formatTestResult(name: string, result: TestResult): void {
   }
 }
 
+/**
+ * Runs connection tests against upstream servers.
+ * Tests a specific server if name provided, or all enabled servers.
+ *
+ * @param targetName - Optional specific server name to test
+ * @internal
+ */
 async function runTest(targetName: string | undefined): Promise<void> {
   let config: McpSquaredConfig;
   try {
     const loaded = await loadConfig();
     config = loaded.config;
-  } catch {
-    console.error(
-      "Error: No configuration found. Run 'mcp-squared config' first.",
-    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Error loading configuration: ${message}`);
+    console.error("Run 'mcp-squared config' to create or fix your configuration.");
     process.exit(1);
   }
 
@@ -104,6 +158,11 @@ async function runTest(targetName: string | undefined): Promise<void> {
   process.exit(allSuccess ? 0 : 1);
 }
 
+/**
+ * Main entry point for the MCP² CLI.
+ * Parses arguments and dispatches to the appropriate mode.
+ * @internal
+ */
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 

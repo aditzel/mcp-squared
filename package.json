@@ -43,6 +43,7 @@
     "url": "https://github.com/aditzel/mcp-squared"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@opentui/core": "^0.1.69",
     "smol-toml": "^1.6.0",

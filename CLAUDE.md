@@ -45,6 +45,16 @@ mcp-squared test <name>  # Test specific upstream
 
 ## Architecture
 
+MCP² sits between MCP clients (IDEs, agents) and upstream MCP servers:
+
+```
+MCP Client → MCP² Meta-Server → Upstream MCP Servers
+                   │
+            ┌──────┴──────┐
+            │ Local Index │
+            └─────────────┘
+```
+
 ### Core Components
 
 - **`src/index.ts`** - Entry point; CLI argument handling and mode dispatch (server, config TUI, test)
@@ -76,6 +86,15 @@ Two transport types supported in schema:
 - **sse**: HTTP SSE connection (not yet implemented for testing)
 
 Environment variables in upstream `env` config can reference process env with `$VAR` syntax.
+
+## Key Conventions
+
+- **Runtime**: Bun (not Node.js)
+- **Config format**: TOML with Zod validation (`smol-toml` parser)
+- **Linting**: Biome (not ESLint)
+- **TypeScript**: Strict mode with `noUncheckedIndexedAccess`
+- **Imports**: Use `.js` extension for local imports (ESM)
+- **Path alias**: `@/*` maps to `src/*`
 
 ## Issue Tracking
 
