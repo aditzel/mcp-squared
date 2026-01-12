@@ -15,6 +15,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { SelectionTracker } from "../caching/index.js";
 import {
   DEFAULT_CONFIG,
   type DetailLevel,
@@ -79,6 +80,7 @@ export class McpSquaredServer {
   private readonly maxLimit: number;
   private transport: StdioServerTransport | null = null;
   private readonly ownsCataloger: boolean;
+  private readonly selectionTracker: SelectionTracker;
 
   /**
    * Creates a new MCP² server instance.
@@ -118,6 +120,8 @@ export class McpSquaredServer {
         },
       },
     );
+
+    this.selectionTracker = new SelectionTracker();
 
     this.registerMetaTools();
   }
@@ -164,6 +168,28 @@ export class McpSquaredServer {
           this.config.operations.findTools.defaultDetailLevel;
         const tools = this.formatToolsForDetailLevel(result.tools, detailLevel);
 
+        // Get bundle suggestions if selection caching is enabled
+        const selectionCacheConfig = this.config.operations.selectionCache;
+        let suggestedBundles: Array<{ tools: string[]; frequency: number }> | undefined;
+
+        if (selectionCacheConfig.enabled && selectionCacheConfig.maxBundleSuggestions > 0) {
+          const toolKeys = result.tools.map((t) => `${t.serverKey}:${t.name}`);
+          const suggestions = this.retriever
+            .getIndexStore()
+            .getSuggestedBundles(
+              toolKeys,
+              selectionCacheConfig.minCooccurrenceThreshold,
+              selectionCacheConfig.maxBundleSuggestions,
+            );
+
+          if (suggestions.length > 0) {
+            suggestedBundles = suggestions.map((s) => ({
+              tools: [s.toolKey],
+              frequency: s.count,
+            }));
+          }
+        }
+
         return {
           content: [
             {
@@ -173,6 +199,7 @@ export class McpSquaredServer {
                 totalMatches: result.totalMatches,
                 detailLevel,
                 tools,
+                ...(suggestedBundles && { suggestedBundles }),
               }),
             },
           ],
@@ -330,6 +357,17 @@ export class McpSquaredServer {
             args.arguments,
           );
 
+          // Track tool usage for selection caching (only on success)
+          if (!result.isError && this.config.operations.selectionCache.enabled) {
+            const toolKey = `${tool.serverKey}:${tool.name}`;
+            this.selectionTracker.trackToolUsage(toolKey);
+
+            // Flush co-occurrences if we have multiple tools in session
+            if (this.selectionTracker.getSessionToolCount() >= 2) {
+              this.selectionTracker.flushToStore(this.retriever.getIndexStore());
+            }
+          }
+
           return {
             content: result.content.map((c) => {
               if (typeof c === "object" && c !== null && "type" in c) {
@@ -356,6 +394,32 @@ export class McpSquaredServer {
             isError: true,
           };
         }
+      },
+    );
+
+    this.mcpServer.registerTool(
+      "clear_selection_cache",
+      {
+        description:
+          "Clears all learned tool co-occurrence patterns. Use this to reset the selection cache if suggestions become stale or irrelevant.",
+        inputSchema: {},
+      },
+      async () => {
+        const countBefore = this.retriever.getIndexStore().getCooccurrenceCount();
+        this.retriever.getIndexStore().clearCooccurrences();
+        this.selectionTracker.reset();
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                message: "Selection cache cleared",
+                patternsRemoved: countBefore,
+              }),
+            },
+          ],
+        };
       },
     );
   }

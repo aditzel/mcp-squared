@@ -492,6 +492,16 @@ export class Retriever {
   }
 
   /**
+   * Returns the underlying IndexStore for direct access.
+   * Use this for selection caching and co-occurrence tracking.
+   *
+   * @returns The IndexStore instance
+   */
+  getIndexStore(): IndexStore {
+    return this.indexStore;
+  }
+
+  /**
    * Closes the retriever and releases database resources.
    * Call this when shutting down the server.
    */

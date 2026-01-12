@@ -141,8 +141,24 @@ export const LoggingSchema = z.object({
 });
 
 /**
+ * Schema for selection caching configuration.
+ * Controls co-occurrence tracking for tool suggestions.
+ */
+export const SelectionCacheSchema = z.object({
+  /** Enable selection caching (default: true) */
+  enabled: z.boolean().default(true),
+  /** Minimum co-occurrence count before suggesting (default: 2) */
+  minCooccurrenceThreshold: z.number().int().min(1).default(2),
+  /** Maximum bundle suggestions per find_tools response (default: 3) */
+  maxBundleSuggestions: z.number().int().min(0).default(3),
+});
+
+/** Selection cache configuration type */
+export type SelectionCacheConfig = z.infer<typeof SelectionCacheSchema>;
+
+/**
  * Schema for operations configuration section.
- * Contains settings for find_tools, indexing, and logging.
+ * Contains settings for find_tools, indexing, logging, and selection caching.
  */
 export const OperationsSchema = z
   .object({
@@ -154,6 +170,11 @@ export const OperationsSchema = z
     }),
     index: IndexSchema.default({ refreshIntervalMs: 30_000 }),
     logging: LoggingSchema.default({ level: "info" }),
+    selectionCache: SelectionCacheSchema.default({
+      enabled: true,
+      minCooccurrenceThreshold: 2,
+      maxBundleSuggestions: 3,
+    }),
   })
   .default({
     findTools: {
@@ -164,6 +185,11 @@ export const OperationsSchema = z
     },
     index: { refreshIntervalMs: 30_000 },
     logging: { level: "info" },
+    selectionCache: {
+      enabled: true,
+      minCooccurrenceThreshold: 2,
+      maxBundleSuggestions: 3,
+    },
   });
 
 /**
