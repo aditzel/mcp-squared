@@ -9,10 +9,8 @@
 
 export {
   IndexStore,
-  type CooccurrenceRecord,
   type IndexedTool,
   type IndexStoreOptions,
-  type RelatedTool,
   type SemanticSearchResult,
   type ToolSearchResult,
 } from "./store.js";

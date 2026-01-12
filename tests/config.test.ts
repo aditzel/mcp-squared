@@ -21,7 +21,6 @@ describe("ConfigSchema", () => {
     expect(result.security.tools.allow).toEqual(["*:*"]);
     expect(result.security.tools.block).toEqual([]);
     expect(result.operations.findTools.defaultLimit).toBe(5);
-    expect(result.operations.findTools.defaultDetailLevel).toBe("L1");
     expect(result.operations.logging.level).toBe("info");
   });
 
@@ -94,7 +93,6 @@ describe("DEFAULT_CONFIG", () => {
     expect(DEFAULT_CONFIG.upstreams).toEqual({});
     expect(DEFAULT_CONFIG.security.tools.allow).toEqual(["*:*"]);
     expect(DEFAULT_CONFIG.operations.findTools.defaultLimit).toBe(5);
-    expect(DEFAULT_CONFIG.operations.findTools.defaultDetailLevel).toBe("L1");
   });
 });
 
@@ -126,13 +124,9 @@ describe("discoverConfigPath", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  test("returns null or user config when no project config exists", () => {
+  test("returns null when no config exists", () => {
     const result = discoverConfigPath(tempDir);
-    // Either no config or user config is acceptable
-    // (depends on whether ~/.config/mcp-squared/config.toml exists)
-    if (result !== null) {
-      expect(result.source).toBe("user");
-    }
+    expect(result).toBeNull();
   });
 
   test("finds project-local config", () => {
@@ -167,17 +161,9 @@ describe("loadConfig", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  test("returns default or user config when no project config exists", async () => {
+  test("returns default config when no file exists", async () => {
     const result = await loadConfig(tempDir);
-    // If a user config exists, it will be loaded
-    // Otherwise, default config is returned
-    if (result.source) {
-      expect(result.source).toBe("user");
-    } else {
-      expect(result.config).toEqual(DEFAULT_CONFIG);
-    }
-    // Config should always be valid
-    expect(result.config.schemaVersion).toBe(1);
+    expect(result.config).toEqual(DEFAULT_CONFIG);
   });
 
   test("loads and validates config file", async () => {
