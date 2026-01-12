@@ -17,19 +17,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import {
   DEFAULT_CONFIG,
-  type DetailLevel,
-  DetailLevelSchema,
   type McpSquaredConfig,
   SearchModeSchema,
 } from "../config/schema.js";
 import { VERSION } from "../index.js";
-import {
-  Retriever,
-  type ToolFullSchema,
-  type ToolIdentity,
-  type ToolResult,
-  type ToolSummary,
-} from "../retriever/index.js";
+import { Retriever } from "../retriever/index.js";
 import { evaluatePolicy } from "../security/index.js";
 import { Cataloger } from "../upstream/index.js";
 
@@ -148,9 +140,6 @@ export class McpSquaredServer {
           mode: SearchModeSchema.optional().describe(
             'Search mode: "fast" (FTS5), "semantic" (embeddings), or "hybrid" (FTS5 + rerank)',
           ),
-          detail_level: DetailLevelSchema.optional().describe(
-            'Level of detail: "L0" (name only), "L1" (summary with description, default), "L2" (full schema)',
-          ),
         },
       },
       async (args) => {
@@ -159,11 +148,6 @@ export class McpSquaredServer {
           mode: args.mode,
         });
 
-        const detailLevel: DetailLevel =
-          args.detail_level ??
-          this.config.operations.findTools.defaultDetailLevel;
-        const tools = this.formatToolsForDetailLevel(result.tools, detailLevel);
-
         return {
           content: [
             {
@@ -171,8 +155,7 @@ export class McpSquaredServer {
               text: JSON.stringify({
                 query: result.query,
                 totalMatches: result.totalMatches,
-                detailLevel,
-                tools,
+                tools: result.tools,
               }),
             },
           ],
@@ -358,47 +341,6 @@ export class McpSquaredServer {
         }
       },
     );
-  }
-
-  /**
-   * Formats tool results based on the requested detail level.
-   *
-   * @param tools - Array of tool summaries from search results
-   * @param level - Detail level (L0, L1, or L2)
-   * @returns Formatted tools at the requested detail level
-   * @internal
-   */
-  private formatToolsForDetailLevel(
-    tools: ToolSummary[],
-    level: DetailLevel,
-  ): ToolResult[] {
-    switch (level) {
-      case "L0":
-        // Name only - minimal context footprint
-        return tools.map(
-          (t): ToolIdentity => ({
-            name: t.name,
-            serverKey: t.serverKey,
-          }),
-        );
-
-      case "L2": {
-        // Full schema - include inputSchema for immediate execution
-        return tools.map((t): ToolFullSchema => {
-          const { tool } = this.cataloger.findTool(`${t.serverKey}:${t.name}`);
-          return {
-            name: t.name,
-            description: t.description,
-            serverKey: t.serverKey,
-            inputSchema: tool?.inputSchema ?? { type: "object" },
-          };
-        });
-      }
-
-      default:
-        // L1: Summary (default) - name + description
-        return tools as ToolResult[];
-    }
   }
 
   /**

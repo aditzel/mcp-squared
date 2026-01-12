@@ -26,7 +26,7 @@ function createConfig(security: {
       },
     },
     operations: {
-      findTools: { defaultLimit: 5, maxLimit: 50, defaultMode: "fast", defaultDetailLevel: "L1" },
+      findTools: { defaultLimit: 5, maxLimit: 50, defaultMode: "fast" },
       index: { refreshIntervalMs: 30000 },
       logging: { level: "info" },
     },
