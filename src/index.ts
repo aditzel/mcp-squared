@@ -230,18 +230,12 @@ async function runAuth(targetName: string): Promise<void> {
   }
 
   const sseConfig = upstream as UpstreamSseServerConfig;
-  if (!sseConfig.sse.auth) {
-    console.error(`Error: Upstream '${targetName}' does not have auth enabled.`);
-    console.error(
-      "Set auth = true in your upstream configuration to enable OAuth.",
-    );
-    process.exit(1);
-  }
 
   console.log(`\nAuthenticating with '${targetName}'...`);
   console.log(`Server URL: ${sseConfig.sse.url}`);
 
   // Create OAuth provider and storage
+  // Use auth config if provided, otherwise use defaults
   const tokenStorage = new TokenStorage();
   const authConfig = typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : undefined;
   const callbackPort = authConfig?.callbackPort ?? 8089;
