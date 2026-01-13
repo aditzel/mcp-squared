@@ -268,15 +268,11 @@ export function mergeWithStrategy(
   const changes: ConfigChange[] = [];
   const existingNames = new Set(Object.keys(input.existingConfig.upstreams));
 
-  // Add non-conflicting servers
+  // Add non-conflicting servers - use upstreamToExternal to preserve all fields
   for (const item of detection.noConflict) {
     const normalizedName = normalizeServerName(item.originalName);
-    const server: ExternalServer = { name: item.originalName };
-    if (item.server.config.transport === "stdio") {
-      server.command = item.server.config.stdio.command;
-    } else if (item.server.config.transport === "sse") {
-      server.url = item.server.config.sse.url;
-    }
+    // Convert the mapped config back to ExternalServer with all fields preserved
+    const server = upstreamToExternal(normalizedName, item.server.config);
     changes.push({
       type: "add",
       serverName: normalizedName,
@@ -325,15 +321,11 @@ export function mergeWithResolutions(
   const changes: ConfigChange[] = [];
   const existingNames = new Set(Object.keys(input.existingConfig.upstreams));
 
-  // Add non-conflicting servers
+  // Add non-conflicting servers - use upstreamToExternal to preserve all fields
   for (const item of detection.noConflict) {
     const normalizedName = normalizeServerName(item.originalName);
-    const server: ExternalServer = { name: item.originalName };
-    if (item.server.config.transport === "stdio") {
-      server.command = item.server.config.stdio.command;
-    } else if (item.server.config.transport === "sse") {
-      server.url = item.server.config.sse.url;
-    }
+    // Convert the mapped config back to ExternalServer with all fields preserved
+    const server = upstreamToExternal(normalizedName, item.server.config);
     changes.push({
       type: "add",
       serverName: normalizedName,
