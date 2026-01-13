@@ -117,7 +117,7 @@ function createHttpTransport(
   }
 
   if (authProvider) {
-    log(`OAuth: ${config.sse.oauth?.grantType} flow configured`);
+    log(`OAuth: dynamic client registration enabled`);
   }
 
   log(`Creating HTTP streaming transport...`);
@@ -227,10 +227,11 @@ export async function testUpstreamConnection(
     } else if (config.transport === "sse") {
       const sseConfig = config as UpstreamSseServerConfig;
 
-      // Create OAuth provider if configured
-      if (sseConfig.sse.oauth) {
+      // Create OAuth provider if auth is enabled
+      if (sseConfig.sse.auth) {
         const tokenStorage = new TokenStorage();
-        authProvider = new McpOAuthProvider(name, sseConfig.sse.oauth, tokenStorage);
+        const authOptions = typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : {};
+        authProvider = new McpOAuthProvider(name, tokenStorage, authOptions);
       }
 
       httpTransport = createHttpTransport(sseConfig, log, verbose, authProvider);

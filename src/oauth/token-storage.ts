@@ -16,7 +16,10 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
+import type {
+  OAuthClientInformationMixed,
+  OAuthTokens,
+} from "@modelcontextprotocol/sdk/shared/auth.js";
 
 // Re-export for convenience
 export type { OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
@@ -35,6 +38,8 @@ export interface StoredTokenData {
   state?: string;
   /** When tokens were last updated */
   updatedAt?: number;
+  /** Dynamically registered client information (client_id, etc.) */
+  clientInfo?: OAuthClientInformationMixed;
 }
 
 /**

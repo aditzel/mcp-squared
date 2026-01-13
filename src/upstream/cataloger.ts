@@ -668,11 +668,12 @@ export class Cataloger {
       }
     }
 
-    // Create OAuth provider if configured
+    // Create OAuth provider if auth is enabled
     let authProvider: McpOAuthProvider | null = null;
-    if (config.sse.oauth) {
+    if (config.sse.auth) {
       const tokenStorage = new TokenStorage();
-      authProvider = new McpOAuthProvider(key, config.sse.oauth, tokenStorage);
+      const authOptions = typeof config.sse.auth === "object" ? config.sse.auth : {};
+      authProvider = new McpOAuthProvider(key, tokenStorage, authOptions);
     }
 
     // Build transport options

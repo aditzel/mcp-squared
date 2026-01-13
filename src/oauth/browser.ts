@@ -18,10 +18,9 @@ import { spawn } from "node:child_process";
  * - Windows: `start "" "url"`
  *
  * @param url - URL to open in the browser
- * @returns Promise that resolves when browser is launched (not when user finishes)
- * @throws Error if browser cannot be opened and fallback logging fails
+ * @returns Promise that resolves to true if browser opened, false otherwise
  */
-export async function openBrowser(url: string): Promise<void> {
+export async function openBrowser(url: string): Promise<boolean> {
   const platform = process.platform;
 
   let command: string;
@@ -50,19 +49,14 @@ export async function openBrowser(url: string): Promise<void> {
     });
 
     child.on("error", () => {
-      // Browser couldn't be opened, log the URL as fallback
-      console.error(
-        `\nCould not open browser automatically. Please open this URL manually:\n`,
-      );
-      console.error(`  ${url}\n`);
-      // Resolve anyway since user can open manually
-      resolve();
+      // Browser couldn't be opened
+      resolve(false);
     });
 
     child.on("spawn", () => {
       // Detach from parent process so it doesn't block
       child.unref();
-      resolve();
+      resolve(true);
     });
   });
 }

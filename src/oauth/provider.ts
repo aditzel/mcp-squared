@@ -1,294 +1,269 @@
 /**
- * OAuth client provider implementation for MCP upstreams.
+ * OAuth provider implementation for MCP² upstream servers.
  *
- * Implements the MCP SDK's OAuthClientProvider interface to handle
- * OAuth authentication for SSE/HTTP upstream servers.
+ * This provider implements the MCP SDK's OAuthClientProvider interface
+ * with support for OAuth 2.0 Dynamic Client Registration (RFC 7591).
+ *
+ * The flow is:
+ * 1. Client connects to MCP server → gets 401
+ * 2. SDK discovers OAuth metadata from /.well-known/oauth-authorization-server
+ * 3. SDK dynamically registers client (no pre-configured clientId needed)
+ * 4. SDK opens browser for user authorization
+ * 5. User logs in, SDK exchanges code for tokens
+ * 6. Provider stores registered client info + tokens for future use
  *
  * @module oauth/provider
  */
 
-import { randomBytes } from "node:crypto";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type {
   OAuthClientInformationMixed,
   OAuthClientMetadata,
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
-import type { OAuthConfig } from "../config/schema.js";
-import { openBrowser } from "./browser.js";
-import type { TokenStorage } from "./token-storage.js";
+import { openBrowser, logAuthorizationUrl } from "./browser.js";
+import { TokenStorage } from "./token-storage.js";
+
+/** Default callback port for OAuth redirects */
+const DEFAULT_CALLBACK_PORT = 8089;
+
+/** Default client name for dynamic registration */
+const DEFAULT_CLIENT_NAME = "MCP²";
 
 /**
- * Resolves environment variable references in strings.
- * Supports $VAR and ${VAR} syntax.
- *
- * @param value - String that may contain env var references
- * @returns Resolved string with env vars substituted
+ * Configuration options for McpOAuthProvider.
  */
-function resolveEnvVar(value: string | undefined): string | undefined {
-  if (!value) return value;
-
-  // Handle $VAR and ${VAR} syntax
-  return value.replace(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g, (_, varName) => {
-    return process.env[varName] ?? "";
-  });
+export interface McpOAuthProviderOptions {
+  /** Port for local OAuth callback server (default: 8089) */
+  callbackPort?: number;
+  /** Client name to use during dynamic registration (default: "MCP²") */
+  clientName?: string;
 }
 
 /**
- * Generates a cryptographically random state parameter.
- * Used for CSRF protection in authorization_code flow.
- */
-function generateState(): string {
-  return randomBytes(32).toString("base64url");
-}
-
-/**
- * OAuth client provider for MCP upstream servers.
+ * OAuth provider for MCP² using Dynamic Client Registration.
  *
- * Implements the OAuthClientProvider interface from the MCP SDK,
- * supporting both authorization_code and client_credentials flows.
- *
- * Features:
- * - File-based token persistence
+ * This provider handles the full OAuth lifecycle:
+ * - Dynamic client registration (no pre-configured clientId needed)
  * - Browser-based authorization
- * - PKCE support for authorization_code
- * - Environment variable resolution for secrets
+ * - Token storage and retrieval
+ * - PKCE code verifier management
+ *
+ * @example
+ * ```ts
+ * const storage = new TokenStorage();
+ * const provider = new McpOAuthProvider("my-server", storage);
+ *
+ * const transport = new StreamableHTTPClientTransport(serverUrl, {
+ *   authProvider: provider,
+ * });
+ * ```
  */
 export class McpOAuthProvider implements OAuthClientProvider {
   private readonly upstreamName: string;
-  private readonly config: OAuthConfig;
   private readonly storage: TokenStorage;
-  private readonly resolvedClientSecret: string | undefined;
+  private readonly callbackPort: number;
+  private readonly _clientName: string;
+  private _state: string | undefined;
 
   /**
    * Creates a new OAuth provider for an upstream server.
    *
-   * @param upstreamName - Name of the upstream server (for token storage)
-   * @param config - OAuth configuration from config file
-   * @param storage - Token storage instance
+   * @param upstreamName - Unique identifier for the upstream (used for storage)
+   * @param storage - Token storage instance for persistence
+   * @param options - Optional configuration (callbackPort, clientName)
    */
   constructor(
     upstreamName: string,
-    config: OAuthConfig,
     storage: TokenStorage,
+    options: McpOAuthProviderOptions = {},
   ) {
     this.upstreamName = upstreamName;
-    this.config = config;
     this.storage = storage;
-    this.resolvedClientSecret = resolveEnvVar(config.clientSecret);
+    this.callbackPort = options.callbackPort ?? DEFAULT_CALLBACK_PORT;
+    this._clientName = options.clientName ?? DEFAULT_CLIENT_NAME;
   }
 
   /**
-   * Returns the redirect URL for authorization callbacks.
-   * Returns undefined for client_credentials flow (non-interactive).
+   * The redirect URL for OAuth callbacks.
+   * Returns the local callback server URL.
    */
-  get redirectUrl(): string | URL | undefined {
-    if (this.config.grantType === "client_credentials") {
-      return undefined;
-    }
-    return this.config.redirectUrl;
+  get redirectUrl(): string {
+    return `http://localhost:${this.callbackPort}/callback`;
   }
 
   /**
-   * Returns OAuth client metadata for dynamic registration.
+   * Client metadata for dynamic registration.
+   * This is sent to the authorization server during registration.
    */
   get clientMetadata(): OAuthClientMetadata {
-    const metadata: OAuthClientMetadata = {
-      redirect_uris: [this.config.redirectUrl],
+    return {
+      client_name: this._clientName,
+      redirect_uris: [this.redirectUrl],
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: "none", // Public client
     };
-
-    // Set grant types based on configuration
-    if (this.config.grantType === "client_credentials") {
-      metadata.grant_types = ["client_credentials"];
-    } else {
-      metadata.grant_types = ["authorization_code", "refresh_token"];
-      metadata.response_types = ["code"];
-    }
-
-    // Add scope if configured
-    if (this.config.scope) {
-      metadata.scope = this.config.scope;
-    }
-
-    return metadata;
   }
 
   /**
-   * Generates and stores an OAuth state parameter.
-   * Used for CSRF protection in authorization_code flow.
+   * Generates and returns an OAuth state parameter.
+   * Used to prevent CSRF attacks during authorization.
    */
   state(): string {
-    const stateValue = generateState();
-    this.storage.saveState(this.upstreamName, stateValue);
-    return stateValue;
+    if (!this._state) {
+      const array = new Uint8Array(32);
+      crypto.getRandomValues(array);
+      this._state = Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+    return this._state;
   }
 
   /**
-   * Returns client information (ID and optionally secret).
-   * This is used for token requests.
+   * Verifies that a received state matches the expected state.
+   */
+  verifyState(receivedState: string): boolean {
+    return this._state === receivedState;
+  }
+
+  /**
+   * Returns stored client information from dynamic registration.
+   * Returns undefined if no registration has occurred yet.
    */
   clientInformation(): OAuthClientInformationMixed | undefined {
-    const info: OAuthClientInformationMixed = {
-      client_id: this.config.clientId,
-    };
-
-    if (this.resolvedClientSecret) {
-      info.client_secret = this.resolvedClientSecret;
-    }
-
-    return info;
+    const data = this.storage.load(this.upstreamName);
+    return data?.clientInfo;
   }
 
   /**
-   * Loads existing OAuth tokens from storage.
-   * Returns undefined if no tokens exist or they're expired without refresh token.
+   * Saves client information after dynamic registration.
+   * Called by the SDK after successful registration.
+   */
+  saveClientInformation(clientInfo: OAuthClientInformationMixed): void {
+    const data = this.storage.load(this.upstreamName) ?? {};
+    data.clientInfo = clientInfo;
+    this.storage.save(this.upstreamName, data);
+  }
+
+  /**
+   * Returns stored OAuth tokens for the current session.
+   * Returns undefined if no tokens are stored.
    */
   tokens(): OAuthTokens | undefined {
     const data = this.storage.load(this.upstreamName);
-
-    if (!data?.tokens) {
-      return undefined;
-    }
-
-    // If tokens are expired and we have no refresh token, return undefined
-    if (this.storage.isExpired(this.upstreamName) && !data.tokens.refresh_token) {
-      return undefined;
-    }
-
-    return data.tokens;
+    return data?.tokens;
   }
 
   /**
-   * Saves OAuth tokens to persistent storage.
+   * Saves OAuth tokens after successful authorization.
    */
   saveTokens(tokens: OAuthTokens): void {
-    this.storage.updateTokens(this.upstreamName, tokens);
+    const data = this.storage.load(this.upstreamName) ?? {};
+    data.tokens = tokens;
+    // Calculate expiry time if expires_in is provided
+    if (tokens.expires_in) {
+      data.expiresAt = Date.now() + tokens.expires_in * 1000;
+    }
+    this.storage.save(this.upstreamName, data);
   }
 
   /**
-   * Opens the browser to the authorization URL.
-   * Called by the MCP SDK during authorization_code flow.
+   * Opens the browser to begin authorization.
+   * Falls back to logging the URL if browser can't be opened.
    */
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    const urlString = authorizationUrl.toString();
     console.error(`\nOpening browser for authorization...`);
-    console.error(`URL: ${authorizationUrl.toString()}\n`);
-    await openBrowser(authorizationUrl.toString());
+    console.error(`URL: ${urlString}\n`);
+    const opened = await openBrowser(urlString);
+    if (!opened) {
+      logAuthorizationUrl(urlString);
+    }
   }
 
   /**
    * Saves the PKCE code verifier for the current authorization flow.
    */
   saveCodeVerifier(codeVerifier: string): void {
-    this.storage.saveCodeVerifier(this.upstreamName, codeVerifier);
+    const data = this.storage.load(this.upstreamName) ?? {};
+    data.codeVerifier = codeVerifier;
+    this.storage.save(this.upstreamName, data);
   }
 
   /**
-   * Retrieves the PKCE code verifier for token exchange.
-   * Note: This does NOT clear the verifier - the SDK may call this multiple times.
+   * Returns the stored PKCE code verifier.
+   * Throws if no code verifier is stored.
    */
   codeVerifier(): string {
     const data = this.storage.load(this.upstreamName);
-    return data?.codeVerifier ?? "";
+    if (!data?.codeVerifier) {
+      throw new Error("No code verifier stored");
+    }
+    return data.codeVerifier;
   }
 
   /**
-   * Prepares token request parameters for non-interactive flows.
-   * Used for client_credentials grant type.
-   */
-  prepareTokenRequest(scope?: string): URLSearchParams | undefined {
-    if (this.config.grantType !== "client_credentials") {
-      // Let SDK handle authorization_code flow
-      return undefined;
-    }
-
-    const params = new URLSearchParams();
-    params.set("grant_type", "client_credentials");
-
-    // Add scope from parameter or config
-    const requestScope = scope ?? this.config.scope;
-    if (requestScope) {
-      params.set("scope", requestScope);
-    }
-
-    return params;
-  }
-
-  /**
-   * Adds client authentication to token requests.
-   * Handles both client_secret_basic and client_secret_post methods.
-   */
-  addClientAuthentication = (
-    headers: Headers,
-    params: URLSearchParams,
-  ): void => {
-    const clientId = this.config.clientId;
-    const clientSecret = this.resolvedClientSecret;
-
-    if (!clientSecret) {
-      // Public client - just add client_id to params
-      params.set("client_id", clientId);
-      return;
-    }
-
-    // Use client_secret_basic (preferred) - Base64 encode credentials in Authorization header
-    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
-      "base64",
-    );
-    headers.set("Authorization", `Basic ${credentials}`);
-  };
-
-  /**
-   * Invalidates stored credentials when the server indicates they're no longer valid.
-   */
-  invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier"): void {
-    switch (scope) {
-      case "all":
-      case "tokens":
-        this.storage.delete(this.upstreamName);
-        break;
-      case "verifier":
-        this.storage.getAndClearCodeVerifier(this.upstreamName);
-        break;
-      case "client":
-        // We don't store client registration info separately
-        break;
-    }
-  }
-
-  /**
-   * Verifies the OAuth state parameter from the callback.
-   * Returns true if state matches, false otherwise.
-   */
-  verifyState(state: string): boolean {
-    return this.storage.verifyAndClearState(this.upstreamName, state);
-  }
-
-  /**
-   * Clears the PKCE code verifier after successful token exchange.
+   * Clears the stored code verifier after authorization is complete.
    */
   clearCodeVerifier(): void {
-    this.storage.getAndClearCodeVerifier(this.upstreamName);
+    const data = this.storage.load(this.upstreamName);
+    if (data) {
+      delete data.codeVerifier;
+      this.storage.save(this.upstreamName, data);
+    }
   }
 
   /**
-   * Checks if the provider is configured for interactive (browser-based) auth.
+   * Invalidates stored credentials.
+   * Called by the SDK when credentials are no longer valid.
+   */
+  invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier"): void {
+    const data = this.storage.load(this.upstreamName);
+    if (!data) return;
+
+    switch (scope) {
+      case "all":
+        this.storage.delete(this.upstreamName);
+        break;
+      case "client":
+        delete data.clientInfo;
+        this.storage.save(this.upstreamName, data);
+        break;
+      case "tokens":
+        delete data.tokens;
+        delete data.expiresAt;
+        this.storage.save(this.upstreamName, data);
+        break;
+      case "verifier":
+        delete data.codeVerifier;
+        this.storage.save(this.upstreamName, data);
+        break;
+    }
+  }
+
+  /**
+   * Returns whether this provider requires user interaction.
+   * Always true since we use authorization_code flow.
    */
   isInteractive(): boolean {
-    return this.config.grantType === "authorization_code";
+    return true;
   }
 
   /**
-   * Gets the token endpoint URL from config.
+   * Checks if the stored access token is expired.
+   * Returns true if expired or no expiry information is available.
    */
-  getTokenEndpoint(): string {
-    return this.config.tokenEndpoint;
+  isTokenExpired(bufferMs = 60_000): boolean {
+    const data = this.storage.load(this.upstreamName);
+    if (!data?.expiresAt) return true;
+    return Date.now() >= data.expiresAt - bufferMs;
   }
 
   /**
-   * Gets the authorization endpoint URL from config.
-   * Only valid for authorization_code flow.
+   * Clears all stored data for this upstream.
    */
-  getAuthorizationEndpoint(): string | undefined {
-    return this.config.authorizationEndpoint;
+  clearAll(): void {
+    this.storage.delete(this.upstreamName);
+    this._state = undefined;
   }
 }

@@ -48,45 +48,22 @@ const UpstreamStdioSchema = UpstreamBaseSchema.extend({
 });
 
 /**
- * OAuth grant types supported for SSE upstreams.
- * - authorization_code: Browser-based interactive auth (user consent)
- * - client_credentials: Machine-to-machine auth (service accounts)
- */
-export const OAuthGrantTypeSchema = z.enum([
-  "authorization_code",
-  "client_credentials",
-]);
-
-/** OAuth grant type */
-export type OAuthGrantType = z.infer<typeof OAuthGrantTypeSchema>;
-
-/**
  * Schema for OAuth configuration on SSE upstreams.
- * Supports both authorization_code and client_credentials flows.
+ *
+ * MCP uses OAuth 2.0 with Dynamic Client Registration (RFC 7591).
+ * The SDK automatically:
+ * 1. Discovers OAuth metadata from /.well-known/oauth-authorization-server
+ * 2. Dynamically registers as a client (no pre-configured clientId needed)
+ * 3. Handles the authorization code flow with PKCE
+ *
+ * Users just set `auth: true` to enable OAuth - everything else is automatic.
  */
 export const OAuthConfigSchema = z.object({
-  /** OAuth grant type to use */
-  grantType: OAuthGrantTypeSchema,
-  /** OAuth client ID */
-  clientId: z.string().min(1),
-  /** OAuth client secret (supports $ENV_VAR syntax for env resolution) */
-  clientSecret: z.string().optional(),
-  /** Authorization endpoint URL (required for authorization_code) */
-  authorizationEndpoint: z.string().url().optional(),
-  /** Token endpoint URL */
-  tokenEndpoint: z.string().url(),
-  /** OAuth scopes to request (space-separated) */
-  scope: z.string().optional(),
-  /** Redirect URL for authorization_code flow */
-  redirectUrl: z.string().url().default("http://localhost:8089/callback"),
-  /** Port for local callback server */
+  /** Port for local OAuth callback server (default: 8089) */
   callbackPort: z.number().int().min(1024).max(65535).default(8089),
-  /** Use PKCE for authorization_code (recommended, default true) */
-  usePkce: z.boolean().default(true),
+  /** Client name to use during dynamic registration (default: "MCP²") */
+  clientName: z.string().default("MCP²"),
 });
-
-/** OAuth configuration type */
-export type OAuthConfig = z.infer<typeof OAuthConfigSchema>;
 
 /** Schema for SSE transport configuration (remote servers) */
 const UpstreamSseSchema = UpstreamBaseSchema.extend({
@@ -94,8 +71,16 @@ const UpstreamSseSchema = UpstreamBaseSchema.extend({
   sse: z.object({
     url: z.string().url(),
     headers: z.record(z.string(), z.string()).default({}),
-    /** Optional OAuth configuration for authenticated endpoints */
-    oauth: OAuthConfigSchema.optional(),
+    /**
+     * Enable OAuth authentication for this upstream.
+     * - true: Enable with defaults (callbackPort: 8089, clientName: "MCP²")
+     * - object: Enable with custom settings
+     * - false/undefined: No OAuth
+     *
+     * When enabled, MCP² uses OAuth 2.0 Dynamic Client Registration.
+     * No clientId or endpoints needed - everything is auto-discovered.
+     */
+    auth: z.union([z.boolean(), OAuthConfigSchema]).optional(),
   }),
 });
 

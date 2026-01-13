@@ -13,6 +13,9 @@
  * @module mcp-squared
  */
 
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { parseArgs, printHelp } from "./cli/index.js";
 import { type McpSquaredConfig, loadConfig } from "./config/index.js";
 import type { UpstreamSseServerConfig } from "./config/schema.js";
@@ -185,7 +188,14 @@ async function runTest(targetName: string | undefined, verbose = false): Promise
 
 /**
  * Runs OAuth authentication for an upstream server.
- * Opens browser for authorization_code flow and waits for callback.
+ * Uses the MCP SDK's OAuth flow with Dynamic Client Registration.
+ *
+ * The flow:
+ * 1. Create transport with OAuth provider
+ * 2. Attempt connection → triggers discovery + dynamic registration
+ * 3. SDK opens browser for user authorization
+ * 4. Wait for callback with authorization code
+ * 5. Complete authentication with transport.finishAuth()
  *
  * @param targetName - Name of the upstream server to authenticate
  * @internal
@@ -220,92 +230,88 @@ async function runAuth(targetName: string): Promise<void> {
   }
 
   const sseConfig = upstream as UpstreamSseServerConfig;
-  if (!sseConfig.sse.oauth) {
-    console.error(`Error: Upstream '${targetName}' does not have OAuth configured.`);
+  if (!sseConfig.sse.auth) {
+    console.error(`Error: Upstream '${targetName}' does not have auth enabled.`);
     console.error(
-      "Add an [upstreams.<name>.sse.oauth] section to your configuration.",
-    );
-    process.exit(1);
-  }
-
-  if (sseConfig.sse.oauth.grantType !== "authorization_code") {
-    console.error(
-      `Error: Upstream '${targetName}' uses ${sseConfig.sse.oauth.grantType} grant type.`,
-    );
-    console.error(
-      "Only authorization_code flow requires browser authentication.",
-    );
-    console.error(
-      "client_credentials flow authenticates automatically on connection.",
+      "Set auth = true in your upstream configuration to enable OAuth.",
     );
     process.exit(1);
   }
 
   console.log(`\nAuthenticating with '${targetName}'...`);
-  console.log(`Grant type: ${sseConfig.sse.oauth.grantType}`);
+  console.log(`Server URL: ${sseConfig.sse.url}`);
 
   // Create OAuth provider and storage
   const tokenStorage = new TokenStorage();
-  const authProvider = new McpOAuthProvider(
-    targetName,
-    sseConfig.sse.oauth,
-    tokenStorage,
-  );
+  const authConfig = typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : undefined;
+  const callbackPort = authConfig?.callbackPort ?? 8089;
+  const clientName = authConfig?.clientName ?? "MCP²";
+  const authProvider = new McpOAuthProvider(targetName, tokenStorage, { callbackPort, clientName });
 
   // Check if we already have valid tokens
   const existingTokens = authProvider.tokens();
-  if (existingTokens) {
-    console.log("\nExisting tokens found.");
-    console.log("Run 'mcp-squared test " + targetName + "' to verify the connection.");
+  if (existingTokens && !authProvider.isTokenExpired()) {
+    console.log("\nExisting valid tokens found.");
+    console.log(`Run 'mcp-squared test ${targetName}' to verify the connection.`);
     process.exit(0);
   }
 
   // Start callback server
   const callbackServer = new OAuthCallbackServer({
-    port: sseConfig.sse.oauth.callbackPort,
+    port: callbackPort,
     path: "/callback",
     timeoutMs: 300_000, // 5 minutes
   });
 
   console.log(`\nCallback URL: ${callbackServer.getCallbackUrl()}`);
 
-  // Build authorization URL manually since we're not using the transport
-  const authEndpoint = sseConfig.sse.oauth.authorizationEndpoint;
-  if (!authEndpoint) {
-    console.error(
-      "Error: authorizationEndpoint is required for authorization_code flow.",
-    );
-    process.exit(1);
-  }
+  // Create transport with OAuth provider
+  const transport = new StreamableHTTPClientTransport(
+    new URL(sseConfig.sse.url),
+    {
+      authProvider,
+      requestInit: {
+        headers: { ...sseConfig.sse.headers },
+      },
+    },
+  );
 
-  // Generate state and code verifier using PKCE
-  const state = authProvider.state();
-  const pkce = await import("pkce-challenge");
-  const challenge = await pkce.default();
-  const codeVerifier = challenge.code_verifier;
-  const codeChallenge = challenge.code_challenge;
-  authProvider.saveCodeVerifier(codeVerifier);
+  // Create client
+  const client = new Client({
+    name: "mcp-squared-auth",
+    version: VERSION,
+  });
 
-  // Build authorization URL
-  const authUrl = new URL(authEndpoint);
-  authUrl.searchParams.set("client_id", sseConfig.sse.oauth.clientId);
-  authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("redirect_uri", sseConfig.sse.oauth.redirectUrl);
-  authUrl.searchParams.set("state", state);
-  if (sseConfig.sse.oauth.usePkce) {
-    authUrl.searchParams.set("code_challenge", codeChallenge);
-    authUrl.searchParams.set("code_challenge_method", "S256");
-  }
-  if (sseConfig.sse.oauth.scope) {
-    authUrl.searchParams.set("scope", sseConfig.sse.oauth.scope);
-  }
-
-  console.log("\nOpening browser for authorization...");
-  await authProvider.redirectToAuthorization(authUrl);
-
-  console.log("\nWaiting for authorization callback...");
+  console.log("\nConnecting to server...");
+  console.log("(This will trigger OAuth discovery and browser authorization)");
 
   try {
+    // Attempt to connect - this will trigger OAuth flow and throw UnauthorizedError
+    // after opening the browser for authorization
+    // Cast needed due to exactOptionalPropertyTypes incompatibility
+    await client.connect(transport as unknown as import("@modelcontextprotocol/sdk/shared/transport.js").Transport);
+
+    // If we get here without error, we're already authenticated
+    console.log("\n\x1b[32m✓\x1b[0m Already authenticated!");
+    console.log(`Run 'mcp-squared test ${targetName}' to verify the connection.`);
+    await client.close();
+    callbackServer.stop();
+    process.exit(0);
+  } catch (err) {
+    if (!(err instanceof UnauthorizedError)) {
+      // Not an auth error - something else went wrong
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`\nConnection error: ${message}`);
+      callbackServer.stop();
+      process.exit(1);
+    }
+
+    // UnauthorizedError means the SDK has opened the browser and we need to wait for callback
+    console.log("\nWaiting for browser authorization...");
+  }
+
+  try {
+    // Wait for the OAuth callback
     const result = await callbackServer.waitForCallback();
 
     if (result.error) {
@@ -326,40 +332,10 @@ async function runAuth(targetName: string): Promise<void> {
       process.exit(1);
     }
 
-    console.log("\nAuthorization code received. Exchanging for token...");
+    console.log("\nAuthorization code received. Completing authentication...");
 
-    // Exchange code for tokens
-    const tokenEndpoint = sseConfig.sse.oauth.tokenEndpoint;
-    const params = new URLSearchParams();
-    params.set("grant_type", "authorization_code");
-    params.set("code", result.code);
-    params.set("redirect_uri", sseConfig.sse.oauth.redirectUrl);
-    params.set("client_id", sseConfig.sse.oauth.clientId);
-    if (sseConfig.sse.oauth.usePkce) {
-      params.set("code_verifier", codeVerifier);
-    }
-
-    const headers = new Headers();
-    headers.set("Content-Type", "application/x-www-form-urlencoded");
-
-    // Add client authentication if secret is provided
-    authProvider.addClientAuthentication(headers, params);
-
-    const tokenResponse = await fetch(tokenEndpoint, {
-      method: "POST",
-      headers,
-      body: params,
-    });
-
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      console.error(`\nToken exchange failed: ${tokenResponse.status}`);
-      console.error(errorText);
-      process.exit(1);
-    }
-
-    const tokens = (await tokenResponse.json()) as import("@modelcontextprotocol/sdk/shared/auth.js").OAuthTokens;
-    authProvider.saveTokens(tokens);
+    // Complete the OAuth flow - SDK handles token exchange
+    await transport.finishAuth(result.code);
     authProvider.clearCodeVerifier();
 
     console.log("\n\x1b[32m✓\x1b[0m Authentication successful!");
@@ -371,6 +347,11 @@ async function runAuth(targetName: string): Promise<void> {
     );
   } finally {
     callbackServer.stop();
+    try {
+      await client.close();
+    } catch {
+      // Ignore close errors
+    }
   }
 }
 
