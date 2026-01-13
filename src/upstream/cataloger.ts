@@ -225,14 +225,22 @@ export class Cataloger {
 
       // Connect with timeout
       const connectPromise = client.connect(transport);
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(
+        timeoutId = setTimeout(
           () => reject(new Error("Connection timeout")),
           this.connectTimeoutMs,
         );
       });
 
-      await Promise.race([connectPromise, timeoutPromise]);
+      try {
+        await Promise.race([connectPromise, timeoutPromise]);
+      } finally {
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+      }
 
       // Get server info
       const serverInfo = client.getServerVersion();

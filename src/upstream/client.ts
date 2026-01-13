@@ -75,11 +75,22 @@ export async function testUpstreamConnection(
     });
 
     const connectPromise = client.connect(transport);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error("Connection timeout")), timeoutMs);
+      timeoutId = setTimeout(
+        () => reject(new Error("Connection timeout")),
+        timeoutMs,
+      );
     });
 
-    await Promise.race([connectPromise, timeoutPromise]);
+    try {
+      await Promise.race([connectPromise, timeoutPromise]);
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    }
 
     const serverInfo = client.getServerVersion();
 
