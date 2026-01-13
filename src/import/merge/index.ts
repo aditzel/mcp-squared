@@ -56,27 +56,113 @@ export interface MergeResult {
   changes: ConfigChange[];
   /** Conflicts that need resolution */
   conflicts: ImportConflict[];
+  /** Servers already in sync (no action needed) */
+  inSync: InSyncServer[];
   /** Warnings generated during merge */
   warnings: string[];
+}
+
+/**
+ * Server that is already in sync (identical config exists in MCP²).
+ */
+export interface InSyncServer {
+  /** Normalized server name */
+  serverName: string;
+  /** Source tool */
+  sourceTool: ToolId;
+  /** Source file path */
+  sourcePath: string;
 }
 
 /**
  * Result of conflict detection.
  */
 export interface ConflictDetectionResult {
-  /** Servers without conflicts */
+  /** Servers without conflicts (new servers) */
   noConflict: Array<{
     server: MappedServer;
     tool: ToolId;
     path: string;
     originalName: string;
   }>;
-  /** Servers with conflicts */
+  /** Servers with conflicts (different config exists) */
   conflicts: ImportConflict[];
+  /** Servers already in sync (identical config exists) */
+  inSync: InSyncServer[];
+}
+
+/**
+ * Compares two upstream configs for equality.
+ * Returns true if the configs are functionally identical.
+ */
+function areConfigsEqual(
+  a: UpstreamServerConfig,
+  b: UpstreamServerConfig,
+): boolean {
+  // Different transport types = not equal
+  if (a.transport !== b.transport) {
+    return false;
+  }
+
+  // Compare enabled status
+  if (a.enabled !== b.enabled) {
+    return false;
+  }
+
+  // Compare environment variables
+  const aEnvKeys = Object.keys(a.env).sort();
+  const bEnvKeys = Object.keys(b.env).sort();
+  if (aEnvKeys.length !== bEnvKeys.length) {
+    return false;
+  }
+  for (let i = 0; i < aEnvKeys.length; i++) {
+    const key = aEnvKeys[i];
+    if (key !== bEnvKeys[i] || a.env[key!] !== b.env[key!]) {
+      return false;
+    }
+  }
+
+  // Compare transport-specific fields
+  if (a.transport === "stdio" && b.transport === "stdio") {
+    if (a.stdio.command !== b.stdio.command) {
+      return false;
+    }
+    if (a.stdio.cwd !== b.stdio.cwd) {
+      return false;
+    }
+    // Compare args arrays
+    if (a.stdio.args.length !== b.stdio.args.length) {
+      return false;
+    }
+    for (let i = 0; i < a.stdio.args.length; i++) {
+      if (a.stdio.args[i] !== b.stdio.args[i]) {
+        return false;
+      }
+    }
+  } else if (a.transport === "sse" && b.transport === "sse") {
+    if (a.sse.url !== b.sse.url) {
+      return false;
+    }
+    // Compare headers
+    const aHeaderKeys = Object.keys(a.sse.headers).sort();
+    const bHeaderKeys = Object.keys(b.sse.headers).sort();
+    if (aHeaderKeys.length !== bHeaderKeys.length) {
+      return false;
+    }
+    for (let i = 0; i < aHeaderKeys.length; i++) {
+      const key = aHeaderKeys[i];
+      if (key !== bHeaderKeys[i] || a.sse.headers[key!] !== b.sse.headers[key!]) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 /**
  * Detects conflicts between incoming servers and existing config.
+ * Servers with identical configs are marked as "in sync" rather than conflicts.
  *
  * @param input - Merge input with incoming servers and existing config
  * @returns Conflict detection result
@@ -86,6 +172,7 @@ export function detectConflicts(input: MergeInput): ConflictDetectionResult {
   const result: ConflictDetectionResult = {
     noConflict: [],
     conflicts: [],
+    inSync: [],
   };
 
   for (const group of input.incoming) {
@@ -99,19 +186,29 @@ export function detectConflicts(input: MergeInput): ConflictDetectionResult {
       }
 
       if (existingNames.has(normalizedName)) {
-        // Conflict detected
         const existingConfig = input.existingConfig.upstreams[normalizedName];
         if (existingConfig) {
-          result.conflicts.push({
-            serverName: normalizedName,
-            existing: upstreamToExternal(normalizedName, existingConfig),
-            incoming: server,
-            sourceTool: group.tool,
-            sourcePath: group.path,
-          });
+          // Check if configs are identical
+          if (areConfigsEqual(existingConfig, mapped.config)) {
+            // Already in sync - no action needed
+            result.inSync.push({
+              serverName: normalizedName,
+              sourceTool: group.tool,
+              sourcePath: group.path,
+            });
+          } else {
+            // Actual conflict - configs differ
+            result.conflicts.push({
+              serverName: normalizedName,
+              existing: upstreamToExternal(normalizedName, existingConfig),
+              incoming: server,
+              sourceTool: group.tool,
+              sourcePath: group.path,
+            });
+          }
         }
       } else {
-        // No conflict
+        // No conflict - new server
         result.noConflict.push({
           server: mapped,
           tool: group.tool,
@@ -300,6 +397,7 @@ export function mergeWithStrategy(
     config,
     changes,
     conflicts: detection.conflicts,
+    inSync: detection.inSync,
     warnings,
   };
 }
@@ -350,6 +448,7 @@ export function mergeWithResolutions(
     config,
     changes,
     conflicts: detection.conflicts,
+    inSync: detection.inSync,
     warnings,
   };
 }
@@ -358,13 +457,18 @@ export function mergeWithResolutions(
  * Summarizes merge changes for display.
  *
  * @param changes - Changes from merge
+ * @param inSyncCount - Number of servers already in sync
  * @returns Summary counts
  */
-export function summarizeChanges(changes: ConfigChange[]): {
+export function summarizeChanges(
+  changes: ConfigChange[],
+  inSyncCount = 0,
+): {
   added: number;
   updated: number;
   renamed: number;
   skipped: number;
+  inSync: number;
 } {
   let added = 0;
   let updated = 0;
@@ -388,5 +492,5 @@ export function summarizeChanges(changes: ConfigChange[]): {
     }
   }
 
-  return { added, updated, renamed, skipped };
+  return { added, updated, renamed, skipped, inSync: inSyncCount };
 }

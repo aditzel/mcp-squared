@@ -253,6 +253,232 @@ describe("import merge - conflict detection", () => {
   });
 });
 
+describe("import merge - in-sync detection", () => {
+  test("detects identical configs as in-sync", () => {
+    // Create a config with existing server that matches incoming
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        "test-server": {
+          transport: "stdio",
+          enabled: true,
+          label: "test-server",
+          env: { API_KEY: "secret" },
+          stdio: {
+            command: "npx",
+            args: ["-y", "some-package"],
+          },
+        },
+      },
+    };
+
+    // Incoming server with identical configuration
+    const server: ExternalServer = {
+      name: "test-server",
+      command: "npx",
+      args: ["-y", "some-package"],
+      env: { API_KEY: "secret" },
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const detection = detectConflicts(input);
+
+    expect(detection.inSync).toHaveLength(1);
+    expect(detection.inSync[0]?.serverName).toBe("test-server");
+    expect(detection.conflicts).toHaveLength(0);
+    expect(detection.noConflict).toHaveLength(0);
+  });
+
+  test("detects different configs as conflicts, not in-sync", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        "test-server": {
+          transport: "stdio",
+          enabled: true,
+          label: "test-server",
+          env: {},
+          stdio: {
+            command: "npx",
+            args: ["-y", "old-package"],
+          },
+        },
+      },
+    };
+
+    // Incoming server with different args
+    const server: ExternalServer = {
+      name: "test-server",
+      command: "npx",
+      args: ["-y", "new-package"],
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const detection = detectConflicts(input);
+
+    expect(detection.conflicts).toHaveLength(1);
+    expect(detection.inSync).toHaveLength(0);
+  });
+
+  test("detects SSE configs as in-sync when identical", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        "sse-server": {
+          transport: "sse",
+          enabled: true,
+          label: "sse-server",
+          env: {},
+          sse: {
+            url: "https://api.example.com/mcp",
+            headers: { Authorization: "Bearer token123" },
+          },
+        },
+      },
+    };
+
+    const server: ExternalServer = {
+      name: "sse-server",
+      url: "https://api.example.com/mcp",
+      headers: { Authorization: "Bearer token123" },
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const detection = detectConflicts(input);
+
+    expect(detection.inSync).toHaveLength(1);
+    expect(detection.inSync[0]?.serverName).toBe("sse-server");
+    expect(detection.conflicts).toHaveLength(0);
+  });
+
+  test("mergeWithStrategy includes in-sync in result", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        "synced-server": {
+          transport: "stdio",
+          enabled: true,
+          label: "synced-server",
+          env: {},
+          stdio: {
+            command: "npx",
+            args: ["some-cmd"],
+          },
+        },
+      },
+    };
+
+    const server: ExternalServer = {
+      name: "synced-server",
+      command: "npx",
+      args: ["some-cmd"],
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const result = mergeWithStrategy(input, "skip");
+
+    expect(result.inSync).toHaveLength(1);
+    expect(result.inSync[0]?.serverName).toBe("synced-server");
+    // In-sync servers should not appear in changes
+    expect(result.changes).toHaveLength(0);
+  });
+
+  test("handles mix of new, conflict, and in-sync servers", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        "synced-server": {
+          transport: "stdio",
+          enabled: true,
+          label: "synced-server",
+          env: {},
+          stdio: {
+            command: "npx",
+            args: ["same-cmd"],
+          },
+        },
+        "conflict-server": {
+          transport: "stdio",
+          enabled: true,
+          label: "conflict-server",
+          env: {},
+          stdio: {
+            command: "old-cmd",
+            args: [],
+          },
+        },
+      },
+    };
+
+    const servers: ExternalServer[] = [
+      { name: "synced-server", command: "npx", args: ["same-cmd"] }, // in-sync
+      { name: "conflict-server", command: "new-cmd", args: [] }, // conflict
+      { name: "new-server", command: "brand-new", args: ["--flag"] }, // new
+    ];
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers,
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const detection = detectConflicts(input);
+
+    expect(detection.inSync).toHaveLength(1);
+    expect(detection.conflicts).toHaveLength(1);
+    expect(detection.noConflict).toHaveLength(1);
+
+    expect(detection.inSync[0]?.serverName).toBe("synced-server");
+    expect(detection.conflicts[0]?.serverName).toBe("conflict-server");
+    expect(detection.noConflict[0]?.originalName).toBe("new-server");
+  });
+});
+
 describe("import merge - strategies", () => {
   test("skip strategy keeps existing config unchanged", () => {
     const config = createConfigWithUpstream("test-server");

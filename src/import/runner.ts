@@ -313,6 +313,18 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
     );
   }
 
+  // Show in-sync servers in verbose mode
+  if (detection.inSync.length > 0 && options.verbose) {
+    console.log(
+      `\n${colors.green}=${colors.reset} ${detection.inSync.length} server(s) already in sync:`,
+    );
+    for (const server of detection.inSync) {
+      console.log(
+        `  ${colors.dim}• ${server.serverName} (from ${TOOL_DISPLAY_NAMES[server.sourceTool]})${colors.reset}`,
+      );
+    }
+  }
+
   // Step 4: Handle conflicts
   let mergeResult;
 
@@ -328,7 +340,7 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
   }
 
   // Step 5: Show summary
-  const summary = summarizeChanges(mergeResult.changes);
+  const summary = summarizeChanges(mergeResult.changes, mergeResult.inSync.length);
   console.log("\nChanges:");
   console.log(`  ${colors.green}+ ${summary.added} added${colors.reset}`);
   if (summary.updated > 0) {
@@ -341,6 +353,9 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
   }
   if (summary.skipped > 0) {
     console.log(`  ${colors.dim}- ${summary.skipped} skipped${colors.reset}`);
+  }
+  if (summary.inSync > 0) {
+    console.log(`  ${colors.green}= ${summary.inSync} already in sync${colors.reset}`);
   }
 
   // Step 6: Write or dry-run
