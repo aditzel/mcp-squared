@@ -80,9 +80,19 @@ describe("Cataloger", () => {
         upstreams: {},
         security: { tools: { allow: ["*:*"], block: [], confirm: [] } },
         operations: {
-          findTools: { defaultLimit: 5, maxLimit: 50, defaultMode: "fast" },
+          findTools: {
+            defaultLimit: 5,
+            maxLimit: 50,
+            defaultMode: "fast",
+            defaultDetailLevel: "L1",
+          },
           index: { refreshIntervalMs: 30000 },
           logging: { level: "info" },
+          selectionCache: {
+            enabled: true,
+            minCooccurrenceThreshold: 2,
+            maxBundleSuggestions: 3,
+          },
         },
       };
       await cataloger.connectAll(config);
@@ -106,9 +116,19 @@ describe("Cataloger", () => {
         },
         security: { tools: { allow: ["*:*"], block: [], confirm: [] } },
         operations: {
-          findTools: { defaultLimit: 5, maxLimit: 50, defaultMode: "fast" },
+          findTools: {
+            defaultLimit: 5,
+            maxLimit: 50,
+            defaultMode: "fast",
+            defaultDetailLevel: "L1",
+          },
           index: { refreshIntervalMs: 30000 },
           logging: { level: "info" },
+          selectionCache: {
+            enabled: true,
+            minCooccurrenceThreshold: 2,
+            maxBundleSuggestions: 3,
+          },
         },
       };
       await cataloger.connectAll(config);

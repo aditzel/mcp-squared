@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 /**
  * MCP² (Mercury Control Plane) - Main entry point.
  *
@@ -14,6 +15,7 @@
 
 import { parseArgs, printHelp } from "./cli/index.js";
 import { type McpSquaredConfig, loadConfig } from "./config/index.js";
+import { runImport } from "./import/runner.js";
 import { McpSquaredServer } from "./server/index.js";
 import { runConfigTui } from "./tui/config.js";
 import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
@@ -111,7 +113,9 @@ async function runTest(targetName: string | undefined): Promise<void> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`Error loading configuration: ${message}`);
-    console.error("Run 'mcp-squared config' to create or fix your configuration.");
+    console.error(
+      "Run 'mcp-squared config' to create or fix your configuration.",
+    );
     process.exit(1);
   }
 
@@ -182,6 +186,9 @@ async function main(): Promise<void> {
       break;
     case "test":
       await runTest(args.testTarget);
+      break;
+    case "import":
+      await runImport(args.import);
       break;
     default:
       await startServer();

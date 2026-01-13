@@ -14,7 +14,19 @@ import { IndexStore } from "../index/index.js";
 import type { CatalogedTool, Cataloger } from "../upstream/index.js";
 
 /**
- * Summary information about a tool returned from search results.
+ * Minimal tool identity (L0 detail level).
+ * Contains only the information needed to identify a tool.
+ */
+export interface ToolIdentity {
+  /** Tool name */
+  name: string;
+  /** Key identifying the upstream server */
+  serverKey: string;
+}
+
+/**
+ * Summary information about a tool (L1 detail level).
+ * Default level returned from search results.
  */
 export interface ToolSummary {
   /** Tool name */
@@ -24,6 +36,26 @@ export interface ToolSummary {
   /** Key identifying the upstream server */
   serverKey: string;
 }
+
+/**
+ * Full tool schema (L2 detail level).
+ * Includes inputSchema for immediate execution.
+ */
+export interface ToolFullSchema {
+  /** Tool name */
+  name: string;
+  /** Tool description (may be null) */
+  description: string | null;
+  /** Key identifying the upstream server */
+  serverKey: string;
+  /** Full JSON Schema for tool input parameters */
+  inputSchema: Record<string, unknown>;
+}
+
+/**
+ * Union type for tool results at different detail levels.
+ */
+export type ToolResult = ToolIdentity | ToolSummary | ToolFullSchema;
 
 /**
  * Result of a tool search operation.
@@ -140,7 +172,7 @@ export class Retriever {
   ): Promise<RetrieveResult> {
     // Support both new SearchOptions and legacy number parameter
     const opts: SearchOptions =
-      typeof options === "number" ? { limit: options } : options ?? {};
+      typeof options === "number" ? { limit: options } : (options ?? {});
     const effectiveLimit = Math.min(
       opts.limit ?? this.defaultLimit,
       this.maxLimit,
@@ -209,10 +241,7 @@ export class Retriever {
     limit: number,
   ): Promise<RetrieveResult> {
     // Check if we have embeddings available
-    if (
-      !this.embeddingGenerator ||
-      this.indexStore.getEmbeddingCount() === 0
-    ) {
+    if (!this.embeddingGenerator || this.indexStore.getEmbeddingCount() === 0) {
       // Fall back to fast search if embeddings not available
       return this.searchFast(query, limit);
     }
@@ -244,10 +273,7 @@ export class Retriever {
     limit: number,
   ): Promise<RetrieveResult> {
     // Check if we have embeddings available
-    if (
-      !this.embeddingGenerator ||
-      this.indexStore.getEmbeddingCount() === 0
-    ) {
+    if (!this.embeddingGenerator || this.indexStore.getEmbeddingCount() === 0) {
       // Fall back to fast search if embeddings not available
       return this.searchFast(query, limit);
     }
@@ -457,6 +483,16 @@ export class Retriever {
    */
   getDefaultMode(): SearchMode {
     return this.defaultMode;
+  }
+
+  /**
+   * Returns the underlying IndexStore for direct access.
+   * Use this for selection caching and co-occurrence tracking.
+   *
+   * @returns The IndexStore instance
+   */
+  getIndexStore(): IndexStore {
+    return this.indexStore;
   }
 
   /**
