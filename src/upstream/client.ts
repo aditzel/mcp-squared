@@ -1,3 +1,5 @@
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -7,6 +9,11 @@ import type {
   UpstreamSseServerConfig,
   UpstreamStdioServerConfig,
 } from "../config/schema.js";
+import {
+  McpOAuthProvider,
+  OAuthCallbackServer,
+  TokenStorage,
+} from "../oauth/index.js";
 
 export interface ToolInfo {
   name: string;
@@ -90,11 +97,17 @@ function createStdioTransport(
 /**
  * Creates an HTTP streaming transport for testing.
  * Uses StreamableHTTPClientTransport which is the modern MCP protocol.
+ *
+ * @param config - SSE server configuration
+ * @param log - Logging function
+ * @param verbose - Whether to log verbose output
+ * @param authProvider - Optional OAuth provider for authentication
  */
 function createHttpTransport(
   config: UpstreamSseServerConfig,
   log: (msg: string) => void,
   verbose: boolean,
+  authProvider?: McpOAuthProvider,
 ): StreamableHTTPClientTransport {
   log(`URL: ${config.sse.url}`);
 
@@ -103,14 +116,76 @@ function createHttpTransport(
     log(`Headers: ${Object.keys(headers).join(", ")}`);
   }
 
+  if (authProvider) {
+    log(`OAuth: ${config.sse.oauth?.grantType} flow configured`);
+  }
+
   log(`Creating HTTP streaming transport...`);
-  const transport = new StreamableHTTPClientTransport(new URL(config.sse.url), {
+
+  // Build options conditionally to avoid passing undefined authProvider
+  const transportOptions: {
+    authProvider?: OAuthClientProvider;
+    requestInit?: RequestInit;
+  } = {
     requestInit: {
       headers,
     },
-  });
+  };
+  if (authProvider) {
+    transportOptions.authProvider = authProvider;
+  }
+
+  const transport = new StreamableHTTPClientTransport(
+    new URL(config.sse.url),
+    transportOptions,
+  );
 
   return transport;
+}
+
+/**
+ * Handles OAuth authorization_code flow by opening browser and waiting for callback.
+ */
+async function handleOAuthCallback(
+  transport: StreamableHTTPClientTransport,
+  provider: McpOAuthProvider,
+  log: (msg: string) => void,
+): Promise<void> {
+  // Start callback server to receive the authorization code
+  const callbackServer = new OAuthCallbackServer({
+    port: 8089,
+    path: "/callback",
+    timeoutMs: 300_000, // 5 minutes
+  });
+
+  log(`Waiting for browser authorization...`);
+  log(`Callback URL: ${callbackServer.getCallbackUrl()}`);
+
+  try {
+    const result = await callbackServer.waitForCallback();
+
+    if (result.error) {
+      throw new Error(
+        `OAuth error: ${result.error}${result.errorDescription ? `: ${result.errorDescription}` : ""}`,
+      );
+    }
+
+    if (!result.code) {
+      throw new Error("No authorization code received");
+    }
+
+    // Verify state if present
+    if (result.state && !provider.verifyState(result.state)) {
+      throw new Error("OAuth state mismatch - possible CSRF attack");
+    }
+
+    log(`Received authorization code, exchanging for token...`);
+    await transport.finishAuth(result.code);
+    provider.clearCodeVerifier();
+    log(`OAuth authentication complete`);
+  } finally {
+    callbackServer.stop();
+  }
 }
 
 export async function testUpstreamConnection(
@@ -125,6 +200,8 @@ export async function testUpstreamConnection(
 
   let client: Client | null = null;
   let transport: Transport | null = null;
+  let httpTransport: StreamableHTTPClientTransport | null = null;
+  let authProvider: McpOAuthProvider | undefined;
 
   try {
     client = new Client({
@@ -148,11 +225,16 @@ export async function testUpstreamConnection(
         },
       );
     } else if (config.transport === "sse") {
-      transport = createHttpTransport(
-        config as UpstreamSseServerConfig,
-        log,
-        verbose,
-      ) as Transport;
+      const sseConfig = config as UpstreamSseServerConfig;
+
+      // Create OAuth provider if configured
+      if (sseConfig.sse.oauth) {
+        const tokenStorage = new TokenStorage();
+        authProvider = new McpOAuthProvider(name, sseConfig.sse.oauth, tokenStorage);
+      }
+
+      httpTransport = createHttpTransport(sseConfig, log, verbose, authProvider);
+      transport = httpTransport as Transport;
     } else {
       // TypeScript exhaustively checks transport types, but keep this for safety
       const unknownConfig = config as { transport: string };
@@ -181,6 +263,23 @@ export async function testUpstreamConnection(
 
     try {
       await Promise.race([connectPromise, timeoutPromise]);
+    } catch (err) {
+      // Handle OAuth authorization required
+      if (err instanceof UnauthorizedError && authProvider && httpTransport) {
+        if (authProvider.isInteractive()) {
+          log(`OAuth authorization required, opening browser...`);
+          await handleOAuthCallback(httpTransport, authProvider, log);
+
+          // Retry connection after auth
+          log(`Retrying connection after OAuth...`);
+          await Promise.race([client.connect(transport!), timeoutPromise]);
+        } else {
+          // client_credentials should have worked automatically
+          throw err;
+        }
+      } else {
+        throw err;
+      }
     } finally {
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId);

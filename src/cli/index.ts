@@ -13,8 +13,8 @@ import type { ImportScope, MergeStrategy, ToolId } from "../import/types.js";
  * Parsed command-line arguments.
  */
 export interface CliArgs {
-  /** Operating mode: server, config TUI, test, or import */
-  mode: "server" | "config" | "test" | "import";
+  /** Operating mode: server, config TUI, test, import, or auth */
+  mode: "server" | "config" | "test" | "import" | "auth";
   /** Whether --help was requested */
   help: boolean;
   /** Whether --version was requested */
@@ -25,6 +25,8 @@ export interface CliArgs {
   testVerbose: boolean;
   /** Import-specific options */
   import: ImportArgs;
+  /** Target upstream server name for auth mode (required) */
+  authTarget: string | undefined;
 }
 
 /**
@@ -120,6 +122,7 @@ export function parseArgs(args: string[]): CliArgs {
       list: false,
       verbose: false,
     },
+    authTarget: undefined,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -152,6 +155,16 @@ export function parseArgs(args: string[]): CliArgs {
       case "import":
         result.mode = "import";
         break;
+
+      case "auth": {
+        result.mode = "auth";
+        const nextArg = args[i + 1];
+        if (nextArg && !nextArg.startsWith("-")) {
+          result.authTarget = nextArg;
+          i++;
+        }
+        break;
+      }
 
       case "--list":
         result.import.list = true;
@@ -230,6 +243,7 @@ Usage:
   mcp-squared                   Start MCP server (stdio mode)
   mcp-squared config            Launch interactive configuration TUI
   mcp-squared test [upstream]   Test connection to upstream server(s)
+  mcp-squared auth <upstream>   Authenticate with an OAuth-protected upstream
   mcp-squared import [options]  Import MCP configs from other tools
   mcp-squared --help            Show this help message
   mcp-squared --version         Show version information
@@ -237,6 +251,7 @@ Usage:
 Commands:
   config, --config, -c          Launch configuration interface
   test [name], --test, -t       Test upstream connection (all if no name given)
+  auth <name>                   Authenticate with an OAuth-protected upstream
   import                        Import MCP server configs from other tools
   --help, -h                    Show help
   --version, -v                 Show version
@@ -257,11 +272,12 @@ Import Options:
 Supported Tools:
   claude-code, claude-desktop, cursor, windsurf, vscode, cline,
   roo-code, kilo-code, gemini-cli, zed, jetbrains, factory,
-  opencode, qwen-code, trae, antigravity
+  opencode, qwen-code, trae, antigravity, warp
 
 Examples:
   mcp-squared test github       Test connection to 'github' upstream
   mcp-squared test              Test all configured upstreams
+  mcp-squared auth vercel-mcp   Authenticate with 'vercel-mcp' upstream (OAuth)
   mcp-squared import --list     List all discovered MCP configs
   mcp-squared import --dry-run  Preview import changes
   mcp-squared import            Import with interactive conflict resolution
