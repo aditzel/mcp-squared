@@ -17,6 +17,15 @@ export interface TestResult {
   tools: ToolInfo[];
   error: string | undefined;
   durationMs: number;
+  /** Stderr output from the server process (verbose mode only) */
+  stderr: string | undefined;
+}
+
+export interface TestOptions {
+  /** Connection timeout in milliseconds (default: 30000) */
+  timeoutMs?: number;
+  /** Enable verbose logging */
+  verbose?: boolean;
 }
 
 function resolveEnvVars(env: Record<string, string>): Record<string, string> {
@@ -33,11 +42,14 @@ function resolveEnvVars(env: Record<string, string>): Record<string, string> {
 }
 
 export async function testUpstreamConnection(
-  _name: string,
+  name: string,
   config: UpstreamServerConfig,
-  timeoutMs = 30_000,
+  options: TestOptions = {},
 ): Promise<TestResult> {
+  const { timeoutMs = 30_000, verbose = false } = options;
   const startTime = Date.now();
+  const log = (msg: string) => verbose && console.log(`  [${name}] ${msg}`);
+  let stderrOutput = "";
 
   if (config.transport !== "stdio") {
     return {
@@ -47,6 +59,7 @@ export async function testUpstreamConnection(
       tools: [],
       error: "SSE transport not yet supported for testing",
       durationMs: Date.now() - startTime,
+      stderr: undefined,
     };
   }
 
@@ -55,17 +68,27 @@ export async function testUpstreamConnection(
   let transport: StdioClientTransport | null = null;
 
   try {
+    const fullCommand = [stdioConfig.stdio.command, ...stdioConfig.stdio.args].join(" ");
+    log(`Command: ${fullCommand}`);
+    if (stdioConfig.stdio.cwd) {
+      log(`Working dir: ${stdioConfig.stdio.cwd}`);
+    }
+
     client = new Client({
       name: "mcp-squared-test",
       version: "1.0.0",
     });
 
     const resolvedEnv = resolveEnvVars(config.env || {});
+    if (verbose && Object.keys(resolvedEnv).length > 0) {
+      log(`Environment: ${Object.keys(resolvedEnv).join(", ")}`);
+    }
     const envWithDefaults = { ...process.env, ...resolvedEnv } as Record<
       string,
       string
     >;
 
+    log(`Creating transport...`);
     transport = new StdioClientTransport({
       command: stdioConfig.stdio.command,
       args: stdioConfig.stdio.args,
@@ -74,6 +97,22 @@ export async function testUpstreamConnection(
       stderr: "pipe",
     });
 
+    // Capture stderr output
+    if (transport.stderr) {
+      transport.stderr.on("data", (chunk: Buffer) => {
+        const text = chunk.toString();
+        stderrOutput += text;
+        if (verbose) {
+          // Print stderr lines in real-time
+          for (const line of text.split("\n").filter((l) => l.trim())) {
+            console.log(`  [${name}] stderr: ${line}`);
+          }
+        }
+      });
+    }
+
+    log(`Connecting (timeout: ${timeoutMs}ms)...`);
+    const connectStart = Date.now();
     const connectPromise = client.connect(transport);
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -91,10 +130,17 @@ export async function testUpstreamConnection(
         clearTimeout(timeoutId);
       }
     }
+    log(`Connected in ${Date.now() - connectStart}ms`);
 
     const serverInfo = client.getServerVersion();
+    if (serverInfo) {
+      log(`Server: ${serverInfo.name} v${serverInfo.version}`);
+    }
 
+    log(`Fetching tools...`);
+    const toolsStart = Date.now();
     const { tools } = await client.listTools();
+    log(`Got ${tools.length} tools in ${Date.now() - toolsStart}ms`);
 
     const toolInfos: ToolInfo[] = tools.map((tool) => ({
       name: tool.name,
@@ -108,9 +154,11 @@ export async function testUpstreamConnection(
       tools: toolInfos,
       error: undefined,
       durationMs: Date.now() - startTime,
+      stderr: stderrOutput || undefined,
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
+    log(`Error: ${errorMessage}`);
     return {
       success: false,
       serverName: undefined,
@@ -118,8 +166,10 @@ export async function testUpstreamConnection(
       tools: [],
       error: errorMessage,
       durationMs: Date.now() - startTime,
+      stderr: stderrOutput || undefined,
     };
   } finally {
+    log(`Cleaning up...`);
     if (client) {
       try {
         await client.close();
@@ -130,5 +180,6 @@ export async function testUpstreamConnection(
         await transport.close();
       } catch {}
     }
+    log(`Done`);
   }
 }

@@ -21,6 +21,8 @@ export interface CliArgs {
   version: boolean;
   /** Target upstream server name for test mode (optional) */
   testTarget: string | undefined;
+  /** Verbose output for test mode */
+  testVerbose: boolean;
   /** Import-specific options */
   import: ImportArgs;
 }
@@ -109,6 +111,7 @@ export function parseArgs(args: string[]): CliArgs {
     help: false,
     version: false,
     testTarget: undefined,
+    testVerbose: false,
     import: {
       scope: "both",
       strategy: "skip",
@@ -163,7 +166,9 @@ export function parseArgs(args: string[]): CliArgs {
         break;
 
       case "--verbose":
+      case "-V":
         result.import.verbose = true;
+        result.testVerbose = true;
         break;
 
       case "--source": {
@@ -235,6 +240,9 @@ Commands:
   import                        Import MCP server configs from other tools
   --help, -h                    Show help
   --version, -v                 Show version
+
+Test Options:
+  --verbose, -V                 Show detailed connection info (stderr, timing)
 
 Import Options:
   --list                        List discovered configs without importing

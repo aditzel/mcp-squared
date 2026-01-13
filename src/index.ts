@@ -69,9 +69,10 @@ async function startServer(): Promise<void> {
  *
  * @param name - The upstream server name
  * @param result - The test result to format
+ * @param verbose - Whether to show additional details
  * @internal
  */
-function formatTestResult(name: string, result: TestResult): void {
+function formatTestResult(name: string, result: TestResult, verbose = false): void {
   const status = result.success ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m";
   console.log(`\n${status} ${name}`);
 
@@ -95,6 +96,19 @@ function formatTestResult(name: string, result: TestResult): void {
   } else {
     console.log(`  Error: ${result.error}`);
     console.log(`  Time: ${result.durationMs}ms`);
+    // Show stderr in non-verbose mode for failed connections (verbose mode prints in real-time)
+    if (!verbose && result.stderr) {
+      console.log(`  Stderr output:`);
+      for (const line of result.stderr.split("\n").slice(0, 10)) {
+        if (line.trim()) {
+          console.log(`    ${line}`);
+        }
+      }
+      const lines = result.stderr.split("\n").filter((l) => l.trim());
+      if (lines.length > 10) {
+        console.log(`    ... and ${lines.length - 10} more lines`);
+      }
+    }
   }
 }
 
@@ -103,9 +117,10 @@ function formatTestResult(name: string, result: TestResult): void {
  * Tests a specific server if name provided, or all enabled servers.
  *
  * @param targetName - Optional specific server name to test
+ * @param verbose - Whether to show detailed connection info
  * @internal
  */
-async function runTest(targetName: string | undefined): Promise<void> {
+async function runTest(targetName: string | undefined, verbose = false): Promise<void> {
   let config: McpSquaredConfig;
   try {
     const loaded = await loadConfig();
@@ -139,8 +154,8 @@ async function runTest(targetName: string | undefined): Promise<void> {
     }
 
     console.log(`Testing upstream: ${targetName}...`);
-    const result = await testUpstreamConnection(targetName, upstream);
-    formatTestResult(targetName, result);
+    const result = await testUpstreamConnection(targetName, upstream, { verbose });
+    formatTestResult(targetName, result, verbose);
     process.exit(result.success ? 0 : 1);
   }
 
@@ -153,8 +168,8 @@ async function runTest(targetName: string | undefined): Promise<void> {
       continue;
     }
 
-    const result = await testUpstreamConnection(name, upstream);
-    formatTestResult(name, result);
+    const result = await testUpstreamConnection(name, upstream, { verbose });
+    formatTestResult(name, result, verbose);
     if (!result.success) allSuccess = false;
   }
 
@@ -185,7 +200,7 @@ async function main(): Promise<void> {
       await runConfigTui();
       break;
     case "test":
-      await runTest(args.testTarget);
+      await runTest(args.testTarget, args.testVerbose);
       break;
     case "import":
       await runImport(args.import);
