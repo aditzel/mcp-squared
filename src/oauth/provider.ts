@@ -21,8 +21,8 @@ import type {
   OAuthClientMetadata,
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
-import { openBrowser, logAuthorizationUrl } from "./browser.js";
-import { TokenStorage } from "./token-storage.js";
+import { logAuthorizationUrl, openBrowser } from "./browser.js";
+import type { TokenStorage } from "./token-storage.js";
 
 /** Default callback port for OAuth redirects */
 const DEFAULT_CALLBACK_PORT = 8089;
@@ -114,7 +114,9 @@ export class McpOAuthProvider implements OAuthClientProvider {
     if (!this._state) {
       const array = new Uint8Array(32);
       crypto.getRandomValues(array);
-      this._state = Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
+      this._state = Array.from(array, (b) =>
+        b.toString(16).padStart(2, "0"),
+      ).join("");
     }
     return this._state;
   }

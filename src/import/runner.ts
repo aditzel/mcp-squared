@@ -340,7 +340,10 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
   }
 
   // Step 5: Show summary
-  const summary = summarizeChanges(mergeResult.changes, mergeResult.inSync.length);
+  const summary = summarizeChanges(
+    mergeResult.changes,
+    mergeResult.inSync.length,
+  );
   console.log("\nChanges:");
   console.log(`  ${colors.green}+ ${summary.added} added${colors.reset}`);
   if (summary.updated > 0) {
@@ -355,7 +358,9 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
     console.log(`  ${colors.dim}- ${summary.skipped} skipped${colors.reset}`);
   }
   if (summary.inSync > 0) {
-    console.log(`  ${colors.green}= ${summary.inSync} already in sync${colors.reset}`);
+    console.log(
+      `  ${colors.green}= ${summary.inSync} already in sync${colors.reset}`,
+    );
   }
 
   // Step 6: Write or dry-run

@@ -26,6 +26,7 @@ import {
 } from "./config/index.js";
 import type { UpstreamSseServerConfig } from "./config/schema.js";
 import { runImport } from "./import/runner.js";
+import { runInstall } from "./install/runner.js";
 import {
   McpOAuthProvider,
   OAuthCallbackServer,
@@ -87,7 +88,11 @@ async function startServer(): Promise<void> {
  * @param verbose - Whether to show additional details
  * @internal
  */
-function formatTestResult(name: string, result: TestResult, verbose = false): void {
+function formatTestResult(
+  name: string,
+  result: TestResult,
+  verbose = false,
+): void {
   const status = result.success ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m";
   console.log(`\n${status} ${name}`);
 
@@ -135,7 +140,10 @@ function formatTestResult(name: string, result: TestResult, verbose = false): vo
  * @param verbose - Whether to show detailed connection info
  * @internal
  */
-async function runTest(targetName: string | undefined, verbose = false): Promise<void> {
+async function runTest(
+  targetName: string | undefined,
+  verbose = false,
+): Promise<void> {
   let config: McpSquaredConfig;
   try {
     const loaded = await loadConfig();
@@ -161,7 +169,9 @@ async function runTest(targetName: string | undefined, verbose = false): Promise
   // Validate configuration before testing
   const validationIssues = validateConfig(config);
   const errorUpstreams = new Set(
-    validationIssues.filter((i) => i.severity === "error").map((i) => i.upstream),
+    validationIssues
+      .filter((i) => i.severity === "error")
+      .map((i) => i.upstream),
   );
 
   if (validationIssues.length > 0) {
@@ -194,7 +204,9 @@ async function runTest(targetName: string | undefined, verbose = false): Promise
     }
 
     console.log(`Testing upstream: ${targetName}...`);
-    const result = await testUpstreamConnection(targetName, upstream, { verbose });
+    const result = await testUpstreamConnection(targetName, upstream, {
+      verbose,
+    });
     formatTestResult(targetName, result, verbose);
     process.exit(result.success ? 0 : 1);
   }
@@ -269,8 +281,12 @@ async function runAuth(targetName: string): Promise<void> {
   }
 
   if (upstream.transport !== "sse") {
-    console.error(`Error: Upstream '${targetName}' uses ${upstream.transport} transport.`);
-    console.error("OAuth authentication is only supported for SSE/HTTP upstreams.");
+    console.error(
+      `Error: Upstream '${targetName}' uses ${upstream.transport} transport.`,
+    );
+    console.error(
+      "OAuth authentication is only supported for SSE/HTTP upstreams.",
+    );
     process.exit(1);
   }
 
@@ -282,16 +298,22 @@ async function runAuth(targetName: string): Promise<void> {
   // Create OAuth provider and storage
   // Use auth config if provided, otherwise use defaults
   const tokenStorage = new TokenStorage();
-  const authConfig = typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : undefined;
+  const authConfig =
+    typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : undefined;
   const callbackPort = authConfig?.callbackPort ?? 8089;
   const clientName = authConfig?.clientName ?? "MCP²";
-  const authProvider = new McpOAuthProvider(targetName, tokenStorage, { callbackPort, clientName });
+  const authProvider = new McpOAuthProvider(targetName, tokenStorage, {
+    callbackPort,
+    clientName,
+  });
 
   // Check if we already have valid tokens
   const existingTokens = authProvider.tokens();
   if (existingTokens && !authProvider.isTokenExpired()) {
     console.log("\nExisting valid tokens found.");
-    console.log(`Run 'mcp-squared test ${targetName}' to verify the connection.`);
+    console.log(
+      `Run 'mcp-squared test ${targetName}' to verify the connection.`,
+    );
     process.exit(0);
   }
 
@@ -328,11 +350,17 @@ async function runAuth(targetName: string): Promise<void> {
     // Attempt to connect - this will trigger OAuth flow and throw UnauthorizedError
     // after opening the browser for authorization
     // Cast needed due to exactOptionalPropertyTypes incompatibility
-    await client.connect(transport as unknown as import("@modelcontextprotocol/sdk/shared/transport.js").Transport);
+    await client.connect(
+      transport as unknown as import(
+        "@modelcontextprotocol/sdk/shared/transport.js",
+      ).Transport,
+    );
 
     // If we get here without error, we're already authenticated
     console.log("\n\x1b[32m✓\x1b[0m Already authenticated!");
-    console.log(`Run 'mcp-squared test ${targetName}' to verify the connection.`);
+    console.log(
+      `Run 'mcp-squared test ${targetName}' to verify the connection.`,
+    );
     await client.close();
     callbackServer.stop();
     process.exit(0);
@@ -429,6 +457,9 @@ async function main(): Promise<void> {
         process.exit(1);
       }
       await runAuth(args.authTarget);
+      break;
+    case "install":
+      await runInstall(args.install);
       break;
     default:
       await startServer();

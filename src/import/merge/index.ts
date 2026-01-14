@@ -151,7 +151,10 @@ function areConfigsEqual(
     }
     for (let i = 0; i < aHeaderKeys.length; i++) {
       const key = aHeaderKeys[i];
-      if (key !== bHeaderKeys[i] || a.sse.headers[key!] !== b.sse.headers[key!]) {
+      if (
+        key !== bHeaderKeys[i] ||
+        a.sse.headers[key!] !== b.sse.headers[key!]
+      ) {
         return false;
       }
     }

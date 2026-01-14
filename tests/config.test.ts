@@ -397,7 +397,10 @@ describe("validateConfig", () => {
     };
     const issues = validateConfig(config);
     expect(issues.length).toBe(2);
-    expect(issues.map((i) => i.upstream).sort()).toEqual(["broken1", "broken2"]);
+    expect(issues.map((i) => i.upstream).sort()).toEqual([
+      "broken1",
+      "broken2",
+    ]);
   });
 
   test("skips disabled upstreams", () => {

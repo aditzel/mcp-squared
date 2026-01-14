@@ -13,7 +13,6 @@ import type { BaseConfigParser } from "./base.js";
 import { AntigravityParser } from "./antigravity.js";
 // Standard format parsers (mcpServers key)
 import { ClaudeCodeParser } from "./claude-code.js";
-import { WarpParser } from "./warp.js";
 import { ClaudeDesktopParser } from "./claude-desktop.js";
 import { ClineParser } from "./cline.js";
 import { CursorParser } from "./cursor.js";
@@ -24,6 +23,7 @@ import { KiloCodeParser } from "./kilo-code.js";
 import { QwenCodeParser } from "./qwen-code.js";
 import { RooCodeParser } from "./roo-code.js";
 import { TraeParser } from "./trae.js";
+import { WarpParser } from "./warp.js";
 import { WindsurfParser } from "./windsurf.js";
 
 import { OpenCodeParser } from "./opencode.js";

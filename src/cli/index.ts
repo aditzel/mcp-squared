@@ -8,13 +8,14 @@
  */
 
 import type { ImportScope, MergeStrategy, ToolId } from "../import/types.js";
+import type { InstallMode, InstallScope } from "../install/types.js";
 
 /**
  * Parsed command-line arguments.
  */
 export interface CliArgs {
-  /** Operating mode: server, config TUI, test, import, or auth */
-  mode: "server" | "config" | "test" | "import" | "auth";
+  /** Operating mode: server, config TUI, test, import, auth, or install */
+  mode: "server" | "config" | "test" | "import" | "auth" | "install";
   /** Whether --help was requested */
   help: boolean;
   /** Whether --version was requested */
@@ -27,6 +28,8 @@ export interface CliArgs {
   import: ImportArgs;
   /** Target upstream server name for auth mode (required) */
   authTarget: string | undefined;
+  /** Install-specific options */
+  install: InstallArgs;
 }
 
 /**
@@ -49,6 +52,40 @@ export interface ImportArgs {
   list: boolean;
   /** Verbose output */
   verbose: boolean;
+}
+
+/**
+ * Install-specific command-line arguments.
+ */
+export interface InstallArgs {
+  /** Target tool to install to (skip selection prompt) */
+  tool?: ToolId;
+  /** Scope preference: user or project */
+  scope?: InstallScope;
+  /** Install mode: replace all or add alongside */
+  mode?: InstallMode;
+  /** Enable interactive prompts (default: true) */
+  interactive: boolean;
+  /** Preview changes without writing */
+  dryRun: boolean;
+  /** Server name to use for mcp-squared entry (default: "mcp-squared") */
+  serverName: string;
+  /** Command to run (default: "mcp-squared") */
+  command: string;
+}
+
+/**
+ * Checks if a string is a valid install mode.
+ */
+function isValidInstallMode(value: string): value is InstallMode {
+  return value === "replace" || value === "add";
+}
+
+/**
+ * Checks if a string is a valid install scope.
+ */
+function isValidInstallScope(value: string): value is InstallScope {
+  return value === "user" || value === "project";
 }
 
 /** Valid tool IDs for import source validation */
@@ -123,6 +160,12 @@ export function parseArgs(args: string[]): CliArgs {
       verbose: false,
     },
     authTarget: undefined,
+    install: {
+      interactive: true,
+      dryRun: false,
+      serverName: "mcp-squared",
+      command: "mcp-squared",
+    },
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -166,16 +209,54 @@ export function parseArgs(args: string[]): CliArgs {
         break;
       }
 
+      case "install":
+        result.mode = "install";
+        break;
+
+      case "--tool": {
+        const value = argValue ?? args[++i];
+        if (value && isValidToolId(value)) {
+          result.install.tool = value;
+        }
+        break;
+      }
+
+      case "--mode": {
+        const value = argValue ?? args[++i];
+        if (value && isValidInstallMode(value)) {
+          result.install.mode = value;
+        }
+        break;
+      }
+
+      case "--name": {
+        const value = argValue ?? args[++i];
+        if (value) {
+          result.install.serverName = value;
+        }
+        break;
+      }
+
+      case "--command": {
+        const value = argValue ?? args[++i];
+        if (value) {
+          result.install.command = value;
+        }
+        break;
+      }
+
       case "--list":
         result.import.list = true;
         break;
 
       case "--dry-run":
         result.import.dryRun = true;
+        result.install.dryRun = true;
         break;
 
       case "--no-interactive":
         result.import.interactive = false;
+        result.install.interactive = false;
         break;
 
       case "--verbose":
@@ -204,6 +285,10 @@ export function parseArgs(args: string[]): CliArgs {
         const value = argValue ?? args[++i];
         if (value && isValidScope(value)) {
           result.import.scope = value;
+        }
+        // Also handle install scope (user or project only)
+        if (value && isValidInstallScope(value)) {
+          result.install.scope = value;
         }
         break;
       }
@@ -245,6 +330,7 @@ Usage:
   mcp-squared test [upstream]   Test connection to upstream server(s)
   mcp-squared auth <upstream>   Authenticate with an OAuth-protected upstream
   mcp-squared import [options]  Import MCP configs from other tools
+  mcp-squared install [options] Install MCP² into other MCP clients
   mcp-squared --help            Show this help message
   mcp-squared --version         Show version information
 
@@ -253,6 +339,7 @@ Commands:
   test [name], --test, -t       Test upstream connection (all if no name given)
   auth <name>                   Authenticate with an OAuth-protected upstream
   import                        Import MCP server configs from other tools
+  install                       Install MCP² as a server in other MCP clients
   --help, -h                    Show help
   --version, -v                 Show version
 
@@ -269,6 +356,15 @@ Import Options:
   --no-interactive              Disable interactive prompts (use --strategy)
   --verbose                     Show detailed output
 
+Install Options:
+  --tool=<tool>                 Target tool (skip selection prompt)
+  --scope=<scope>               Scope: user or project
+  --mode=<mode>                 Mode: replace (all) or add (alongside existing)
+  --name=<name>                 Server name (default: mcp-squared)
+  --command=<cmd>               Command to run (default: mcp-squared)
+  --dry-run                     Preview changes without writing
+  --no-interactive              Disable interactive prompts
+
 Supported Tools:
   claude-code, claude-desktop, cursor, windsurf, vscode, cline,
   roo-code, kilo-code, gemini-cli, zed, jetbrains, factory,
@@ -282,5 +378,8 @@ Examples:
   mcp-squared import --dry-run  Preview import changes
   mcp-squared import            Import with interactive conflict resolution
   mcp-squared import --source=cursor --no-interactive --strategy=rename
+  mcp-squared install           Install MCP² interactively
+  mcp-squared install --tool=cursor --scope=user --mode=add
+  mcp-squared install --dry-run Preview installation changes
 `);
 }

@@ -257,8 +257,7 @@ export class Cataloger {
             // Mark as pending and let the user run `mcp-squared auth <upstream>`
             connection.authPending = true;
             connection.status = "error";
-            connection.error =
-              `OAuth authorization required. Run: mcp-squared auth ${key}`;
+            connection.error = `OAuth authorization required. Run: mcp-squared auth ${key}`;
             return;
           }
           // client_credentials should have worked automatically
@@ -654,7 +653,10 @@ export class Cataloger {
   private createHttpTransport(
     key: string,
     config: UpstreamSseServerConfig,
-  ): { transport: StreamableHTTPClientTransport; authProvider: McpOAuthProvider | null } {
+  ): {
+    transport: StreamableHTTPClientTransport;
+    authProvider: McpOAuthProvider | null;
+  } {
     const resolvedEnv = resolveEnvVars(config.env);
 
     // Resolve env vars in headers
@@ -673,7 +675,8 @@ export class Cataloger {
     const tokenStorage = new TokenStorage();
     const hasStoredTokens = tokenStorage.load(key)?.tokens !== undefined;
     if (config.sse.auth || hasStoredTokens) {
-      const authOptions = typeof config.sse.auth === "object" ? config.sse.auth : {};
+      const authOptions =
+        typeof config.sse.auth === "object" ? config.sse.auth : {};
       authProvider = new McpOAuthProvider(key, tokenStorage, authOptions);
     }
 

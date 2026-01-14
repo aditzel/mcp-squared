@@ -231,11 +231,17 @@ export async function testUpstreamConnection(
       const tokenStorage = new TokenStorage();
       const hasStoredTokens = tokenStorage.load(name)?.tokens !== undefined;
       if (sseConfig.sse.auth || hasStoredTokens) {
-        const authOptions = typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : {};
+        const authOptions =
+          typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : {};
         authProvider = new McpOAuthProvider(name, tokenStorage, authOptions);
       }
 
-      httpTransport = createHttpTransport(sseConfig, log, verbose, authProvider);
+      httpTransport = createHttpTransport(
+        sseConfig,
+        log,
+        verbose,
+        authProvider,
+      );
       transport = httpTransport as Transport;
     } else {
       // TypeScript exhaustively checks transport types, but keep this for safety
