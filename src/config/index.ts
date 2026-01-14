@@ -53,3 +53,12 @@ export {
 } from "./save.js";
 
 export { migrateConfig, type RawConfig } from "./migrations/index.js";
+
+export {
+  formatValidationIssues,
+  validateConfig,
+  validateStdioUpstream,
+  validateUpstreamConfig,
+  type ValidationIssue,
+  type ValidationSeverity,
+} from "./validate.js";

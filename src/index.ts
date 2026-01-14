@@ -17,7 +17,13 @@ import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { parseArgs, printHelp } from "./cli/index.js";
-import { type McpSquaredConfig, loadConfig } from "./config/index.js";
+import {
+  type McpSquaredConfig,
+  formatValidationIssues,
+  loadConfig,
+  validateConfig,
+  validateUpstreamConfig,
+} from "./config/index.js";
 import type { UpstreamSseServerConfig } from "./config/schema.js";
 import { runImport } from "./import/runner.js";
 import {
@@ -152,6 +158,17 @@ async function runTest(targetName: string | undefined, verbose = false): Promise
     process.exit(1);
   }
 
+  // Validate configuration before testing
+  const validationIssues = validateConfig(config);
+  const errorUpstreams = new Set(
+    validationIssues.filter((i) => i.severity === "error").map((i) => i.upstream),
+  );
+
+  if (validationIssues.length > 0) {
+    console.error(formatValidationIssues(validationIssues));
+    console.error("");
+  }
+
   if (targetName) {
     const upstream = config.upstreams[targetName];
     if (!upstream) {
@@ -159,6 +176,20 @@ async function runTest(targetName: string | undefined, verbose = false): Promise
       console.error(
         `Available upstreams: ${Object.keys(config.upstreams).join(", ")}`,
       );
+      process.exit(1);
+    }
+
+    // Check for validation errors on target upstream
+    const targetIssues = validateUpstreamConfig(targetName, upstream);
+    const targetErrors = targetIssues.filter((i) => i.severity === "error");
+    if (targetErrors.length > 0) {
+      console.error(`\n\x1b[31m✗\x1b[0m ${targetName}`);
+      console.error(
+        `  Error: Invalid configuration - ${targetErrors[0]?.message}`,
+      );
+      if (targetErrors[0]?.suggestion) {
+        console.error(`  \x1b[90m→ ${targetErrors[0].suggestion}\x1b[0m`);
+      }
       process.exit(1);
     }
 
@@ -174,6 +205,20 @@ async function runTest(targetName: string | undefined, verbose = false): Promise
   for (const [name, upstream] of upstreamEntries) {
     if (!upstream.enabled) {
       console.log(`\n⊘ ${name} (disabled)`);
+      continue;
+    }
+
+    // Skip upstreams with configuration errors
+    if (errorUpstreams.has(name)) {
+      console.log(`\n\x1b[31m✗\x1b[0m ${name}`);
+      const issue = validationIssues.find(
+        (i) => i.upstream === name && i.severity === "error",
+      );
+      console.log(`  Error: Invalid configuration - ${issue?.message}`);
+      if (issue?.suggestion) {
+        console.log(`  \x1b[90m→ ${issue.suggestion}\x1b[0m`);
+      }
+      allSuccess = false;
       continue;
     }
 

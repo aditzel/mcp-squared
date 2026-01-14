@@ -7,10 +7,13 @@ import {
   DEFAULT_CONFIG,
   type McpSquaredConfig,
   discoverConfigPath,
+  formatValidationIssues,
   loadConfig,
   loadConfigFromPath,
   migrateConfig,
   saveConfig,
+  validateConfig,
+  validateStdioUpstream,
 } from "@/config";
 
 describe("ConfigSchema", () => {
@@ -262,5 +265,192 @@ describe("saveConfig", () => {
     await saveConfig(configPath, config);
     const result = await loadConfigFromPath(configPath, "user");
     expect(result.config.upstreams["test"]).toBeDefined();
+  });
+});
+
+describe("validateStdioUpstream", () => {
+  test("detects npx with empty args", () => {
+    const issues = validateStdioUpstream("test-upstream", {
+      transport: "stdio",
+      enabled: true,
+      env: {},
+      stdio: {
+        command: "npx",
+        args: [],
+      },
+    });
+    expect(issues.length).toBe(1);
+    expect(issues[0]?.severity).toBe("error");
+    expect(issues[0]?.message).toContain("requires arguments");
+    expect(issues[0]?.upstream).toBe("test-upstream");
+  });
+
+  test("detects bunx with empty args", () => {
+    const issues = validateStdioUpstream("test", {
+      transport: "stdio",
+      enabled: true,
+      env: {},
+      stdio: {
+        command: "bunx",
+        args: [],
+      },
+    });
+    expect(issues.length).toBe(1);
+    expect(issues[0]?.severity).toBe("error");
+  });
+
+  test("detects node with empty args", () => {
+    const issues = validateStdioUpstream("test", {
+      transport: "stdio",
+      enabled: true,
+      env: {},
+      stdio: {
+        command: "node",
+        args: [],
+      },
+    });
+    expect(issues.length).toBe(1);
+    expect(issues[0]?.severity).toBe("error");
+  });
+
+  test("detects bash with empty args", () => {
+    const issues = validateStdioUpstream("test", {
+      transport: "stdio",
+      enabled: true,
+      env: {},
+      stdio: {
+        command: "bash",
+        args: [],
+      },
+    });
+    expect(issues.length).toBe(1);
+    expect(issues[0]?.severity).toBe("error");
+    expect(issues[0]?.message).toContain("read from stdin");
+  });
+
+  test("detects docker with empty args", () => {
+    const issues = validateStdioUpstream("test", {
+      transport: "stdio",
+      enabled: true,
+      env: {},
+      stdio: {
+        command: "docker",
+        args: [],
+      },
+    });
+    expect(issues.length).toBe(1);
+    expect(issues[0]?.severity).toBe("error");
+    expect(issues[0]?.message).toContain("docker");
+  });
+
+  test("accepts valid npx config", () => {
+    const issues = validateStdioUpstream("test", {
+      transport: "stdio",
+      enabled: true,
+      env: {},
+      stdio: {
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-github"],
+      },
+    });
+    expect(issues.length).toBe(0);
+  });
+
+  test("accepts command with empty args when appropriate", () => {
+    const issues = validateStdioUpstream("test", {
+      transport: "stdio",
+      enabled: true,
+      env: {},
+      stdio: {
+        command: "/path/to/my-mcp-server",
+        args: [],
+      },
+    });
+    expect(issues.length).toBe(0);
+  });
+});
+
+describe("validateConfig", () => {
+  test("finds issues in multiple upstreams", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        broken1: {
+          transport: "stdio",
+          enabled: true,
+          env: {},
+          stdio: { command: "npx", args: [] },
+        },
+        broken2: {
+          transport: "stdio",
+          enabled: true,
+          env: {},
+          stdio: { command: "bash", args: [] },
+        },
+        working: {
+          transport: "stdio",
+          enabled: true,
+          env: {},
+          stdio: { command: "npx", args: ["-y", "some-package"] },
+        },
+      },
+    };
+    const issues = validateConfig(config);
+    expect(issues.length).toBe(2);
+    expect(issues.map((i) => i.upstream).sort()).toEqual(["broken1", "broken2"]);
+  });
+
+  test("skips disabled upstreams", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        disabled: {
+          transport: "stdio",
+          enabled: false,
+          env: {},
+          stdio: { command: "npx", args: [] },
+        },
+      },
+    };
+    const issues = validateConfig(config);
+    expect(issues.length).toBe(0);
+  });
+
+  test("handles SSE upstreams without issues", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        remote: {
+          transport: "sse",
+          enabled: true,
+          env: {},
+          sse: { url: "https://example.com/mcp", headers: {} },
+        },
+      },
+    };
+    const issues = validateConfig(config);
+    expect(issues.length).toBe(0);
+  });
+});
+
+describe("formatValidationIssues", () => {
+  test("formats errors", () => {
+    const output = formatValidationIssues([
+      {
+        severity: "error",
+        upstream: "test",
+        message: "Test error",
+        suggestion: "Fix it",
+      },
+    ]);
+    expect(output).toContain("Configuration Errors");
+    expect(output).toContain("test");
+    expect(output).toContain("Test error");
+    expect(output).toContain("Fix it");
+  });
+
+  test("returns empty string for no issues", () => {
+    const output = formatValidationIssues([]);
+    expect(output).toBe("");
   });
 });
