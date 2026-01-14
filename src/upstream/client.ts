@@ -227,9 +227,10 @@ export async function testUpstreamConnection(
     } else if (config.transport === "sse") {
       const sseConfig = config as UpstreamSseServerConfig;
 
-      // Create OAuth provider if auth is enabled
-      if (sseConfig.sse.auth) {
-        const tokenStorage = new TokenStorage();
+      // Create OAuth provider if auth is enabled OR if stored tokens exist
+      const tokenStorage = new TokenStorage();
+      const hasStoredTokens = tokenStorage.load(name)?.tokens !== undefined;
+      if (sseConfig.sse.auth || hasStoredTokens) {
         const authOptions = typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : {};
         authProvider = new McpOAuthProvider(name, tokenStorage, authOptions);
       }

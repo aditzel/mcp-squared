@@ -668,10 +668,11 @@ export class Cataloger {
       }
     }
 
-    // Create OAuth provider if auth is enabled
+    // Create OAuth provider if auth is enabled OR if stored tokens exist
     let authProvider: McpOAuthProvider | null = null;
-    if (config.sse.auth) {
-      const tokenStorage = new TokenStorage();
+    const tokenStorage = new TokenStorage();
+    const hasStoredTokens = tokenStorage.load(key)?.tokens !== undefined;
+    if (config.sse.auth || hasStoredTokens) {
       const authOptions = typeof config.sse.auth === "object" ? config.sse.auth : {};
       authProvider = new McpOAuthProvider(key, tokenStorage, authOptions);
     }
