@@ -16,6 +16,7 @@
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { parseArgs, printHelp } from "./cli/index.js";
 import {
   type McpSquaredConfig,
@@ -350,11 +351,7 @@ async function runAuth(targetName: string): Promise<void> {
     // Attempt to connect - this will trigger OAuth flow and throw UnauthorizedError
     // after opening the browser for authorization
     // Cast needed due to exactOptionalPropertyTypes incompatibility
-    await client.connect(
-      transport as unknown as import(
-        "@modelcontextprotocol/sdk/shared/transport.js",
-      ).Transport,
-    );
+    await client.connect(transport as unknown as Transport);
 
     // If we get here without error, we're already authenticated
     console.log("\n\x1b[32m✓\x1b[0m Already authenticated!");
