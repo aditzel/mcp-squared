@@ -11,6 +11,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { DEFAULT_CONFIG, type McpSquaredConfig } from "@/config/schema";
+import { compilePolicy, getToolVisibilityCompiled } from "@/security/index.js";
 import { McpSquaredServer } from "@/server/index";
 
 // Helper to create config with custom security settings
@@ -78,19 +79,32 @@ describe("Security policy filtering", () => {
       },
     ]);
 
+    // Both tools should be in the raw search results (retriever doesn't filter)
     const result = await server.getRetriever().search("tool");
-    // Both tools should be in the raw search results
     expect(result.tools.length).toBe(2);
 
-    // But the server would filter them - we can verify via indexStore directly
-    const store = server.getRetriever().getIndexStore();
-    expect(store.getToolCount()).toBe(2);
+    // Verify policy filtering using the same logic as filterToolsByPolicy
+    const compiled = compilePolicy(config);
+    const safeVisibility = getToolVisibilityCompiled(
+      "safe",
+      "safe_tool",
+      compiled,
+    );
+    const dangerVisibility = getToolVisibilityCompiled(
+      "dangerous",
+      "danger_tool",
+      compiled,
+    );
+
+    // Safe tool should be visible, dangerous tool should be blocked
+    expect(safeVisibility.visible).toBe(true);
+    expect(dangerVisibility.visible).toBe(false);
   });
 
   test("confirm policy marks tools with requiresConfirmation", () => {
     const config = createSecurityConfig({
       allow: ["*:*"],
-      confirm: ["fs:write*"],
+      confirm: ["fs:write_file"], // Exact match (glob patterns like fs:write* not supported)
     });
     server = new McpSquaredServer({ config });
 
@@ -102,11 +116,28 @@ describe("Security policy filtering", () => {
     // Verify tools are indexed
     const store = server.getRetriever().getIndexStore();
     expect(store.getToolCount()).toBe(2);
+
+    // Verify policy filtering marks confirm-list tools correctly
+    const compiled = compilePolicy(config);
+    const readVisibility = getToolVisibilityCompiled("fs", "read_file", compiled);
+    const writeVisibility = getToolVisibilityCompiled(
+      "fs",
+      "write_file",
+      compiled,
+    );
+
+    // read_file should be visible without confirmation
+    expect(readVisibility.visible).toBe(true);
+    expect(readVisibility.requiresConfirmation).toBe(false);
+
+    // write_file should be visible but require confirmation
+    expect(writeVisibility.visible).toBe(true);
+    expect(writeVisibility.requiresConfirmation).toBe(true);
   });
 
   test("allow policy with specific patterns works", () => {
     const config = createSecurityConfig({
-      allow: ["fs:read*", "github:*"],
+      allow: ["fs:read_file", "github:*"], // Exact match + wildcard (glob patterns like fs:read* not supported)
       block: [],
     });
     server = new McpSquaredServer({ config });
@@ -117,7 +148,26 @@ describe("Security policy filtering", () => {
       { name: "list_repos", description: "List repos", serverKey: "github" },
     ]);
 
+    // All tools are indexed (retriever doesn't filter)
     expect(server.getRetriever().getIndexStore().getToolCount()).toBe(3);
+
+    // Verify policy filtering only allows matching patterns
+    const compiled = compilePolicy(config);
+
+    // fs:read_file matches "fs:read_file" exactly - should be visible
+    expect(getToolVisibilityCompiled("fs", "read_file", compiled).visible).toBe(
+      true,
+    );
+
+    // fs:write_file does NOT match any allow pattern - should be hidden
+    expect(getToolVisibilityCompiled("fs", "write_file", compiled).visible).toBe(
+      false,
+    );
+
+    // github:list_repos matches "github:*" - should be visible
+    expect(
+      getToolVisibilityCompiled("github", "list_repos", compiled).visible,
+    ).toBe(true);
   });
 });
 

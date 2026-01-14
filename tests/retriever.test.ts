@@ -189,7 +189,9 @@ describe("Retriever", () => {
 
       // Generate embeddings - this requires the model to be loaded
       // which is slow, so we just test it doesn't throw
+      const count = await retriever.generateToolEmbeddings();
       // The actual embedding count depends on whether model loads successfully
+      expect(count).toBeGreaterThanOrEqual(0);
     });
 
     test("hasEmbeddings returns correct state after indexing", () => {
