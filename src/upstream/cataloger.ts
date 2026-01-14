@@ -8,19 +8,15 @@
  * @module upstream/cataloger
  */
 
-import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
-import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type {
   McpSquaredConfig,
   UpstreamServerConfig,
   UpstreamSseServerConfig,
   UpstreamStdioServerConfig,
 } from "../config/schema.js";
-import { McpOAuthProvider, TokenStorage } from "../oauth/index.js";
 import { sanitizeDescription } from "../security/index.js";
 import {
   formatQualifiedName,
@@ -92,12 +88,8 @@ export interface ServerConnection {
   tools: CatalogedTool[];
   /** MCP client instance (null if not connected) */
   client: Client | null;
-  /** Transport layer (stdio or HTTP streaming) */
-  transport: Transport | null;
-  /** OAuth provider for authenticated connections */
-  authProvider: McpOAuthProvider | null;
-  /** Whether auth is pending (browser authorization required) */
-  authPending: boolean;
+  /** Transport layer (stdio or SSE) */
+  transport: StdioClientTransport | SSEClientTransport | null;
 }
 
 /**
@@ -211,8 +203,6 @@ export class Cataloger {
       tools: [],
       client: null,
       transport: null,
-      authProvider: null,
-      authPending: false,
     };
     this.connections.set(key, connection);
 
@@ -222,15 +212,12 @@ export class Cataloger {
         version: "1.0.0",
       });
 
-      let transport: Transport;
+      let transport: StdioClientTransport | SSEClientTransport;
 
       if (config.transport === "stdio") {
         transport = this.createStdioTransport(config);
       } else {
-        const { transport: httpTransport, authProvider } =
-          this.createHttpTransport(key, config);
-        transport = httpTransport as Transport;
-        connection.authProvider = authProvider;
+        transport = this.createSseTransport(config);
       }
 
       connection.client = client;
@@ -238,37 +225,14 @@ export class Cataloger {
 
       // Connect with timeout
       const connectPromise = client.connect(transport);
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
       const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
+        setTimeout(
           () => reject(new Error("Connection timeout")),
           this.connectTimeoutMs,
         );
       });
 
-      try {
-        await Promise.race([connectPromise, timeoutPromise]);
-      } catch (err) {
-        // Handle OAuth authorization required
-        if (err instanceof UnauthorizedError && connection.authProvider) {
-          if (connection.authProvider.isInteractive()) {
-            // In server mode, we can't do interactive browser auth
-            // Mark as pending and let the user run `mcp-squared auth <upstream>`
-            connection.authPending = true;
-            connection.status = "error";
-            connection.error = `OAuth authorization required. Run: mcp-squared auth ${key}`;
-            return;
-          }
-          // client_credentials should have worked automatically
-          throw err;
-        }
-        throw err;
-      } finally {
-        if (timeoutId !== undefined) {
-          clearTimeout(timeoutId);
-        }
-      }
+      await Promise.race([connectPromise, timeoutPromise]);
 
       // Get server info
       const serverInfo = client.getServerVersion();
@@ -642,21 +606,15 @@ export class Cataloger {
   }
 
   /**
-   * Creates an HTTP streaming transport for connecting to a remote MCP server.
-   * Supports OAuth authentication when configured.
+   * Creates an SSE transport for connecting to a remote MCP server over HTTP.
    *
-   * @param key - Server key for token storage
-   * @param config - SSE server configuration with URL, headers, and optional OAuth
-   * @returns Object with transport and optional auth provider
+   * @param config - SSE server configuration with URL and optional headers
+   * @returns Configured SSE client transport
    * @internal
    */
-  private createHttpTransport(
-    key: string,
+  private createSseTransport(
     config: UpstreamSseServerConfig,
-  ): {
-    transport: StreamableHTTPClientTransport;
-    authProvider: McpOAuthProvider | null;
-  } {
+  ): SSEClientTransport {
     const resolvedEnv = resolveEnvVars(config.env);
 
     // Resolve env vars in headers
@@ -670,39 +628,11 @@ export class Cataloger {
       }
     }
 
-    // Create OAuth provider if auth is enabled OR if stored tokens exist
-    // Use non-interactive mode since we're in server mode (can't do browser auth)
-    let authProvider: McpOAuthProvider | null = null;
-    const tokenStorage = new TokenStorage();
-    const hasStoredTokens = tokenStorage.load(key)?.tokens !== undefined;
-    if (config.sse.auth || hasStoredTokens) {
-      const authOptions =
-        typeof config.sse.auth === "object" ? config.sse.auth : {};
-      authProvider = new McpOAuthProvider(key, tokenStorage, {
-        ...authOptions,
-        nonInteractive: true, // Server mode - throw instead of opening browser
-      });
-    }
-
-    // Build transport options
-    const transportOptions: {
-      authProvider?: OAuthClientProvider;
-      requestInit?: RequestInit;
-    } = {
+    return new SSEClientTransport(new URL(config.sse.url), {
       requestInit: {
         headers,
       },
-    };
-    if (authProvider) {
-      transportOptions.authProvider = authProvider;
-    }
-
-    const transport = new StreamableHTTPClientTransport(
-      new URL(config.sse.url),
-      transportOptions,
-    );
-
-    return { transport, authProvider };
+    });
   }
 
   /**

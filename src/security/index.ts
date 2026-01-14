@@ -15,19 +15,10 @@ export type { SanitizeOptions } from "./sanitize.js";
 
 export {
   clearPendingConfirmations,
-  compilePolicy,
   createConfirmationToken,
   evaluatePolicy,
   getPendingConfirmationCount,
-  getToolVisibility,
-  getToolVisibilityCompiled,
   matchesPattern,
   validateConfirmationToken,
 } from "./policy.js";
-export type {
-  CompiledPolicy,
-  PolicyContext,
-  PolicyDecision,
-  PolicyResult,
-  ToolVisibility,
-} from "./policy.js";
+export type { PolicyContext, PolicyDecision, PolicyResult } from "./policy.js";

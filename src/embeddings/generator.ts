@@ -8,9 +8,9 @@
  */
 
 import {
-  type FeatureExtractionPipeline,
-  env,
   pipeline,
+  env,
+  type FeatureExtractionPipeline,
 } from "@huggingface/transformers";
 
 /**
@@ -143,10 +143,7 @@ export class EmbeddingGenerator {
     // Build pipeline options
     const pipelineOptions: {
       dtype: "fp32" | "fp16" | "q8" | "q4";
-      progress_callback?: (progress: {
-        status: string;
-        progress?: number;
-      }) => void;
+      progress_callback?: (progress: { status: string; progress?: number }) => void;
     } = {
       dtype: this.dtype,
     };
