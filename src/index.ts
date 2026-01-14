@@ -32,6 +32,7 @@ import {
   McpOAuthProvider,
   OAuthCallbackServer,
   TokenStorage,
+  performPreflightAuth,
 } from "./oauth/index.js";
 import { McpSquaredServer } from "./server/index.js";
 import { runConfigTui } from "./tui/config.js";
@@ -48,6 +49,26 @@ export const VERSION = "0.1.0";
 async function startServer(): Promise<void> {
   // Load configuration
   const { config } = await loadConfig();
+
+  // Pre-flight OAuth: authenticate SSE upstreams before entering server mode
+  // This allows interactive browser auth during startup, rather than failing later
+  const preflightResult = await performPreflightAuth(config);
+
+  if (preflightResult.authenticated.length > 0) {
+    console.error(
+      `[preflight] Authenticated ${preflightResult.authenticated.length} upstream(s): ${preflightResult.authenticated.join(", ")}`,
+    );
+  }
+
+  if (preflightResult.failed.length > 0) {
+    console.error(
+      `[preflight] Warning: ${preflightResult.failed.length} upstream(s) failed authentication:`,
+    );
+    for (const { name, error } of preflightResult.failed) {
+      console.error(`[preflight]   - ${name}: ${error}`);
+    }
+    // Continue anyway - the upstreams will be unavailable but others may work
+  }
 
   const server = new McpSquaredServer({ config });
 

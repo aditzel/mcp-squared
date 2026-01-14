@@ -38,6 +38,11 @@ export interface McpOAuthProviderOptions {
   callbackPort?: number;
   /** Client name to use during dynamic registration (default: "MCP²") */
   clientName?: string;
+  /**
+   * If true, throw an error instead of opening browser for authorization.
+   * Use this in server mode where interactive auth isn't possible.
+   */
+  nonInteractive?: boolean;
 }
 
 /**
@@ -64,6 +69,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   private readonly storage: TokenStorage;
   private readonly callbackPort: number;
   private readonly _clientName: string;
+  private readonly _nonInteractive: boolean;
   private _state: string | undefined;
 
   /**
@@ -71,7 +77,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
    *
    * @param upstreamName - Unique identifier for the upstream (used for storage)
    * @param storage - Token storage instance for persistence
-   * @param options - Optional configuration (callbackPort, clientName)
+   * @param options - Optional configuration (callbackPort, clientName, nonInteractive)
    */
   constructor(
     upstreamName: string,
@@ -82,6 +88,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
     this.storage = storage;
     this.callbackPort = options.callbackPort ?? DEFAULT_CALLBACK_PORT;
     this._clientName = options.clientName ?? DEFAULT_CLIENT_NAME;
+    this._nonInteractive = options.nonInteractive ?? false;
   }
 
   /**
@@ -172,8 +179,17 @@ export class McpOAuthProvider implements OAuthClientProvider {
   /**
    * Opens the browser to begin authorization.
    * Falls back to logging the URL if browser can't be opened.
+   * In non-interactive mode, throws an error instead.
    */
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    if (this._nonInteractive) {
+      // In server mode, we can't do interactive browser auth
+      // Throw to signal that manual auth is required
+      throw new Error(
+        `OAuth authorization required. Run: mcp-squared auth ${this.upstreamName}`,
+      );
+    }
+
     const urlString = authorizationUrl.toString();
     console.error(`\nOpening browser for authorization...`);
     console.error(`URL: ${urlString}\n`);

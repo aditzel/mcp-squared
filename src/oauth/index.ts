@@ -25,3 +25,8 @@ export {
   type OAuthTokens,
   type StoredTokenData,
 } from "./token-storage.js";
+
+export {
+  performPreflightAuth,
+  type PreflightAuthResult,
+} from "./preflight.js";

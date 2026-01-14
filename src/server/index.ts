@@ -660,18 +660,25 @@ export class McpSquaredServer {
    * @returns Promise that resolves when the server is ready
    */
   async start(): Promise<void> {
-    // Connect to all enabled upstream servers from config
+    // Connect to all enabled upstream servers in parallel
     const upstreamEntries = Object.entries(this.config.upstreams);
-    for (const [key, upstream] of upstreamEntries) {
-      if (upstream.enabled) {
-        try {
-          await this.cataloger.connect(key, upstream);
-        } catch {
-          // Log error but continue with other upstreams
-          // Individual upstream failures shouldn't prevent server startup
-        }
+    const enabledUpstreams = upstreamEntries.filter(
+      ([_, upstream]) => upstream.enabled,
+    );
+
+    // Parallel connections - all upstreams connect concurrently
+    const connectionPromises = enabledUpstreams.map(async ([key, upstream]) => {
+      try {
+        await this.cataloger.connect(key, upstream);
+        return { key, success: true as const };
+      } catch {
+        // Log error but continue with other upstreams
+        // Individual upstream failures shouldn't prevent server startup
+        return { key, success: false as const };
       }
-    }
+    });
+
+    await Promise.all(connectionPromises);
 
     // Sync the tool index after connecting to upstreams
     this.syncIndex();

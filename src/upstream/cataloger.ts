@@ -671,13 +671,17 @@ export class Cataloger {
     }
 
     // Create OAuth provider if auth is enabled OR if stored tokens exist
+    // Use non-interactive mode since we're in server mode (can't do browser auth)
     let authProvider: McpOAuthProvider | null = null;
     const tokenStorage = new TokenStorage();
     const hasStoredTokens = tokenStorage.load(key)?.tokens !== undefined;
     if (config.sse.auth || hasStoredTokens) {
       const authOptions =
         typeof config.sse.auth === "object" ? config.sse.auth : {};
-      authProvider = new McpOAuthProvider(key, tokenStorage, authOptions);
+      authProvider = new McpOAuthProvider(key, tokenStorage, {
+        ...authOptions,
+        nonInteractive: true, // Server mode - throw instead of opening browser
+      });
     }
 
     // Build transport options
