@@ -52,7 +52,11 @@ export {
   saveConfigSync,
 } from "./save.js";
 
-export { migrateConfig, type RawConfig } from "./migrations/index.js";
+export {
+  UnknownSchemaVersionError,
+  migrateConfig,
+  type RawConfig,
+} from "./migrations/index.js";
 
 export {
   formatValidationIssues,

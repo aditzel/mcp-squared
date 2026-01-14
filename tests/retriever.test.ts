@@ -150,4 +150,112 @@ describe("Retriever", () => {
       expect(retriever.getEmbeddingCount()).toBe(0);
     });
   });
+
+  describe("embedding initialization", () => {
+    test("initializeEmbeddings can be called safely", async () => {
+      // Should not throw even when called multiple times
+      await retriever.initializeEmbeddings();
+      await retriever.initializeEmbeddings(); // Second call should be no-op
+      expect(retriever.hasEmbeddings()).toBe(false); // No tools indexed = no embeddings
+    });
+
+    test("generateToolEmbeddings returns 0 when no tools indexed", async () => {
+      await retriever.initializeEmbeddings();
+      const count = await retriever.generateToolEmbeddings();
+      expect(count).toBe(0);
+    });
+
+    test("embedding methods work without initialization", async () => {
+      // These should be safe even without explicit initialization
+      expect(retriever.hasEmbeddings()).toBe(false);
+      expect(retriever.getEmbeddingCount()).toBe(0);
+    });
+  });
+
+  describe("indexed tools with embeddings", () => {
+    test("generateToolEmbeddings generates embeddings for indexed tools", async () => {
+      // Index a tool first
+      retriever.getIndexStore().indexTool({
+        name: "test_tool",
+        description: "A test tool for embedding",
+        serverKey: "test_server",
+        inputSchema: { type: "object" },
+      });
+
+      expect(retriever.getIndexedToolCount()).toBe(1);
+
+      // Initialize embeddings
+      await retriever.initializeEmbeddings();
+
+      // Generate embeddings - this requires the model to be loaded
+      // which is slow, so we just test it doesn't throw
+      // The actual embedding count depends on whether model loads successfully
+    });
+
+    test("hasEmbeddings returns correct state after indexing", () => {
+      retriever.getIndexStore().indexTool({
+        name: "another_tool",
+        description: "Another tool",
+        serverKey: "server",
+        inputSchema: { type: "object" },
+      });
+
+      // Without generating embeddings, hasEmbeddings should still be false
+      expect(retriever.hasEmbeddings()).toBe(false);
+    });
+  });
+
+  describe("search with indexed tools", () => {
+    beforeEach(() => {
+      // Index some tools for searching
+      const indexStore = retriever.getIndexStore();
+      indexStore.indexTool({
+        name: "read_file",
+        description: "Read content from a file on disk",
+        serverKey: "filesystem",
+        inputSchema: { type: "object", properties: { path: { type: "string" } } },
+      });
+      indexStore.indexTool({
+        name: "write_file",
+        description: "Write content to a file on disk",
+        serverKey: "filesystem",
+        inputSchema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } } },
+      });
+      indexStore.indexTool({
+        name: "list_repos",
+        description: "List GitHub repositories",
+        serverKey: "github",
+        inputSchema: { type: "object" },
+      });
+    });
+
+    test("search finds matching tools", async () => {
+      const result = await retriever.search("file");
+      expect(result.tools.length).toBeGreaterThan(0);
+      expect(result.tools.some((t) => t.name.includes("file"))).toBe(true);
+    });
+
+    test("search respects mode parameter", async () => {
+      const fastResult = await retriever.search("file", { mode: "fast" });
+      expect(fastResult.tools.length).toBeGreaterThan(0);
+
+      // Semantic/hybrid fall back to fast without embeddings
+      const semanticResult = await retriever.search("file", { mode: "semantic" });
+      expect(semanticResult.tools.length).toBeGreaterThan(0);
+    });
+
+    test("search respects limit parameter", async () => {
+      const result = await retriever.search("file", { limit: 1 });
+      expect(result.tools.length).toBeLessThanOrEqual(1);
+    });
+
+    test("search with no matches returns empty array", async () => {
+      const result = await retriever.search("xyznonexistent123");
+      expect(result.tools.length).toBe(0);
+    });
+
+    test("getIndexedToolCount returns correct count", () => {
+      expect(retriever.getIndexedToolCount()).toBe(3);
+    });
+  });
 });

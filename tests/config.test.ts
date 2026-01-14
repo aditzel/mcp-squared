@@ -3,9 +3,14 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  ConfigError,
+  ConfigNotFoundError,
+  ConfigParseError,
   ConfigSchema,
+  ConfigValidationError,
   DEFAULT_CONFIG,
   type McpSquaredConfig,
+  UnknownSchemaVersionError,
   discoverConfigPath,
   formatValidationIssues,
   loadConfig,
@@ -15,6 +20,7 @@ import {
   validateConfig,
   validateStdioUpstream,
 } from "@/config";
+import { ZodError } from "zod";
 
 describe("ConfigSchema", () => {
   test("parses empty object with defaults", () => {
@@ -114,6 +120,94 @@ describe("migrateConfig", () => {
     };
     const result = migrateConfig(input);
     expect(result["operations"]).toEqual({ logging: { level: "debug" } });
+  });
+
+  test("throws UnknownSchemaVersionError for future schema version", () => {
+    expect(() => migrateConfig({ schemaVersion: 999 })).toThrow(
+      UnknownSchemaVersionError,
+    );
+  });
+
+  test("UnknownSchemaVersionError includes version details", () => {
+    try {
+      migrateConfig({ schemaVersion: 999 });
+      expect.unreachable("Should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(UnknownSchemaVersionError);
+      const err = e as UnknownSchemaVersionError;
+      expect(err.version).toBe(999);
+      expect(err.latestVersion).toBe(1);
+      expect(err.message).toContain("999");
+      expect(err.message).toContain("1");
+    }
+  });
+
+  test("migrates from version 0 (no schemaVersion)", () => {
+    const result = migrateConfig({ upstreams: {} });
+    expect(result["schemaVersion"]).toBe(1);
+  });
+});
+
+describe("ConfigError classes", () => {
+  test("ConfigError stores cause", () => {
+    const cause = new Error("root cause");
+    const err = new ConfigError("message", cause);
+    expect(err.cause).toBe(cause);
+    expect(err.name).toBe("ConfigError");
+    expect(err.message).toBe("message");
+  });
+
+  test("ConfigError works without cause", () => {
+    const err = new ConfigError("message only");
+    expect(err.cause).toBeUndefined();
+    expect(err.message).toBe("message only");
+  });
+
+  test("ConfigNotFoundError has correct name and message", () => {
+    const err = new ConfigNotFoundError();
+    expect(err.name).toBe("ConfigNotFoundError");
+    expect(err.message).toBe("No configuration file found");
+    expect(err).toBeInstanceOf(ConfigError);
+  });
+
+  test("ConfigParseError includes file path", () => {
+    const cause = new Error("parse failed");
+    const err = new ConfigParseError("/path/to/config.toml", cause);
+    expect(err.name).toBe("ConfigParseError");
+    expect(err.filePath).toBe("/path/to/config.toml");
+    expect(err.message).toContain("/path/to/config.toml");
+    expect(err.cause).toBe(cause);
+    expect(err).toBeInstanceOf(ConfigError);
+  });
+
+  test("ConfigValidationError formats Zod issues", () => {
+    const zodError = new ZodError([
+      {
+        path: ["upstreams", "test", "stdio", "command"],
+        message: "Required",
+        code: "invalid_type",
+        expected: "string",
+      },
+    ]);
+    const err = new ConfigValidationError("/path/config.toml", zodError);
+    expect(err.name).toBe("ConfigValidationError");
+    expect(err.filePath).toBe("/path/config.toml");
+    expect(err.zodError).toBe(zodError);
+    expect(err.message).toContain("upstreams.test.stdio.command");
+    expect(err.message).toContain("Required");
+    expect(err).toBeInstanceOf(ConfigError);
+  });
+
+  test("ConfigValidationError handles multiple issues", () => {
+    const zodError = new ZodError([
+      { path: ["field1"], message: "Error 1", code: "custom" },
+      { path: ["field2"], message: "Error 2", code: "custom" },
+    ]);
+    const err = new ConfigValidationError("/config.toml", zodError);
+    expect(err.message).toContain("field1");
+    expect(err.message).toContain("field2");
+    expect(err.message).toContain("Error 1");
+    expect(err.message).toContain("Error 2");
   });
 });
 
