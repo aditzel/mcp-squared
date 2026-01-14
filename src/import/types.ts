@@ -28,7 +28,8 @@ export type ToolId =
   | "qwen-code"
   | "trae"
   | "antigravity"
-  | "warp";
+  | "warp"
+  | "codex";
 
 /**
  * Display names for tools (used in CLI output).
@@ -51,6 +52,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolId, string> = {
   trae: "Trae IDE",
   antigravity: "Antigravity",
   warp: "Warp",
+  codex: "Codex CLI",
 };
 
 /**

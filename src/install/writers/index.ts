@@ -6,6 +6,7 @@
 
 import type { ToolId } from "../../import/types.js";
 import type { BaseConfigWriter } from "./base.js";
+import { CodexWriter } from "./codex.js";
 import {
   STANDARD_MCPSERVERS_TOOLS,
   StandardMcpServersWriter,
@@ -14,6 +15,7 @@ import { VSCodeWriter } from "./vscode.js";
 import { ZedWriter } from "./zed.js";
 
 export { BaseConfigWriter } from "./base.js";
+export { CodexWriter } from "./codex.js";
 export {
   StandardMcpServersWriter,
   STANDARD_MCPSERVERS_TOOLS,
@@ -36,6 +38,11 @@ export function getWriter(toolId: ToolId): BaseConfigWriter {
   // Zed uses "context_servers" key
   if (toolId === "zed") {
     return new ZedWriter();
+  }
+
+  // Codex uses TOML format with "mcp_servers" key
+  if (toolId === "codex") {
+    return new CodexWriter();
   }
 
   // Most tools use standard "mcpServers" key
@@ -72,6 +79,7 @@ export function getToolDisplayName(toolId: ToolId): string {
     trae: "Trae",
     antigravity: "Antigravity",
     warp: "Warp",
+    codex: "Codex CLI",
   };
 
   return names[toolId] ?? toolId;

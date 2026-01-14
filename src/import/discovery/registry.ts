@@ -179,9 +179,23 @@ export function getToolPaths(toolId: ToolId): ToolPaths {
       // Users can still import via --path if they export their config
       return { user: [], project: [] };
 
+    case "codex":
+      return {
+        user: [join(getCodexHome(), "config.toml")],
+        project: [".codex/config.toml"],
+        envVar: "CODEX_HOME",
+      };
+
     default:
       return { user: [], project: [] };
   }
+}
+
+/**
+ * Gets the Codex home directory, respecting CODEX_HOME env var.
+ */
+function getCodexHome(): string {
+  return process.env["CODEX_HOME"] || join(getHomeDir(), ".codex");
 }
 
 /**
@@ -239,6 +253,7 @@ export const ALL_TOOL_IDS: ToolId[] = [
   "trae",
   "antigravity",
   "warp",
+  "codex",
 ];
 
 /**

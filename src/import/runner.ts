@@ -8,6 +8,7 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { parse as parseToml } from "smol-toml";
 import type { ImportArgs } from "../cli/index.js";
 import {
   DEFAULT_CONFIG,
@@ -170,6 +171,13 @@ async function runListMode(options: ImportOptions): Promise<void> {
 }
 
 /**
+ * Checks if a file should be parsed as TOML based on tool or extension.
+ */
+function isTomlConfig(tool: ToolId, path: string): boolean {
+  return tool === "codex" || path.endsWith(".toml");
+}
+
+/**
  * Parses a discovered config file.
  */
 async function parseConfig(
@@ -177,21 +185,28 @@ async function parseConfig(
 ): Promise<ParsedExternalConfig | undefined> {
   try {
     const content = await readFile(discovered.path, "utf-8");
-    const json = JSON.parse(content) as unknown;
+
+    // Parse as TOML or JSON based on tool/extension
+    let parsed: unknown;
+    if (isTomlConfig(discovered.tool, discovered.path)) {
+      parsed = parseToml(content);
+    } else {
+      parsed = JSON.parse(content) as unknown;
+    }
 
     const parser = getParser(discovered.tool);
     if (!parser) {
       return undefined;
     }
 
-    const result = parser.parse(json, discovered.path);
+    const result = parser.parse(parsed, discovered.path);
 
     return {
       tool: discovered.tool,
       path: discovered.path,
       scope: discovered.scope,
       servers: result.servers,
-      rawContent: json,
+      rawContent: parsed,
     };
   } catch {
     return undefined;

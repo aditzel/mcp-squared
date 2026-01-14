@@ -26,6 +26,7 @@ import { TraeParser } from "./trae.js";
 import { WarpParser } from "./warp.js";
 import { WindsurfParser } from "./windsurf.js";
 
+import { CodexParser } from "./codex.js";
 import { OpenCodeParser } from "./opencode.js";
 // Custom format parsers
 import { VSCodeParser } from "./vscode.js";
@@ -52,6 +53,7 @@ export { VSCodeParser } from "./vscode.js";
 export { ZedParser } from "./zed.js";
 export { OpenCodeParser } from "./opencode.js";
 export { WarpParser } from "./warp.js";
+export { CodexParser } from "./codex.js";
 
 /**
  * Singleton instances of all parsers, indexed by tool ID.
@@ -86,6 +88,7 @@ function initializeRegistry(): void {
     new VSCodeParser(),
     new ZedParser(),
     new OpenCodeParser(),
+    new CodexParser(),
   ];
 
   for (const parser of parsers) {
@@ -136,7 +139,7 @@ export function getRegisteredToolIds(): ToolId[] {
  */
 export function detectParser(content: unknown): BaseConfigParser | undefined {
   // Check custom formats first (more specific keys)
-  const customParsers: ToolId[] = ["vscode", "zed", "opencode"];
+  const customParsers: ToolId[] = ["vscode", "zed", "opencode", "codex"];
   for (const toolId of customParsers) {
     const parser = parserRegistry.get(toolId);
     if (parser?.canParse(content)) {

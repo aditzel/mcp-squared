@@ -9,7 +9,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { createInterface } from "node:readline";
+import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import { ALL_TOOL_IDS, getToolPaths } from "../import/discovery/registry.js";
+import type { ToolId } from "../import/types.js";
 import { createBackup } from "./backup.js";
 import type {
   DiscoveredTool,
@@ -211,6 +213,13 @@ async function confirmAction(message: string): Promise<boolean> {
 }
 
 /**
+ * Checks if a tool uses TOML format.
+ */
+function isTomlTool(toolId: ToolId): boolean {
+  return toolId === "codex";
+}
+
+/**
  * Performs the actual installation to a config file.
  *
  * @param options - Installation options
@@ -221,6 +230,7 @@ export function performInstallation(
 ): ToolInstallResult {
   const { tool, path, scope, mode, serverName, command, dryRun } = options;
   const writer = getWriter(tool);
+  const isToml = isTomlTool(tool);
 
   // Prepare the server entry
   const entry: McpServerEntry = { command };
@@ -233,7 +243,9 @@ export function performInstallation(
     configExists = true;
     try {
       const content = readFileSync(path, "utf-8");
-      existingConfig = JSON.parse(content);
+      existingConfig = isToml
+        ? (parseToml(content) as Record<string, unknown>)
+        : JSON.parse(content);
     } catch (error) {
       return {
         tool,
@@ -288,7 +300,10 @@ export function performInstallation(
 
   // Write the config
   try {
-    writeFileSync(path, JSON.stringify(newConfig, null, 2) + "\n");
+    const output = isToml
+      ? stringifyToml(newConfig)
+      : JSON.stringify(newConfig, null, 2) + "\n";
+    writeFileSync(path, output);
   } catch (error) {
     return {
       tool,
