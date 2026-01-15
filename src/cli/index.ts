@@ -107,6 +107,7 @@ const VALID_TOOL_IDS: readonly string[] = [
   "trae",
   "antigravity",
   "warp",
+  "codex",
 ];
 
 /**
@@ -366,9 +367,7 @@ Install Options:
   --no-interactive              Disable interactive prompts
 
 Supported Tools:
-  claude-code, claude-desktop, cursor, windsurf, vscode, cline,
-  roo-code, kilo-code, gemini-cli, zed, jetbrains, factory,
-  opencode, qwen-code, trae, antigravity, warp
+  ${VALID_TOOL_IDS.join(", ")}
 
 Examples:
   mcp-squared test github       Test connection to 'github' upstream

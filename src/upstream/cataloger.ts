@@ -253,7 +253,7 @@ export class Cataloger {
       } catch (err) {
         // Handle OAuth authorization required
         if (err instanceof UnauthorizedError && connection.authProvider) {
-          if (connection.authProvider.isInteractive()) {
+          if (connection.authProvider.isNonInteractive()) {
             // In server mode, we can't do interactive browser auth
             // Mark as pending and let the user run `mcp-squared auth <upstream>`
             connection.authPending = true;
@@ -261,7 +261,7 @@ export class Cataloger {
             connection.error = `OAuth authorization required. Run: mcp-squared auth ${key}`;
             return;
           }
-          // client_credentials should have worked automatically
+          // If interactive, let the error propagate (client might handle it)
           throw err;
         }
         throw err;

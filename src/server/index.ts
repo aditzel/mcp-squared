@@ -218,7 +218,7 @@ export class McpSquaredServer {
 
         // Get bundle suggestions if selection caching is enabled
         const selectionCacheConfig = this.config.operations.selectionCache;
-        let suggestedBundles:
+        let suggestedTools:
           | Array<{ tools: string[]; frequency: number }>
           | undefined;
 
@@ -236,7 +236,7 @@ export class McpSquaredServer {
             );
 
           if (suggestions.length > 0) {
-            suggestedBundles = suggestions.map((s) => ({
+            suggestedTools = suggestions.map((s) => ({
               tools: [s.toolKey],
               frequency: s.count,
             }));
@@ -252,7 +252,7 @@ export class McpSquaredServer {
                 totalMatches: filteredTools.length,
                 detailLevel,
                 tools,
-                ...(suggestedBundles && { suggestedBundles }),
+                ...(suggestedTools && { suggestedTools }),
               }),
             },
           ],

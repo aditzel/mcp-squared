@@ -268,6 +268,14 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   /**
+   * Returns whether this provider is in non-interactive (server) mode.
+   * If true, it cannot open a browser and will throw errors instead.
+   */
+  isNonInteractive(): boolean {
+    return this._nonInteractive;
+  }
+
+  /**
    * Checks if the stored access token is expired.
    * Returns true if expired or no expiry information is available.
    */
