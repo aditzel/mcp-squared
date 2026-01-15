@@ -168,6 +168,26 @@ function areConfigsEqual(
         return false;
       }
     }
+    // Compare auth settings
+    const aAuth = a.sse.auth;
+    const bAuth = b.sse.auth;
+    if (aAuth === undefined && bAuth === undefined) {
+      // Both undefined = equal, continue
+    } else if (typeof aAuth === "boolean" && typeof bAuth === "boolean") {
+      if (aAuth !== bAuth) {
+        return false;
+      }
+    } else if (typeof aAuth === "object" && typeof bAuth === "object") {
+      if (aAuth.callbackPort !== bAuth.callbackPort) {
+        return false;
+      }
+      if (aAuth.clientName !== bAuth.clientName) {
+        return false;
+      }
+    } else {
+      // Different types (undefined vs boolean, boolean vs object, etc.)
+      return false;
+    }
   }
 
   return true;
