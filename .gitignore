@@ -31,3 +31,6 @@ bun.lockb
 # Test coverage
 coverage/
 .nyc_output/
+
+# Test artifacts
+tests/fixtures/*.toml
