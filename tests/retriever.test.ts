@@ -10,9 +10,9 @@ mock.module("@huggingface/transformers", () => {
       cacheDir: "",
     },
     // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
-    pipeline: async (task: string, model: string, options: any) => {
+    pipeline: async (_task: string, _model: string, _options: any) => {
       // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
-      return async (input: string | string[], opts: any) => {
+      return async (input: string | string[], _opts: any) => {
         const batchSize = Array.isArray(input) ? input.length : 1;
         const dims = 384;
 
@@ -22,11 +22,13 @@ mock.module("@huggingface/transformers", () => {
           let norm = 0;
           for (let i = 0; i < dims; i++) {
             vec[i] = 0.5;
-            norm += vec[i] * vec[i];
+            // biome-ignore lint/style/noNonNullAssertion: index checked by loop bounds
+            norm += vec[i]! * vec[i]!;
           }
           norm = Math.sqrt(norm);
           for (let i = 0; i < dims; i++) {
-            vec[i] /= norm;
+            // biome-ignore lint/style/noNonNullAssertion: index checked by loop bounds
+            vec[i] = vec[i]! / norm;
           }
           return vec;
         };

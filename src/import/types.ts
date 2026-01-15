@@ -138,12 +138,13 @@ export interface ParsedExternalConfig {
 
 /**
  * Import conflict details.
- * Describes a naming collision between existing and incoming configs.
+ * Describes a naming collision between existing and incoming configs,
+ * or between two incoming configs from different sources.
  */
 export interface ImportConflict {
   /** Server name that conflicts */
   serverName: string;
-  /** Existing server configuration (from MCP² config) */
+  /** Existing server configuration (from MCP² config or first incoming) */
   existing: ExternalServer;
   /** Incoming server configuration (from import) */
   incoming: ExternalServer;
@@ -151,6 +152,10 @@ export interface ImportConflict {
   sourceTool: ToolId;
   /** Source path of the incoming config */
   sourcePath: string;
+  /** Source tool of the 'existing' config (when it's from another incoming file) */
+  existingSourceTool?: ToolId;
+  /** Source path of the 'existing' config (when it's from another incoming file) */
+  existingSourcePath?: string;
 }
 
 /**

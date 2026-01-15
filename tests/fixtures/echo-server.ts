@@ -14,7 +14,7 @@ process.on("SIGTERM", () => {
 setInterval(() => {}, 1000);
 
 // Basic MCP stdio server loop (mock)
-process.stdin.on("data", (chunk) => {
+process.stdin.on("data", (_chunk) => {
   // Ignore input
 });
 

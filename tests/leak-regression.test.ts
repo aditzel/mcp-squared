@@ -15,9 +15,9 @@ mock.module("@modelcontextprotocol/sdk/client/stdio.js", () => {
       stderr: any;
 
       // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
-      constructor(config: any) {
+      constructor(_config: any) {
         // Create a new mock kill function for this instance
-        const killFn = mock((signal) => {
+        const killFn = mock((_signal) => {
           return true;
         });
 

@@ -450,6 +450,10 @@ export class Retriever {
     // Generate embeddings in batch (not as queries, so no "query: " prefix)
     const result = await this.embeddingGenerator?.embedBatch(texts, false);
 
+    if (!result) {
+      throw new Error("Embedding generator not initialized");
+    }
+
     // Update embeddings in the store
     const embeddings = toolsWithoutEmbeddings.map((tool, i) => ({
       name: tool.name,

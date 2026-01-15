@@ -188,7 +188,8 @@ describe("ConfigError classes", () => {
         code: "invalid_type",
         expected: "string",
         received: "undefined",
-      },
+        // biome-ignore lint/suspicious/noExplicitAny: Zod issue type is complex
+      } as any,
     ]);
     const err = new ConfigValidationError("/path/config.toml", zodError);
     expect(err.name).toBe("ConfigValidationError");

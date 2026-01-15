@@ -226,8 +226,8 @@ export class McpOAuthProvider implements OAuthClientProvider {
   clearCodeVerifier(): void {
     const data = this.storage.load(this.upstreamName);
     if (data) {
-      data.codeVerifier = undefined;
-      this.storage.save(this.upstreamName, data);
+      const { codeVerifier: _, ...rest } = data;
+      this.storage.save(this.upstreamName, rest);
     }
   }
 
@@ -243,19 +243,21 @@ export class McpOAuthProvider implements OAuthClientProvider {
       case "all":
         this.storage.delete(this.upstreamName);
         break;
-      case "client":
-        data.clientInfo = undefined;
-        this.storage.save(this.upstreamName, data);
+      case "client": {
+        const { clientInfo: _, ...rest } = data;
+        this.storage.save(this.upstreamName, rest);
         break;
-      case "tokens":
-        data.tokens = undefined;
-        data.expiresAt = undefined;
-        this.storage.save(this.upstreamName, data);
+      }
+      case "tokens": {
+        const { tokens: _, expiresAt: __, ...rest } = data;
+        this.storage.save(this.upstreamName, rest);
         break;
-      case "verifier":
-        data.codeVerifier = undefined;
-        this.storage.save(this.upstreamName, data);
+      }
+      case "verifier": {
+        const { codeVerifier: _, ...rest } = data;
+        this.storage.save(this.upstreamName, rest);
         break;
+      }
     }
   }
 

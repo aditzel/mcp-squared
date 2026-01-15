@@ -92,6 +92,17 @@ export interface ConflictDetectionResult {
 }
 
 /**
+ * Tracks the first incoming entry for a normalized server name.
+ * Used to detect conflicts between incoming servers from different sources.
+ */
+interface IncomingOwner {
+  mapped: MappedServer;
+  server: ExternalServer;
+  tool: ToolId;
+  path: string;
+}
+
+/**
  * Compares two upstream configs for equality.
  * Returns true if the configs are functionally identical.
  */
@@ -171,6 +182,7 @@ function areConfigsEqual(
  */
 export function detectConflicts(input: MergeInput): ConflictDetectionResult {
   const existingNames = new Set(Object.keys(input.existingConfig.upstreams));
+  const incomingOwners = new Map<string, IncomingOwner>();
   const result: ConflictDetectionResult = {
     noConflict: [],
     conflicts: [],
@@ -187,30 +199,49 @@ export function detectConflicts(input: MergeInput): ConflictDetectionResult {
         continue;
       }
 
-      if (existingNames.has(normalizedName)) {
-        const existingConfig = input.existingConfig.upstreams[normalizedName];
-        if (existingConfig) {
-          // Check if configs are identical
-          if (areConfigsEqual(existingConfig, mapped.config)) {
-            // Already in sync - no action needed
-            result.inSync.push({
-              serverName: normalizedName,
-              sourceTool: group.tool,
-              sourcePath: group.path,
-            });
-          } else {
-            // Actual conflict - configs differ
-            result.conflicts.push({
-              serverName: normalizedName,
-              existing: upstreamToExternal(normalizedName, existingConfig),
-              incoming: server,
-              sourceTool: group.tool,
-              sourcePath: group.path,
-            });
-          }
+      // Check for conflict with existing MCP² config first
+      const existingConfig = input.existingConfig.upstreams[normalizedName];
+      if (existingConfig) {
+        // Check if configs are identical
+        if (areConfigsEqual(existingConfig, mapped.config)) {
+          // Already in sync - no action needed
+          result.inSync.push({
+            serverName: normalizedName,
+            sourceTool: group.tool,
+            sourcePath: group.path,
+          });
+        } else {
+          // Actual conflict with existing config
+          result.conflicts.push({
+            serverName: normalizedName,
+            existing: upstreamToExternal(normalizedName, existingConfig),
+            incoming: server,
+            sourceTool: group.tool,
+            sourcePath: group.path,
+          });
+        }
+      } else if (incomingOwners.has(normalizedName)) {
+        // Conflict between two incoming servers from different sources
+        const owner = incomingOwners.get(normalizedName);
+        if (owner) {
+          result.conflicts.push({
+            serverName: normalizedName,
+            existing: owner.server,
+            incoming: server,
+            sourceTool: group.tool,
+            sourcePath: group.path,
+            existingSourceTool: owner.tool,
+            existingSourcePath: owner.path,
+          });
         }
       } else {
         // No conflict - new server
+        incomingOwners.set(normalizedName, {
+          mapped,
+          server,
+          tool: group.tool,
+          path: group.path,
+        });
         result.noConflict.push({
           server: mapped,
           tool: group.tool,

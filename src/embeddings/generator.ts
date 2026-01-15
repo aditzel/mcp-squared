@@ -197,6 +197,10 @@ export class EmbeddingGenerator {
       normalize: true,
     });
 
+    if (!output) {
+      throw new Error("Pipeline not initialized");
+    }
+
     const inferenceMs = performance.now() - startTime;
 
     // Extract the embedding data
@@ -230,6 +234,10 @@ export class EmbeddingGenerator {
       pooling: "mean",
       normalize: true,
     });
+
+    if (!outputs) {
+      throw new Error("Pipeline not initialized");
+    }
 
     const inferenceMs = performance.now() - startTime;
 
