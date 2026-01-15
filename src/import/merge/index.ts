@@ -318,11 +318,8 @@ export function applyChanges(
 ): { config: McpSquaredConfig; warnings: string[] } {
   const warnings: string[] = [];
 
-  // Deep clone the config
-  const config: McpSquaredConfig = {
-    ...existingConfig,
-    upstreams: { ...existingConfig.upstreams },
-  };
+  // Deep clone the config to avoid mutating the original
+  const config: McpSquaredConfig = structuredClone(existingConfig);
 
   for (const change of changes) {
     if (change.type === "skip") {

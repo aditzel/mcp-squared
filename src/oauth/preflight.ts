@@ -160,6 +160,13 @@ async function performInteractiveAuth(
     await client.connect(transport as unknown as Transport);
 
     // If we get here without error, already authenticated
+    // Clean up resources before returning
+    callbackServer.stop();
+    try {
+      await client.close();
+    } catch {
+      // Ignore close errors
+    }
     console.error(`[preflight:${name}] Already authenticated!`);
     return;
   } catch (err) {
@@ -186,9 +193,9 @@ async function performInteractiveAuth(
       throw new Error("No authorization code received");
     }
 
-    // Verify state
+    // Verify state (required for CSRF protection)
     if (
-      callbackResult.state &&
+      !callbackResult.state ||
       !authProvider.verifyState(callbackResult.state)
     ) {
       throw new Error("OAuth state mismatch - possible CSRF attack");

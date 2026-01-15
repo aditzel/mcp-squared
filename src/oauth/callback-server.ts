@@ -79,9 +79,24 @@ function getSuccessHtml(): string {
 }
 
 /**
+ * Escapes HTML special characters to prevent XSS attacks.
+ */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/**
  * HTML response sent to browser on error.
  */
 function getErrorHtml(error: string, description?: string): string {
+  const safeError = escapeHtml(error);
+  const safeDescription = description ? escapeHtml(description) : undefined;
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -111,7 +126,7 @@ function getErrorHtml(error: string, description?: string): string {
 <body>
   <div class="container">
     <h1>Authorization Failed</h1>
-    <p class="error">${error}${description ? `: ${description}` : ""}</p>
+    <p class="error">${safeError}${safeDescription ? `: ${safeDescription}` : ""}</p>
     <p>Please close this window and try again.</p>
   </div>
 </body>

@@ -148,7 +148,15 @@ describe("IndexStore Embeddings", () => {
     const fileResults = results.filter((r) => r.serverKey === "filesystem");
     const emailResult = results.find((r) => r.name === "send_email");
 
-    expect(fileResults[0]?.similarity).toBeGreaterThan(emailResult?.similarity);
+    // Explicitly assert values exist before comparison to fail loudly on missing data
+    expect(fileResults.length).toBeGreaterThan(0);
+    expect(emailResult).toBeDefined();
+    // biome-ignore lint/style/noNonNullAssertion: assertions above ensure values exist
+    expect(fileResults[0]!.similarity).toBeDefined();
+    // biome-ignore lint/style/noNonNullAssertion: assertions above ensure values exist
+    expect(emailResult!.similarity).toBeDefined();
+    // biome-ignore lint/style/noNonNullAssertion: assertions above ensure values exist
+    expect(fileResults[0]!.similarity).toBeGreaterThan(emailResult!.similarity);
   });
 
   test("searchSemantic respects limit", () => {

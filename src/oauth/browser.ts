@@ -32,8 +32,9 @@ export async function openBrowser(url: string): Promise<boolean> {
       args = [url];
       break;
     case "win32":
+      // Quote URL to prevent cmd.exe from splitting on special characters
       command = "cmd";
-      args = ["/c", "start", "", url];
+      args = ["/c", "start", "", `"${url}"`];
       break;
     default:
       // Linux and other Unix-like systems

@@ -209,7 +209,11 @@ async function parseConfig(
       servers: result.servers,
       rawContent: parsed,
     };
-  } catch {
+  } catch (err) {
+    // Log parsing errors rather than silently swallowing them
+    console.error(
+      `${colors.yellow}Warning: Failed to parse ${discovered.path}: ${err instanceof Error ? err.message : err}${colors.reset}`,
+    );
     return undefined;
   }
 }
@@ -229,7 +233,21 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
     existingConfig = loaded.config;
     configPath = loaded.path;
     console.log(`${colors.dim}Existing config: ${configPath}${colors.reset}`);
-  } catch {
+  } catch (err) {
+    // Only treat "file not found" errors as "no existing config"
+    // For other errors (permission denied, parse errors), propagate them
+    const isNotFound =
+      err instanceof Error &&
+      "code" in err &&
+      (err as NodeJS.ErrnoException).code === "ENOENT";
+
+    if (!isNotFound) {
+      console.error(
+        `${colors.red}Failed to load existing config: ${err instanceof Error ? err.message : err}${colors.reset}`,
+      );
+      throw err;
+    }
+
     // No existing config - use defaults
     const pathResult = discoverConfigPath();
     if (pathResult) {
