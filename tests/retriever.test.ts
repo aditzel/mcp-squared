@@ -158,7 +158,9 @@ describe("Retriever", () => {
     });
 
     test("respects custom default mode", () => {
-      const customRetriever = new Retriever(cataloger, { defaultMode: "hybrid" });
+      const customRetriever = new Retriever(cataloger, {
+        defaultMode: "hybrid",
+      });
       expect(customRetriever.getDefaultMode()).toBe("hybrid");
       customRetriever.close();
     });

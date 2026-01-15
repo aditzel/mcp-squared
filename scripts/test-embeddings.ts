@@ -94,7 +94,9 @@ async function main() {
   console.log(`  Model: ${generator.getModelId()}`);
   console.log(`  Dimensions: ${batchResult.dimensions}`);
   console.log(`  Avg latency: ${avgLatency.toFixed(1)}ms`);
-  console.log(`  Batch efficiency: ${batchResult.avgPerEmbeddingMs.toFixed(1)}ms/query`);
+  console.log(
+    `  Batch efficiency: ${batchResult.avgPerEmbeddingMs.toFixed(1)}ms/query`,
+  );
   console.log(`  Memory (RSS): ${(memUsage.rss / 1024 / 1024).toFixed(1)}MB`);
 
   const allPassed = avgLatency < 50 && sim1 > sim2;

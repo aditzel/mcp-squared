@@ -47,12 +47,40 @@ const UpstreamStdioSchema = UpstreamBaseSchema.extend({
   }),
 });
 
+/**
+ * Schema for OAuth configuration on SSE upstreams.
+ *
+ * MCP uses OAuth 2.0 with Dynamic Client Registration (RFC 7591).
+ * The SDK automatically:
+ * 1. Discovers OAuth metadata from /.well-known/oauth-authorization-server
+ * 2. Dynamically registers as a client (no pre-configured clientId needed)
+ * 3. Handles the authorization code flow with PKCE
+ *
+ * Users just set `auth: true` to enable OAuth - everything else is automatic.
+ */
+export const OAuthConfigSchema = z.object({
+  /** Port for local OAuth callback server (default: 8089) */
+  callbackPort: z.number().int().min(1024).max(65535).default(8089),
+  /** Client name to use during dynamic registration (default: "MCP²") */
+  clientName: z.string().default("MCP²"),
+});
+
 /** Schema for SSE transport configuration (remote servers) */
 const UpstreamSseSchema = UpstreamBaseSchema.extend({
   transport: z.literal("sse"),
   sse: z.object({
     url: z.string().url(),
     headers: z.record(z.string(), z.string()).default({}),
+    /**
+     * Enable OAuth authentication for this upstream.
+     * - true: Enable with defaults (callbackPort: 8089, clientName: "MCP²")
+     * - object: Enable with custom settings
+     * - false/undefined: No OAuth
+     *
+     * When enabled, MCP² uses OAuth 2.0 Dynamic Client Registration.
+     * No clientId or endpoints needed - everything is auto-discovered.
+     */
+    auth: z.union([z.boolean(), OAuthConfigSchema]).optional(),
   }),
 });
 
@@ -111,11 +139,23 @@ export const SearchModeSchema = z.enum(["fast", "semantic", "hybrid"]);
 /** Available search modes for find_tools */
 export type SearchMode = z.infer<typeof SearchModeSchema>;
 
+/**
+ * Detail levels for find_tools responses.
+ * - L0: Name only (minimal context footprint)
+ * - L1: Summary with name + description (default)
+ * - L2: Full schema with inputSchema included
+ */
+export const DetailLevelSchema = z.enum(["L0", "L1", "L2"]);
+
+/** Available detail levels for find_tools responses */
+export type DetailLevel = z.infer<typeof DetailLevelSchema>;
+
 /** Schema for find_tools operation configuration */
 export const FindToolsSchema = z.object({
   defaultLimit: z.number().int().min(1).default(5),
   maxLimit: z.number().int().min(1).max(200).default(50),
   defaultMode: SearchModeSchema.default("fast"),
+  defaultDetailLevel: DetailLevelSchema.default("L1"),
 });
 
 /** Schema for index refresh configuration */
@@ -129,8 +169,24 @@ export const LoggingSchema = z.object({
 });
 
 /**
+ * Schema for selection caching configuration.
+ * Controls co-occurrence tracking for tool suggestions.
+ */
+export const SelectionCacheSchema = z.object({
+  /** Enable selection caching (default: true) */
+  enabled: z.boolean().default(true),
+  /** Minimum co-occurrence count before suggesting (default: 2) */
+  minCooccurrenceThreshold: z.number().int().min(1).default(2),
+  /** Maximum bundle suggestions per find_tools response (default: 3) */
+  maxBundleSuggestions: z.number().int().min(0).default(3),
+});
+
+/** Selection cache configuration type */
+export type SelectionCacheConfig = z.infer<typeof SelectionCacheSchema>;
+
+/**
  * Schema for operations configuration section.
- * Contains settings for find_tools, indexing, and logging.
+ * Contains settings for find_tools, indexing, logging, and selection caching.
  */
 export const OperationsSchema = z
   .object({
@@ -138,14 +194,30 @@ export const OperationsSchema = z
       defaultLimit: 5,
       maxLimit: 50,
       defaultMode: "fast",
+      defaultDetailLevel: "L1",
     }),
     index: IndexSchema.default({ refreshIntervalMs: 30_000 }),
     logging: LoggingSchema.default({ level: "info" }),
+    selectionCache: SelectionCacheSchema.default({
+      enabled: true,
+      minCooccurrenceThreshold: 2,
+      maxBundleSuggestions: 3,
+    }),
   })
   .default({
-    findTools: { defaultLimit: 5, maxLimit: 50, defaultMode: "fast" },
+    findTools: {
+      defaultLimit: 5,
+      maxLimit: 50,
+      defaultMode: "fast",
+      defaultDetailLevel: "L1",
+    },
     index: { refreshIntervalMs: 30_000 },
     logging: { level: "info" },
+    selectionCache: {
+      enabled: true,
+      minCooccurrenceThreshold: 2,
+      maxBundleSuggestions: 3,
+    },
   });
 
 /**
