@@ -298,6 +298,9 @@ function upstreamToExternal(
   } else if (config.transport === "sse") {
     server.url = config.sse.url;
     server.headers = config.sse.headers;
+    if (config.sse.auth !== undefined) {
+      server.auth = config.sse.auth;
+    }
   }
 
   if (Object.keys(config.env).length > 0) {

@@ -113,6 +113,8 @@ export interface ExternalServer {
   httpUrl?: string;
   /** HTTP headers for SSE transport */
   headers?: Record<string, string>;
+  /** OAuth authentication settings for SSE transport */
+  auth?: boolean | { callbackPort?: number; clientName?: string };
   /** Whether the server is disabled */
   disabled?: boolean;
   /** Always-allowed tools (Cline/Roo-specific) */
