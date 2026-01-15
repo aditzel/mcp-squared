@@ -35,7 +35,9 @@ function generateMockTools(count: number): CatalogedTool[] {
   ];
 
   for (let i = 0; i < count; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: modulo ensures valid index
     const serverKey = serverNames[i % serverNames.length]!;
+    // biome-ignore lint/style/noNonNullAssertion: modulo ensures valid index
     const toolType = toolTypes[i % toolTypes.length]!;
     const toolName = `${toolType}_${serverKey}_tool_${i}`;
 

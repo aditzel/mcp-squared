@@ -173,7 +173,7 @@ describe("Cataloger", () => {
       // Check initial status (should be connecting or error depending on timing)
       const connection = cataloger.getConnection("test");
       expect(connection).toBeDefined();
-      expect(["connecting", "error"]).toContain(connection!.status);
+      expect(["connecting", "error"]).toContain(connection?.status);
 
       await connectPromise;
     });

@@ -128,7 +128,11 @@ function bufferToEmbedding(buffer: Buffer | null): Float32Array | null {
 function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   let dotProduct = 0;
   for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i]! * b[i]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
+    const aVal = a[i]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
+    const bVal = b[i]!;
+    dotProduct += aVal * bVal;
   }
   return dotProduct;
 }
@@ -186,7 +190,7 @@ export class IndexStore {
 
     // Migration: Add embedding column if it doesn't exist (for existing databases)
     try {
-      this.db.run(`ALTER TABLE tools ADD COLUMN embedding BLOB`);
+      this.db.run("ALTER TABLE tools ADD COLUMN embedding BLOB");
     } catch {
       // Column already exists, ignore error
     }
@@ -370,7 +374,7 @@ export class IndexStore {
 
     const result = this.db
       .query<{ count: number }, [string]>(
-        `SELECT COUNT(*) as count FROM tools_fts WHERE tools_fts MATCH ?`,
+        "SELECT COUNT(*) as count FROM tools_fts WHERE tools_fts MATCH ?",
       )
       .get(ftsQuery);
 
@@ -797,7 +801,9 @@ export class IndexStore {
       // Generate all unique pairs
       for (let i = 0; i < keys.length; i++) {
         for (let j = i + 1; j < keys.length; j++) {
+          // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
           const tool1 = keys[i]!;
+          // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
           const tool2 = keys[j]!;
           // Normalize order
           const [first, second] =

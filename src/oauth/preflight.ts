@@ -15,8 +15,8 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { McpSquaredConfig } from "../config/index.js";
 import type { UpstreamSseServerConfig } from "../config/schema.js";
-import { McpOAuthProvider } from "./provider.js";
 import { OAuthCallbackServer } from "./callback-server.js";
+import { McpOAuthProvider } from "./provider.js";
 import { TokenStorage } from "./token-storage.js";
 
 /** Result of pre-flight authentication */
@@ -98,7 +98,9 @@ export async function performPreflightAuth(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       result.failed.push({ name, error: message });
-      console.error(`[preflight] ✗ Authentication failed for '${name}': ${message}`);
+      console.error(
+        `[preflight] ✗ Authentication failed for '${name}': ${message}`,
+      );
     }
   }
 
@@ -128,7 +130,9 @@ async function performInteractiveAuth(
     timeoutMs: 300_000, // 5 minutes
   });
 
-  console.error(`[preflight:${name}] Callback URL: ${callbackServer.getCallbackUrl()}`);
+  console.error(
+    `[preflight:${name}] Callback URL: ${callbackServer.getCallbackUrl()}`,
+  );
 
   // Create transport with OAuth provider
   const transport = new StreamableHTTPClientTransport(
@@ -148,7 +152,9 @@ async function performInteractiveAuth(
   });
 
   try {
-    console.error(`[preflight:${name}] Connecting to server (will trigger OAuth)...`);
+    console.error(
+      `[preflight:${name}] Connecting to server (will trigger OAuth)...`,
+    );
 
     // Attempt to connect - triggers OAuth flow and throws UnauthorizedError
     await client.connect(transport as unknown as Transport);
@@ -181,11 +187,16 @@ async function performInteractiveAuth(
     }
 
     // Verify state
-    if (callbackResult.state && !authProvider.verifyState(callbackResult.state)) {
+    if (
+      callbackResult.state &&
+      !authProvider.verifyState(callbackResult.state)
+    ) {
       throw new Error("OAuth state mismatch - possible CSRF attack");
     }
 
-    console.error(`[preflight:${name}] Authorization code received, completing...`);
+    console.error(
+      `[preflight:${name}] Authorization code received, completing...`,
+    );
 
     // Complete the OAuth flow
     await transport.finishAuth(callbackResult.code);

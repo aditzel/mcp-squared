@@ -119,7 +119,11 @@ describe("Security policy filtering", () => {
 
     // Verify policy filtering marks confirm-list tools correctly
     const compiled = compilePolicy(config);
-    const readVisibility = getToolVisibilityCompiled("fs", "read_file", compiled);
+    const readVisibility = getToolVisibilityCompiled(
+      "fs",
+      "read_file",
+      compiled,
+    );
     const writeVisibility = getToolVisibilityCompiled(
       "fs",
       "write_file",
@@ -160,9 +164,9 @@ describe("Security policy filtering", () => {
     );
 
     // fs:write_file does NOT match any allow pattern - should be hidden
-    expect(getToolVisibilityCompiled("fs", "write_file", compiled).visible).toBe(
-      false,
-    );
+    expect(
+      getToolVisibilityCompiled("fs", "write_file", compiled).visible,
+    ).toBe(false);
 
     // github:list_repos matches "github:*" - should be visible
     expect(
@@ -185,9 +189,21 @@ describe("find_tools search functionality", () => {
     server = new McpSquaredServer();
 
     indexTools(server, [
-      { name: "read_file", description: "Read content from a file", serverKey: "fs" },
-      { name: "write_file", description: "Write content to a file", serverKey: "fs" },
-      { name: "list_repos", description: "List GitHub repositories", serverKey: "github" },
+      {
+        name: "read_file",
+        description: "Read content from a file",
+        serverKey: "fs",
+      },
+      {
+        name: "write_file",
+        description: "Write content to a file",
+        serverKey: "fs",
+      },
+      {
+        name: "list_repos",
+        description: "List GitHub repositories",
+        serverKey: "github",
+      },
     ]);
 
     const result = await server.getRetriever().search("file");

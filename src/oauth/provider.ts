@@ -191,7 +191,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
     }
 
     const urlString = authorizationUrl.toString();
-    console.error(`\nOpening browser for authorization...`);
+    console.error("\nOpening browser for authorization...");
     console.error(`URL: ${urlString}\n`);
     const opened = await openBrowser(urlString);
     if (!opened) {
@@ -212,7 +212,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
    * Returns the stored PKCE code verifier.
    * Throws if no code verifier is stored.
    */
-  codeVerifier(): string {
+  async codeVerifier(): Promise<string> {
     const data = this.storage.load(this.upstreamName);
     if (!data?.codeVerifier) {
       throw new Error("No code verifier stored");
@@ -226,7 +226,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   clearCodeVerifier(): void {
     const data = this.storage.load(this.upstreamName);
     if (data) {
-      delete data.codeVerifier;
+      data.codeVerifier = undefined;
       this.storage.save(this.upstreamName, data);
     }
   }
@@ -244,16 +244,16 @@ export class McpOAuthProvider implements OAuthClientProvider {
         this.storage.delete(this.upstreamName);
         break;
       case "client":
-        delete data.clientInfo;
+        data.clientInfo = undefined;
         this.storage.save(this.upstreamName, data);
         break;
       case "tokens":
-        delete data.tokens;
-        delete data.expiresAt;
+        data.tokens = undefined;
+        data.expiresAt = undefined;
         this.storage.save(this.upstreamName, data);
         break;
       case "verifier":
-        delete data.codeVerifier;
+        data.codeVerifier = undefined;
         this.storage.save(this.upstreamName, data);
         break;
     }

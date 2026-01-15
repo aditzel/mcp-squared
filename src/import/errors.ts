@@ -151,7 +151,7 @@ export function formatImportError(error: ImportError): string {
   } else if (error instanceof ImportValidationError) {
     lines.push(`  Tool: ${error.tool}`);
     lines.push(`  Server: ${error.serverName}`);
-    lines.push(`  Issues:`);
+    lines.push("  Issues:");
     for (const issue of error.issues) {
       lines.push(`    - ${issue}`);
     }

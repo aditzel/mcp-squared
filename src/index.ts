@@ -158,7 +158,7 @@ function formatTestResult(
     console.log(`  Time: ${result.durationMs}ms`);
     // Show stderr in non-verbose mode for failed connections (verbose mode prints in real-time)
     if (!verbose && result.stderr) {
-      console.log(`  Stderr output:`);
+      console.log("  Stderr output:");
       for (const line of result.stderr.split("\n").slice(0, 10)) {
         if (line.trim()) {
           console.log(`    ${line}`);

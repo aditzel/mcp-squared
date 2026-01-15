@@ -37,6 +37,7 @@ function generateMockTools(count: number): CatalogedTool[] {
   const serverNames = ["fs", "db", "api", "cloud", "local"];
 
   for (let i = 0; i < count; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: modulo ensures valid index
     const serverKey = serverNames[i % serverNames.length]!;
     tools.push({
       name: `tool_${i}`,

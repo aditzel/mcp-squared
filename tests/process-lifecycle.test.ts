@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { spawn, type Subprocess } from "bun";
-import { resolve } from "node:path";
 import crypto from "node:crypto";
+import { resolve } from "node:path";
+import { type Subprocess, spawn } from "bun";
 
 const PROJECT_ROOT = resolve(import.meta.dir, "..");
 const ENTRY_POINT = resolve(PROJECT_ROOT, "src/index.ts");
@@ -25,10 +25,10 @@ describe("Process Lifecycle", () => {
       }
       childProcess = null;
     }
-    
+
     // Aggressively clean up any lingering echo servers from this test
     try {
-        spawn(["pkill", "-f", testId]);
+      spawn(["pkill", "-f", testId]);
     } catch {}
   });
 
@@ -42,10 +42,16 @@ describe("Process Lifecycle", () => {
 
   test("upstream stdio processes are cleaned up on server exit", async () => {
     // Path to our mock echo server
-    const echoServerPath = resolve(PROJECT_ROOT, "tests/fixtures/echo-server.ts");
-    
+    const echoServerPath = resolve(
+      PROJECT_ROOT,
+      "tests/fixtures/echo-server.ts",
+    );
+
     // Create a config that uses the echo server with a unique ID
-    const configPath = resolve(PROJECT_ROOT, "tests/fixtures/lifecycle-config.toml");
+    const configPath = resolve(
+      PROJECT_ROOT,
+      "tests/fixtures/lifecycle-config.toml",
+    );
     const configContent = `
 schemaVersion = 1
 
@@ -57,7 +63,7 @@ command = "bun"
 args = ["run", "${echoServerPath}", "${testId}"]
 [upstreams.test-echo.env]
 `;
-    
+
     await Bun.write(configPath, configContent);
 
     // Spawn mcp-squared with this config
@@ -72,19 +78,19 @@ args = ["run", "${echoServerPath}", "${testId}"]
 
     // Pipe stderr to console so we can see what's happening
     if (childProcess.stderr) {
+      // @ts-ignore
+      async function readStderr() {
         // @ts-ignore
-        async function readStderr() {
-            // @ts-ignore
-            const reader = childProcess.stderr.getReader();
-            try {
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    // process.stderr.write(value); // Commented out to reduce noise
-                }
-            } catch {}
-        }
-        readStderr();
+        const reader = childProcess.stderr.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            // process.stderr.write(value); // Commented out to reduce noise
+          }
+        } catch {}
+      }
+      readStderr();
     }
 
     const pid = childProcess.pid;
@@ -95,7 +101,7 @@ args = ["run", "${echoServerPath}", "${testId}"]
 
     // Kill the parent process (SIGTERM)
     childProcess.kill();
-    
+
     // Wait for exit
     await childProcess.exited;
 
@@ -104,14 +110,14 @@ args = ["run", "${echoServerPath}", "${testId}"]
 
     // Check if any process with our unique test ID is running
     const checkProc = spawn({
-        cmd: ["pgrep", "-f", testId],
-        stdout: "pipe"
+      cmd: ["pgrep", "-f", testId],
+      stdout: "pipe",
     });
-    
+
     const output = await new Response(checkProc.stdout).text();
-    
+
     if (output.trim().length > 0) {
-        console.error("Found lingering echo-server processes:", output);
+      console.error("Found lingering echo-server processes:", output);
     }
 
     expect(output.trim().length).toBe(0);

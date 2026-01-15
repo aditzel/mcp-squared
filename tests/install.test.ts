@@ -76,6 +76,7 @@ describe("createBackup", () => {
     const backupPath = createBackup(filePath);
 
     expect(backupPath).toBe(`${filePath}.bak`);
+    // biome-ignore lint/style/noNonNullAssertion: test assertion ensures backupPath exists
     expect(readFileSync(backupPath!, "utf-8")).toBe('{"test": true}');
   });
 
@@ -89,6 +90,7 @@ describe("createBackup", () => {
     expect(backupPath).toBeDefined();
     expect(backupPath).not.toBe(`${filePath}.bak`);
     expect(backupPath).toContain(".bak");
+    // biome-ignore lint/style/noNonNullAssertion: test assertion ensures backupPath exists
     expect(readFileSync(backupPath!, "utf-8")).toBe('{"version": 1}');
   });
 });

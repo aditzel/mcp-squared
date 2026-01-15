@@ -119,40 +119,42 @@ mock.module("@huggingface/transformers", () => {
       allowLocalModels: false,
       cacheDir: "",
     },
+    // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
     pipeline: async (task: string, model: string, options: any) => {
       // Simulate slow model loading
       await new Promise((resolve) => setTimeout(resolve, 50));
 
+      // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
       return async (input: string | string[], opts: any) => {
         // Mock inference latency
         await new Promise((resolve) => setTimeout(resolve, 10));
 
         const batchSize = Array.isArray(input) ? input.length : 1;
         const dims = 384;
-        
+
         // Generate deterministic dummy embeddings based on input length
         // to pass basic structure checks (normalized vectors)
         const generateVector = () => {
           const vec = new Float32Array(dims);
           let norm = 0;
           for (let i = 0; i < dims; i++) {
-             vec[i] = 0.5; // simple value
-             norm += vec[i] * vec[i];
+            vec[i] = 0.5; // simple value
+            norm += vec[i] * vec[i];
           }
           // Normalize
           norm = Math.sqrt(norm);
           for (let i = 0; i < dims; i++) {
-             vec[i] /= norm;
+            vec[i] /= norm;
           }
           return vec;
         };
 
         const totalSize = batchSize * dims;
         const data = new Float32Array(totalSize);
-        
+
         for (let b = 0; b < batchSize; b++) {
-            const vec = generateVector();
-            data.set(vec, b * dims);
+          const vec = generateVector();
+          data.set(vec, b * dims);
         }
 
         return {

@@ -116,8 +116,9 @@ function areConfigsEqual(
     return false;
   }
   for (let i = 0; i < aEnvKeys.length; i++) {
-    const key = aEnvKeys[i];
-    if (key !== bEnvKeys[i] || a.env[key!] !== b.env[key!]) {
+    // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
+    const key = aEnvKeys[i]!;
+    if (key !== bEnvKeys[i] || a.env[key] !== b.env[key]) {
       return false;
     }
   }
@@ -150,11 +151,9 @@ function areConfigsEqual(
       return false;
     }
     for (let i = 0; i < aHeaderKeys.length; i++) {
-      const key = aHeaderKeys[i];
-      if (
-        key !== bHeaderKeys[i] ||
-        a.sse.headers[key!] !== b.sse.headers[key!]
-      ) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
+      const key = aHeaderKeys[i]!;
+      if (key !== bHeaderKeys[i] || a.sse.headers[key] !== b.sse.headers[key]) {
         return false;
       }
     }

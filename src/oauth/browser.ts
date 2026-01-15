@@ -68,7 +68,7 @@ export async function openBrowser(url: string): Promise<boolean> {
  * @param url - URL to display
  */
 export function logAuthorizationUrl(url: string): void {
-  console.error(`\nPlease open this URL in your browser to authorize:\n`);
+  console.error("\nPlease open this URL in your browser to authorize:\n");
   console.error(`  ${url}\n`);
-  console.error(`Waiting for authorization...\n`);
+  console.error("Waiting for authorization...\n");
 }

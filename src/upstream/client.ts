@@ -4,7 +4,6 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { safelyCloseTransport } from "../utils/transport.js";
 import type {
   UpstreamServerConfig,
   UpstreamSseServerConfig,
@@ -15,6 +14,7 @@ import {
   OAuthCallbackServer,
   TokenStorage,
 } from "../oauth/index.js";
+import { safelyCloseTransport } from "../utils/transport.js";
 
 export interface ToolInfo {
   name: string;
@@ -76,7 +76,7 @@ function createStdioTransport(
     string
   >;
 
-  log(`Creating stdio transport...`);
+  log("Creating stdio transport...");
   const transport = new StdioClientTransport({
     command: config.stdio.command,
     args: config.stdio.args,
@@ -118,10 +118,10 @@ function createHttpTransport(
   }
 
   if (authProvider) {
-    log(`OAuth: dynamic client registration enabled`);
+    log("OAuth: dynamic client registration enabled");
   }
 
-  log(`Creating HTTP streaming transport...`);
+  log("Creating HTTP streaming transport...");
 
   // Build options conditionally to avoid passing undefined authProvider
   const transportOptions: {
@@ -159,7 +159,7 @@ async function handleOAuthCallback(
     timeoutMs: 300_000, // 5 minutes
   });
 
-  log(`Waiting for browser authorization...`);
+  log("Waiting for browser authorization...");
   log(`Callback URL: ${callbackServer.getCallbackUrl()}`);
 
   try {
@@ -180,10 +180,10 @@ async function handleOAuthCallback(
       throw new Error("OAuth state mismatch - possible CSRF attack");
     }
 
-    log(`Received authorization code, exchanging for token...`);
+    log("Received authorization code, exchanging for token...");
     await transport.finishAuth(result.code);
     provider.clearCodeVerifier();
-    log(`OAuth authentication complete`);
+    log("OAuth authentication complete");
   } finally {
     callbackServer.stop();
   }
@@ -260,6 +260,7 @@ export async function testUpstreamConnection(
 
     log(`Connecting (timeout: ${timeoutMs}ms)...`);
     const connectStart = Date.now();
+    // biome-ignore lint/style/noNonNullAssertion: transport is assigned above for all code paths
     const connectPromise = client.connect(transport!);
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -276,11 +277,12 @@ export async function testUpstreamConnection(
       // Handle OAuth authorization required
       if (err instanceof UnauthorizedError && authProvider && httpTransport) {
         if (authProvider.isInteractive()) {
-          log(`OAuth authorization required, opening browser...`);
+          log("OAuth authorization required, opening browser...");
           await handleOAuthCallback(httpTransport, authProvider, log);
 
           // Retry connection after auth
-          log(`Retrying connection after OAuth...`);
+          log("Retrying connection after OAuth...");
+          // biome-ignore lint/style/noNonNullAssertion: transport is assigned above for all code paths
           await Promise.race([client.connect(transport!), timeoutPromise]);
         } else {
           // client_credentials should have worked automatically
@@ -301,7 +303,7 @@ export async function testUpstreamConnection(
       log(`Server: ${serverInfo.name} v${serverInfo.version}`);
     }
 
-    log(`Fetching tools...`);
+    log("Fetching tools...");
     const toolsStart = Date.now();
     const { tools } = await client.listTools();
     log(`Got ${tools.length} tools in ${Date.now() - toolsStart}ms`);
@@ -333,7 +335,7 @@ export async function testUpstreamConnection(
       stderr: stderrOutput || undefined,
     };
   } finally {
-    log(`Cleaning up...`);
+    log("Cleaning up...");
     if (transport) {
       await safelyCloseTransport(transport);
     }
@@ -342,6 +344,6 @@ export async function testUpstreamConnection(
         await client.close();
       } catch {}
     }
-    log(`Done`);
+    log("Done");
   }
 }

@@ -1,22 +1,26 @@
-import { describe, expect, test, mock, afterEach } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { testUpstreamConnection } from "../src/upstream/client.js";
 
 // Global variable to capture the mock process kill function
+// biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
 let lastMockKill: any;
 
 // Mock the SDK classes
 mock.module("@modelcontextprotocol/sdk/client/stdio.js", () => {
   return {
     StdioClientTransport: class MockStdioClientTransport {
+      // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
       _process: any;
+      // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
       stderr: any;
 
+      // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
       constructor(config: any) {
         // Create a new mock kill function for this instance
         const killFn = mock((signal) => {
-            return true;
+          return true;
         });
-        
+
         lastMockKill = killFn;
 
         this._process = {
@@ -27,9 +31,9 @@ mock.module("@modelcontextprotocol/sdk/client/stdio.js", () => {
           stdout: { on: mock(() => {}) },
           stderr: { on: mock(() => {}) },
         };
-        
+
         this.stderr = {
-            on: mock(() => {})
+          on: mock(() => {}),
         };
       }
 
@@ -39,17 +43,17 @@ mock.module("@modelcontextprotocol/sdk/client/stdio.js", () => {
         // CRITICAL: Replicate the real SDK behavior
         this._process = undefined;
       }
-    }
+    },
   };
 });
 
 mock.module("@modelcontextprotocol/sdk/client/index.js", () => {
   return {
     Client: class MockClient {
+      // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
       transport: any;
 
-      constructor(info: any) {}
-
+      // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
       async connect(transport: any) {
         this.transport = transport;
         await transport.start();
@@ -68,7 +72,7 @@ mock.module("@modelcontextprotocol/sdk/client/index.js", () => {
           await this.transport.close();
         }
       }
-    }
+    },
   };
 });
 
@@ -85,13 +89,14 @@ describe("Regression Test: Process Leak", () => {
         command: "echo",
         args: ["hello"],
       },
+      // biome-ignore lint/suspicious/noExplicitAny: test config mock
     } as any;
 
     await testUpstreamConnection("test-upstream", config);
 
     expect(lastMockKill).toBeDefined();
     // This assertion passes ONLY if safelyCloseTransport ran before client.close()
-    // If client.close() ran first, _process would be undefined, and safelyCloseTransport 
+    // If client.close() ran first, _process would be undefined, and safelyCloseTransport
     // would skip the kill call.
     expect(lastMockKill).toHaveBeenCalledWith("SIGTERM");
   });

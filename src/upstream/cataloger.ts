@@ -22,11 +22,11 @@ import type {
 } from "../config/schema.js";
 import { McpOAuthProvider, TokenStorage } from "../oauth/index.js";
 import { sanitizeDescription } from "../security/index.js";
-import { safelyCloseTransport } from "../utils/transport.js";
 import {
   formatQualifiedName,
   parseQualifiedName,
 } from "../utils/tool-names.js";
+import { safelyCloseTransport } from "../utils/transport.js";
 
 /**
  * Connection status for an upstream server.
@@ -521,7 +521,7 @@ export class Cataloger {
     const conflicts = this.getConflictingTools();
     if (conflicts.size > 0) {
       console.warn(
-        `[mcp²] Tool name conflicts detected. Use qualified names to avoid ambiguity:`,
+        "[mcp²] Tool name conflicts detected. Use qualified names to avoid ambiguity:",
       );
       for (const [toolName, qualified] of conflicts) {
         console.warn(`  - "${toolName}" available as: ${qualified.join(", ")}`);

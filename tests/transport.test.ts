@@ -1,4 +1,4 @@
-import { describe, expect, test, mock } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { safelyCloseTransport } from "../src/utils/transport.js";
 
@@ -14,18 +14,18 @@ describe("safelyCloseTransport", () => {
 
     // Create a mock transport that mimics StdioClientTransport
     const transport = new StdioClientTransport({
-        command: "echo",
+      command: "echo",
     });
 
     // Inject our mock process
     Object.defineProperty(transport, "_process", {
-        value: mockProcess,
-        configurable: true
+      value: mockProcess,
+      configurable: true,
     });
 
     // Mock close to simulate SDK behavior (returns promise)
     transport.close = mock(async () => {
-        // SDK close implementation usually doesn't throw but might fail to kill
+      // SDK close implementation usually doesn't throw but might fail to kill
     });
 
     await safelyCloseTransport(transport);
@@ -43,12 +43,12 @@ describe("safelyCloseTransport", () => {
     };
 
     const transport = new StdioClientTransport({
-        command: "echo",
+      command: "echo",
     });
 
     Object.defineProperty(transport, "_process", {
-        value: mockProcess,
-        configurable: true
+      value: mockProcess,
+      configurable: true,
     });
 
     transport.close = mock(async () => {});
@@ -69,17 +69,17 @@ describe("safelyCloseTransport", () => {
     };
 
     const transport = new StdioClientTransport({
-        command: "echo",
+      command: "echo",
     });
 
     Object.defineProperty(transport, "_process", {
-        value: mockProcess,
-        configurable: true
+      value: mockProcess,
+      configurable: true,
     });
 
     // Mock close to throw
     transport.close = mock(async () => {
-        throw new Error("Close failed");
+      throw new Error("Close failed");
     });
 
     // Should not throw

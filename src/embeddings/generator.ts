@@ -192,7 +192,7 @@ export class EmbeddingGenerator {
 
     const startTime = performance.now();
 
-    const output = await this.pipeline!(input, {
+    const output = await this.pipeline?.(input, {
       pooling: "mean",
       normalize: true,
     });
@@ -226,7 +226,7 @@ export class EmbeddingGenerator {
 
     const startTime = performance.now();
 
-    const outputs = await this.pipeline!(inputs, {
+    const outputs = await this.pipeline?.(inputs, {
       pooling: "mean",
       normalize: true,
     });
@@ -271,9 +271,13 @@ export class EmbeddingGenerator {
     let normB = 0;
 
     for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i]! * b[i]!;
-      normA += a[i]! * a[i]!;
-      normB += b[i]! * b[i]!;
+      // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
+      const aVal = a[i]!;
+      // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
+      const bVal = b[i]!;
+      dotProduct += aVal * bVal;
+      normA += aVal * aVal;
+      normB += bVal * bVal;
     }
 
     // Since we normalize embeddings, norms should be ~1, but compute anyway

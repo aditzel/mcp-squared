@@ -721,7 +721,11 @@ class ConfigTuiApp {
 
     const authOptions: SelectOption[] = [
       { name: "Disabled", description: "", value: "disabled" },
-      { name: "Enabled (default port 8089)", description: "", value: "enabled" },
+      {
+        name: "Enabled (default port 8089)",
+        description: "",
+        value: "enabled",
+      },
     ];
 
     const authSelect = new SelectRenderable(this.renderer, {

@@ -35,13 +35,6 @@ export class SelectionTracker {
   private sessionTools: Set<string> = new Set();
 
   /**
-   * Creates a new SelectionTracker instance.
-   */
-  constructor() {
-    // Initialize empty session
-  }
-
-  /**
    * Records a tool usage in the current session.
    *
    * @param toolKey - Tool key in format "serverKey:toolName"

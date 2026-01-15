@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify as stringifyToml } from "smol-toml";
 
-import { CodexParser } from "@/import/parsers/codex";
 import { getParser } from "@/import/parsers";
-import { CodexWriter, getWriter } from "@/install/writers";
+import { CodexParser } from "@/import/parsers/codex";
 import { performInstallation } from "@/install";
 import type { McpServerEntry } from "@/install";
+import { CodexWriter, getWriter } from "@/install/writers";
 
 describe("CodexParser", () => {
   const parser = new CodexParser();

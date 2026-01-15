@@ -201,7 +201,6 @@ export class Retriever {
         return this.searchSemantic(query, effectiveLimit);
       case "hybrid":
         return this.searchHybrid(query, effectiveLimit);
-      case "fast":
       default:
         return this.searchFast(query, effectiveLimit);
     }
@@ -449,12 +448,13 @@ export class Retriever {
     });
 
     // Generate embeddings in batch (not as queries, so no "query: " prefix)
-    const result = await this.embeddingGenerator!.embedBatch(texts, false);
+    const result = await this.embeddingGenerator?.embedBatch(texts, false);
 
     // Update embeddings in the store
     const embeddings = toolsWithoutEmbeddings.map((tool, i) => ({
       name: tool.name,
       serverKey: tool.serverKey,
+      // biome-ignore lint/style/noNonNullAssertion: embedBatch returns same length array
       embedding: result.embeddings[i]!,
     }));
 

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Retriever } from "../src/retriever/retriever.js";
 import { Cataloger } from "../src/upstream/cataloger.js";
 
@@ -9,32 +9,34 @@ mock.module("@huggingface/transformers", () => {
       allowLocalModels: false,
       cacheDir: "",
     },
+    // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
     pipeline: async (task: string, model: string, options: any) => {
+      // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
       return async (input: string | string[], opts: any) => {
         const batchSize = Array.isArray(input) ? input.length : 1;
         const dims = 384;
-        
+
         // Generate deterministic dummy embeddings
         const generateVector = () => {
           const vec = new Float32Array(dims);
           let norm = 0;
           for (let i = 0; i < dims; i++) {
-             vec[i] = 0.5;
-             norm += vec[i] * vec[i];
+            vec[i] = 0.5;
+            norm += vec[i] * vec[i];
           }
           norm = Math.sqrt(norm);
           for (let i = 0; i < dims; i++) {
-             vec[i] /= norm;
+            vec[i] /= norm;
           }
           return vec;
         };
 
         const totalSize = batchSize * dims;
         const data = new Float32Array(totalSize);
-        
+
         for (let b = 0; b < batchSize; b++) {
-            const vec = generateVector();
-            data.set(vec, b * dims);
+          const vec = generateVector();
+          data.set(vec, b * dims);
         }
 
         return {
@@ -259,13 +261,19 @@ describe("Retriever", () => {
         name: "read_file",
         description: "Read content from a file on disk",
         serverKey: "filesystem",
-        inputSchema: { type: "object", properties: { path: { type: "string" } } },
+        inputSchema: {
+          type: "object",
+          properties: { path: { type: "string" } },
+        },
       });
       indexStore.indexTool({
         name: "write_file",
         description: "Write content to a file on disk",
         serverKey: "filesystem",
-        inputSchema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } } },
+        inputSchema: {
+          type: "object",
+          properties: { path: { type: "string" }, content: { type: "string" } },
+        },
       });
       indexStore.indexTool({
         name: "list_repos",
@@ -286,7 +294,9 @@ describe("Retriever", () => {
       expect(fastResult.tools.length).toBeGreaterThan(0);
 
       // Semantic/hybrid fall back to fast without embeddings
-      const semanticResult = await retriever.search("file", { mode: "semantic" });
+      const semanticResult = await retriever.search("file", {
+        mode: "semantic",
+      });
       expect(semanticResult.tools.length).toBeGreaterThan(0);
     });
 

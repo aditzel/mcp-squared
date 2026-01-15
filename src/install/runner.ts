@@ -109,6 +109,7 @@ async function promptToolSelection(
   console.log("\nAvailable MCP client tools:\n");
 
   for (let i = 0; i < tools.length; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
     const tool = tools[i]!;
     const scopeInfo = tool.scopes.join(", ");
     console.log(
@@ -123,6 +124,7 @@ async function promptToolSelection(
     const index = Number.parseInt(answer, 10) - 1;
 
     if (index >= 0 && index < tools.length) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds checked above
       return tools[index]!;
     }
 
@@ -142,6 +144,7 @@ async function promptScopeSelection(
   tool: DiscoveredTool,
 ): Promise<InstallScope> {
   if (tool.scopes.length === 1) {
+    // biome-ignore lint/style/noNonNullAssertion: length checked above
     return tool.scopes[0]!;
   }
 
@@ -163,6 +166,7 @@ async function promptScopeSelection(
     const index = Number.parseInt(answer, 10) - 1;
 
     if (index >= 0 && index < tool.scopes.length) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds checked above
       return tool.scopes[index]!;
     }
 
@@ -302,7 +306,7 @@ export function performInstallation(
   try {
     const output = isToml
       ? stringifyToml(newConfig)
-      : JSON.stringify(newConfig, null, 2) + "\n";
+      : `${JSON.stringify(newConfig, null, 2)}\n`;
     writeFileSync(path, output);
   } catch (error) {
     return {
@@ -384,6 +388,7 @@ export async function runInstall(args: InstallArgs): Promise<void> {
     }
     selectedScope = args.scope;
   } else if (selectedTool.scopes.length === 1) {
+    // biome-ignore lint/style/noNonNullAssertion: length checked above
     selectedScope = selectedTool.scopes[0]!;
   } else if (args.interactive) {
     selectedScope = await promptScopeSelection(selectedTool);
@@ -411,8 +416,10 @@ export async function runInstall(args: InstallArgs): Promise<void> {
   // Determine target path
   const targetPath =
     selectedScope === "user"
-      ? selectedTool.paths.user!
-      : selectedTool.paths.project!;
+      ? // biome-ignore lint/style/noNonNullAssertion: scope selection ensures path exists
+        selectedTool.paths.user!
+      : // biome-ignore lint/style/noNonNullAssertion: scope selection ensures path exists
+        selectedTool.paths.project!;
 
   // Show summary
   console.log(`\n${colors.dim}Configuration:${colors.reset}`);

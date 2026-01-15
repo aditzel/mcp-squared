@@ -151,7 +151,7 @@ export function formatValidationIssues(issues: ValidationIssue[]): string {
   const warnings = issues.filter((i) => i.severity === "warning");
 
   if (errors.length > 0) {
-    lines.push(`\n\x1b[31mConfiguration Errors:\x1b[0m`);
+    lines.push("\n\x1b[31mConfiguration Errors:\x1b[0m");
     for (const error of errors) {
       lines.push(`  \x1b[31m✗\x1b[0m ${error.upstream}: ${error.message}`);
       if (error.suggestion) {
@@ -161,7 +161,7 @@ export function formatValidationIssues(issues: ValidationIssue[]): string {
   }
 
   if (warnings.length > 0) {
-    lines.push(`\n\x1b[33mConfiguration Warnings:\x1b[0m`);
+    lines.push("\n\x1b[33mConfiguration Warnings:\x1b[0m");
     for (const warning of warnings) {
       lines.push(`  \x1b[33m⚠\x1b[0m ${warning.upstream}: ${warning.message}`);
       if (warning.suggestion) {

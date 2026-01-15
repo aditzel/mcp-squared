@@ -22,6 +22,7 @@ import { type DiscoveredConfig, discoverConfigs } from "./discovery/index.js";
 import {
   type IncomingServerGroup,
   type MergeInput,
+  type MergeResult,
   detectConflicts,
   mergeWithResolutions,
   mergeWithStrategy,
@@ -341,7 +342,7 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
   }
 
   // Step 4: Handle conflicts
-  let mergeResult;
+  let mergeResult: MergeResult;
 
   if (detection.conflicts.length === 0 || !options.interactive) {
     // No conflicts or non-interactive mode
