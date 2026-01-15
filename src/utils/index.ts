@@ -10,3 +10,5 @@ export {
   parseQualifiedName,
   type ParsedToolName,
 } from "./tool-names.js";
+
+export { safelyCloseTransport } from "./transport.js";

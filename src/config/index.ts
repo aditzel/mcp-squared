@@ -15,9 +15,12 @@ export {
   DEFAULT_CONFIG,
   LATEST_SCHEMA_VERSION,
   LogLevelSchema,
+  OAuthConfigSchema,
+  SelectionCacheSchema,
   UpstreamServerSchema,
   type LogLevel,
   type McpSquaredConfig,
+  type SelectionCacheConfig,
   type UpstreamServerConfig,
   type UpstreamSseServerConfig,
   type UpstreamStdioServerConfig,
@@ -49,4 +52,17 @@ export {
   saveConfigSync,
 } from "./save.js";
 
-export { migrateConfig, type RawConfig } from "./migrations/index.js";
+export {
+  UnknownSchemaVersionError,
+  migrateConfig,
+  type RawConfig,
+} from "./migrations/index.js";
+
+export {
+  formatValidationIssues,
+  validateConfig,
+  validateStdioUpstream,
+  validateUpstreamConfig,
+  type ValidationIssue,
+  type ValidationSeverity,
+} from "./validate.js";

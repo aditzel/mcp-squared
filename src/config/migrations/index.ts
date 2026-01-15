@@ -11,8 +11,7 @@ export class UnknownSchemaVersionError extends Error {
     public readonly latestVersion: number,
   ) {
     super(
-      `Unknown schema version ${version} (latest supported: ${latestVersion}). ` +
-        `This config may have been created by a newer version of MCP².`,
+      `Unknown schema version ${version} (latest supported: ${latestVersion}). This config may have been created by a newer version of MCP².`,
     );
     this.name = "UnknownSchemaVersionError";
   }

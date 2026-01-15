@@ -2,7 +2,7 @@
  * Tests for IndexStore vector embedding functionality.
  */
 
-import { describe, expect, test, beforeEach } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { IndexStore } from "../src/index/index.js";
 import type { CatalogedTool } from "../src/upstream/cataloger.js";
 
@@ -46,10 +46,13 @@ describe("IndexStore Embeddings", () => {
     // Normalize
     let norm = 0;
     for (let i = 0; i < 384; i++) {
-      norm += embedding[i]! * embedding[i]!;
+      // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
+      const val = embedding[i]!;
+      norm += val * val;
     }
     norm = Math.sqrt(norm);
     for (let i = 0; i < 384; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
       embedding[i] = embedding[i]! / norm;
     }
     return embedding;
@@ -89,6 +92,7 @@ describe("IndexStore Embeddings", () => {
 
     // Check values are preserved (with some floating point tolerance)
     for (let i = 0; i < 10; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
       expect(tool?.embedding?.[i]).toBeCloseTo(embedding[i]!, 5);
     }
   });
@@ -144,6 +148,14 @@ describe("IndexStore Embeddings", () => {
     const fileResults = results.filter((r) => r.serverKey === "filesystem");
     const emailResult = results.find((r) => r.name === "send_email");
 
+    // Explicitly assert values exist before comparison to fail loudly on missing data
+    expect(fileResults.length).toBeGreaterThan(0);
+    expect(emailResult).toBeDefined();
+    // biome-ignore lint/style/noNonNullAssertion: assertions above ensure values exist
+    expect(fileResults[0]!.similarity).toBeDefined();
+    // biome-ignore lint/style/noNonNullAssertion: assertions above ensure values exist
+    expect(emailResult!.similarity).toBeDefined();
+    // biome-ignore lint/style/noNonNullAssertion: assertions above ensure values exist
     expect(fileResults[0]!.similarity).toBeGreaterThan(emailResult!.similarity);
   });
 
@@ -162,7 +174,7 @@ describe("IndexStore Embeddings", () => {
 
     const results = store.searchSemantic(createMockEmbedding(1), 10);
     expect(results.length).toBe(1);
-    expect(results[0]!.name).toBe("read_file");
+    expect(results[0]?.name).toBe("read_file");
   });
 
   test("clearEmbeddings removes all embeddings", () => {
