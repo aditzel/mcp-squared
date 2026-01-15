@@ -22,6 +22,7 @@ import type {
 } from "../config/schema.js";
 import { McpOAuthProvider, TokenStorage } from "../oauth/index.js";
 import { sanitizeDescription } from "../security/index.js";
+import { safelyCloseTransport } from "../utils/transport.js";
 import {
   formatQualifiedName,
   parseQualifiedName,
@@ -713,6 +714,11 @@ export class Cataloger {
    * @internal
    */
   private async cleanupConnection(connection: ServerConnection): Promise<void> {
+    if (connection.transport) {
+      await safelyCloseTransport(connection.transport);
+      connection.transport = null;
+    }
+
     if (connection.client) {
       try {
         await connection.client.close();
@@ -720,15 +726,6 @@ export class Cataloger {
         // Ignore cleanup errors
       }
       connection.client = null;
-    }
-
-    if (connection.transport) {
-      try {
-        await connection.transport.close();
-      } catch {
-        // Ignore cleanup errors
-      }
-      connection.transport = null;
     }
   }
 }

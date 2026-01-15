@@ -80,6 +80,13 @@ async function startServer(): Promise<void> {
     isShuttingDown = true;
 
     try {
+      // Force exit if shutdown takes too long (e.g. hung upstream)
+      const forceExitTimer = setTimeout(() => {
+        console.error("Forcing shutdown after timeout");
+        process.exit(1);
+      }, 2000);
+      forceExitTimer.unref();
+
       await server.stop();
       process.exit(0);
     } catch (err) {
@@ -95,6 +102,17 @@ async function startServer(): Promise<void> {
   });
 
   process.on("SIGTERM", () => {
+    void gracefulShutdown();
+  });
+
+  // Exit when stdin closes (parent process died)
+  // This prevents orphaned server processes when the MCP client terminates
+  process.stdin.on("close", () => {
+    void gracefulShutdown();
+  });
+
+  // Also handle stdin end event for additional coverage
+  process.stdin.on("end", () => {
     void gracefulShutdown();
   });
 
