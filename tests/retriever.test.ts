@@ -1,6 +1,50 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test, mock } from "bun:test";
 import { Retriever } from "../src/retriever/retriever.js";
 import { Cataloger } from "../src/upstream/cataloger.js";
+
+// Mock the Transformers.js library to avoid loading the real model (native crash)
+mock.module("@huggingface/transformers", () => {
+  return {
+    env: {
+      allowLocalModels: false,
+      cacheDir: "",
+    },
+    pipeline: async (task: string, model: string, options: any) => {
+      return async (input: string | string[], opts: any) => {
+        const batchSize = Array.isArray(input) ? input.length : 1;
+        const dims = 384;
+        
+        // Generate deterministic dummy embeddings
+        const generateVector = () => {
+          const vec = new Float32Array(dims);
+          let norm = 0;
+          for (let i = 0; i < dims; i++) {
+             vec[i] = 0.5;
+             norm += vec[i] * vec[i];
+          }
+          norm = Math.sqrt(norm);
+          for (let i = 0; i < dims; i++) {
+             vec[i] /= norm;
+          }
+          return vec;
+        };
+
+        const totalSize = batchSize * dims;
+        const data = new Float32Array(totalSize);
+        
+        for (let b = 0; b < batchSize; b++) {
+            const vec = generateVector();
+            data.set(vec, b * dims);
+        }
+
+        return {
+          data: data,
+          dims: [batchSize, dims],
+        };
+      };
+    },
+  };
+});
 
 describe("Retriever", () => {
   let cataloger: Cataloger;

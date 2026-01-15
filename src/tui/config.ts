@@ -29,6 +29,8 @@ type Screen =
   | "main"
   | "upstreams"
   | "add-upstream"
+  | "add-stdio"
+  | "add-sse"
   | "edit-upstream"
   | "security"
   | "operations";
@@ -343,14 +345,97 @@ class ConfigTuiApp {
     this.addHeader();
     if (!this.container) return;
 
-    const formBox = new BoxRenderable(this.renderer, {
+    const menuBox = new BoxRenderable(this.renderer, {
       id: "add-upstream-box",
+      width: 60,
+      height: 12,
+      border: true,
+      borderStyle: "single",
+      borderColor: "#475569",
+      title: "Add Upstream Server",
+      titleAlignment: "center",
+      backgroundColor: "#1e293b",
+      flexDirection: "column",
+      padding: 1,
+    });
+    this.container.add(menuBox);
+
+    const descText = new TextRenderable(this.renderer, {
+      id: "transport-desc",
+      content: "Select transport type:",
+      fg: "#94a3b8",
+      marginBottom: 1,
+    });
+    menuBox.add(descText);
+
+    const options: SelectOption[] = [
+      {
+        name: "Stdio (local process)",
+        description: "Launch a local command as MCP server",
+        value: "stdio",
+      },
+      {
+        name: "HTTP/SSE (remote server)",
+        description: "Connect to a remote MCP server via HTTP",
+        value: "sse",
+      },
+      {
+        name: "← Back",
+        description: "",
+        value: "back",
+      },
+    ];
+
+    const menu = new SelectRenderable(this.renderer, {
+      id: "transport-menu",
+      width: "100%",
+      height: "100%",
+      options,
+      backgroundColor: "transparent",
+      selectedBackgroundColor: "#334155",
+      textColor: "#e2e8f0",
+      selectedTextColor: "#38bdf8",
+      showDescription: true,
+      descriptionColor: "#64748b",
+      wrapSelection: true,
+    });
+    menuBox.add(menu);
+
+    menu.on(
+      SelectRenderableEvents.ITEM_SELECTED,
+      (_index: number, option: SelectOption) => {
+        switch (option.value) {
+          case "stdio":
+            this.showAddStdioScreen();
+            break;
+          case "sse":
+            this.showAddSseScreen();
+            break;
+          case "back":
+            this.showUpstreamsScreen();
+            break;
+        }
+      },
+    );
+
+    menu.focus();
+    this.addInstructions("↑↓ Navigate | Enter Select | Esc Back");
+  }
+
+  private showAddStdioScreen(): void {
+    this.state.currentScreen = "add-stdio";
+    this.clearScreen();
+    this.addHeader();
+    if (!this.container) return;
+
+    const formBox = new BoxRenderable(this.renderer, {
+      id: "add-stdio-box",
       width: 60,
       height: 22,
       border: true,
       borderStyle: "single",
       borderColor: "#475569",
-      title: "Add Upstream Server",
+      title: "Add Stdio Upstream",
       titleAlignment: "center",
       backgroundColor: "#1e293b",
       flexDirection: "column",
@@ -382,7 +467,7 @@ class ConfigTuiApp {
 
     const commandLabel = new TextRenderable(this.renderer, {
       id: "command-label",
-      content: "Command (stdio transport):",
+      content: "Command (with arguments):",
       fg: "#94a3b8",
     });
     formBox.add(commandLabel);
@@ -507,7 +592,7 @@ class ConfigTuiApp {
           saveUpstream();
         } else {
           cleanup();
-          this.showUpstreamsScreen();
+          this.showAddUpstreamScreen();
         }
       },
     );
@@ -515,7 +600,285 @@ class ConfigTuiApp {
     const handleKeypress = (key: KeyEvent) => {
       if (key.name === "escape") {
         cleanup();
-        this.showUpstreamsScreen();
+        this.showAddUpstreamScreen();
+        return;
+      }
+
+      if (key.name === "tab" && !key.shift) {
+        focusField((focusIndex + 1) % fields.length);
+        return;
+      }
+
+      if (key.name === "tab" && key.shift) {
+        focusField((focusIndex - 1 + fields.length) % fields.length);
+        return;
+      }
+    };
+
+    const cleanup = () => {
+      this.renderer.keyInput.off("keypress", handleKeypress);
+    };
+
+    this.renderer.keyInput.on("keypress", handleKeypress);
+    focusField(0);
+
+    this.addInstructions("Tab: next field | Shift+Tab: prev | Esc: cancel");
+  }
+
+  private showAddSseScreen(): void {
+    this.state.currentScreen = "add-sse";
+    this.clearScreen();
+    this.addHeader();
+    if (!this.container) return;
+
+    const formBox = new BoxRenderable(this.renderer, {
+      id: "add-sse-box",
+      width: 60,
+      height: 26,
+      border: true,
+      borderStyle: "single",
+      borderColor: "#475569",
+      title: "Add HTTP/SSE Upstream",
+      titleAlignment: "center",
+      backgroundColor: "#1e293b",
+      flexDirection: "column",
+      padding: 1,
+    });
+    this.container.add(formBox);
+
+    const nameLabel = new TextRenderable(this.renderer, {
+      id: "name-label",
+      content: "Name (unique identifier):",
+      fg: "#94a3b8",
+      marginBottom: 0,
+    });
+    formBox.add(nameLabel);
+
+    const nameInput = new InputRenderable(this.renderer, {
+      id: "name-input",
+      width: "100%",
+      placeholder: "e.g., stripe, remote-api",
+      backgroundColor: "#0f172a",
+      focusedBackgroundColor: "#1e293b",
+      textColor: "#e2e8f0",
+      marginBottom: 1,
+      onPaste: (event: PasteEvent) => {
+        nameInput.value = (nameInput.value || "") + event.text;
+      },
+    });
+    formBox.add(nameInput);
+
+    const urlLabel = new TextRenderable(this.renderer, {
+      id: "url-label",
+      content: "Server URL:",
+      fg: "#94a3b8",
+    });
+    formBox.add(urlLabel);
+
+    const urlInput = new InputRenderable(this.renderer, {
+      id: "url-input",
+      width: "100%",
+      placeholder: "e.g., https://api.example.com/mcp",
+      backgroundColor: "#0f172a",
+      focusedBackgroundColor: "#1e293b",
+      textColor: "#e2e8f0",
+      marginBottom: 1,
+      onPaste: (event: PasteEvent) => {
+        urlInput.value = (urlInput.value || "") + event.text;
+      },
+    });
+    formBox.add(urlInput);
+
+    const headersLabel = new TextRenderable(this.renderer, {
+      id: "headers-label",
+      content: "HTTP Headers (optional, comma-separated):",
+      fg: "#94a3b8",
+      marginBottom: 0,
+    });
+    formBox.add(headersLabel);
+
+    const headersInput = new InputRenderable(this.renderer, {
+      id: "headers-input",
+      width: "100%",
+      placeholder: "e.g., Authorization=Bearer $API_KEY",
+      backgroundColor: "#0f172a",
+      focusedBackgroundColor: "#1e293b",
+      textColor: "#e2e8f0",
+      marginBottom: 1,
+      onPaste: (event: PasteEvent) => {
+        headersInput.value = (headersInput.value || "") + event.text;
+      },
+    });
+    formBox.add(headersInput);
+
+    const authLabel = new TextRenderable(this.renderer, {
+      id: "auth-label",
+      content: "OAuth Authentication:",
+      fg: "#94a3b8",
+      marginBottom: 0,
+    });
+    formBox.add(authLabel);
+
+    const authOptions: SelectOption[] = [
+      { name: "Disabled", description: "", value: "disabled" },
+      { name: "Enabled (default port 8089)", description: "", value: "enabled" },
+    ];
+
+    const authSelect = new SelectRenderable(this.renderer, {
+      id: "auth-select",
+      width: "100%",
+      height: 2,
+      options: authOptions,
+      backgroundColor: "#0f172a",
+      selectedBackgroundColor: "#334155",
+      textColor: "#e2e8f0",
+      selectedTextColor: "#38bdf8",
+      wrapSelection: true,
+    });
+    formBox.add(authSelect);
+
+    const envLabel = new TextRenderable(this.renderer, {
+      id: "env-label",
+      content: "Environment variables (optional, comma-separated):",
+      fg: "#94a3b8",
+      marginBottom: 0,
+      marginTop: 1,
+    });
+    formBox.add(envLabel);
+
+    const envInput = new InputRenderable(this.renderer, {
+      id: "env-input",
+      width: "100%",
+      placeholder: "e.g., API_KEY=$STRIPE_API_KEY",
+      backgroundColor: "#0f172a",
+      focusedBackgroundColor: "#1e293b",
+      textColor: "#e2e8f0",
+      marginBottom: 1,
+      onPaste: (event: PasteEvent) => {
+        envInput.value = (envInput.value || "") + event.text;
+      },
+    });
+    formBox.add(envInput);
+
+    const submitOptions: SelectOption[] = [
+      { name: "[ Save Upstream ]", description: "", value: "save" },
+      { name: "[ Cancel ]", description: "", value: "cancel" },
+    ];
+
+    const submitSelect = new SelectRenderable(this.renderer, {
+      id: "submit-select",
+      width: "100%",
+      height: 3,
+      options: submitOptions,
+      backgroundColor: "transparent",
+      selectedBackgroundColor: "#334155",
+      textColor: "#e2e8f0",
+      selectedTextColor: "#38bdf8",
+      wrapSelection: true,
+    });
+    formBox.add(submitSelect);
+
+    const fields = [
+      nameInput,
+      urlInput,
+      headersInput,
+      authSelect,
+      envInput,
+      submitSelect,
+    ] as const;
+    let focusIndex = 0;
+    let selectedAuthIndex = 0;
+
+    const focusField = (index: number) => {
+      focusIndex = index;
+      const field = fields[index];
+      if (field) field.focus();
+    };
+
+    authSelect.on(
+      SelectRenderableEvents.ITEM_SELECTED,
+      (index: number, _opt: SelectOption) => {
+        selectedAuthIndex = index;
+      },
+    );
+
+    const parseKeyValuePairs = (input: string): Record<string, string> => {
+      const result: Record<string, string> = {};
+      if (!input.trim()) return result;
+
+      const pairs = input
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const pair of pairs) {
+        const eqIndex = pair.indexOf("=");
+        if (eqIndex > 0) {
+          const key = pair.substring(0, eqIndex).trim();
+          const value = pair.substring(eqIndex + 1).trim();
+          if (key) {
+            result[key] = value;
+          }
+        }
+      }
+      return result;
+    };
+
+    const saveUpstream = () => {
+      const trimmedName = nameInput.value?.trim() || "";
+      const trimmedUrl = urlInput.value?.trim() || "";
+
+      if (!trimmedName) {
+        nameInput.focus();
+        return;
+      }
+      if (!trimmedUrl) {
+        urlInput.focus();
+        return;
+      }
+
+      // Basic URL validation
+      try {
+        new URL(trimmedUrl);
+      } catch {
+        urlInput.focus();
+        return;
+      }
+
+      const envVars = parseKeyValuePairs(envInput.value || "");
+      const headers = parseKeyValuePairs(headersInput.value || "");
+      const authEnabled = selectedAuthIndex === 1;
+
+      this.state.config.upstreams[trimmedName] = {
+        transport: "sse",
+        enabled: true,
+        env: envVars,
+        sse: {
+          url: trimmedUrl,
+          headers,
+          auth: authEnabled ? true : undefined,
+        },
+      };
+      this.state.isDirty = true;
+      cleanup();
+      this.showUpstreamsScreen();
+    };
+
+    submitSelect.on(
+      SelectRenderableEvents.ITEM_SELECTED,
+      (_i: number, opt: SelectOption) => {
+        if (opt.value === "save") {
+          saveUpstream();
+        } else {
+          cleanup();
+          this.showAddUpstreamScreen();
+        }
+      },
+    );
+
+    const handleKeypress = (key: KeyEvent) => {
+      if (key.name === "escape") {
+        cleanup();
+        this.showAddUpstreamScreen();
         return;
       }
 
@@ -552,10 +915,11 @@ class ConfigTuiApp {
       return;
     }
 
+    const boxHeight = upstream.transport === "sse" ? 22 : 18;
     const menuBox = new BoxRenderable(this.renderer, {
       id: "edit-upstream-box",
       width: 60,
-      height: 18,
+      height: boxHeight,
       border: true,
       borderStyle: "single",
       borderColor: "#475569",
@@ -591,6 +955,24 @@ class ConfigTuiApp {
         marginBottom: 0,
       });
       menuBox.add(urlText);
+
+      const headerCount = Object.keys(upstream.sse.headers || {}).length;
+      const headersText = new TextRenderable(this.renderer, {
+        id: "edit-headers",
+        content: `Headers: ${headerCount > 0 ? headerCount : "(none)"}`,
+        fg: "#94a3b8",
+        marginBottom: 0,
+      });
+      menuBox.add(headersText);
+
+      const authStatus = upstream.sse.auth ? "Enabled" : "Disabled";
+      const authText = new TextRenderable(this.renderer, {
+        id: "edit-auth",
+        content: `OAuth: ${authStatus}`,
+        fg: "#94a3b8",
+        marginBottom: 0,
+      });
+      menuBox.add(authText);
     }
 
     const envEntries = Object.entries(upstream.env || {});
