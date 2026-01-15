@@ -50,30 +50,6 @@ export interface SemanticSearchResult {
 }
 
 /**
- * Co-occurrence record for selection caching.
- */
-export interface CooccurrenceRecord {
-  /** First tool key (serverKey:toolName) */
-  tool1Key: string;
-  /** Second tool key (serverKey:toolName) */
-  tool2Key: string;
-  /** Number of times these tools were used together */
-  count: number;
-  /** Unix timestamp of last co-occurrence */
-  lastUsedAt: number;
-}
-
-/**
- * Related tool with co-occurrence count.
- */
-export interface RelatedTool {
-  /** Tool key (serverKey:toolName) */
-  toolKey: string;
-  /** Number of times used together with the query tool */
-  count: number;
-}
-
-/**
  * Tool search result with relevance score.
  */
 export interface ToolSearchResult {
@@ -227,21 +203,6 @@ export class IndexStore {
         INSERT INTO tools_fts(tools_fts, rowid, name, description) VALUES ('delete', old.id, old.name, old.description);
         INSERT INTO tools_fts(rowid, name, description) VALUES (new.id, new.name, new.description);
       END
-    `);
-
-    // Co-occurrence table for selection caching
-    this.db.run(`
-      CREATE TABLE IF NOT EXISTS tool_cooccurrences (
-        tool1_key TEXT NOT NULL,
-        tool2_key TEXT NOT NULL,
-        count INTEGER NOT NULL DEFAULT 1,
-        last_used_at INTEGER NOT NULL DEFAULT (unixepoch()),
-        PRIMARY KEY (tool1_key, tool2_key)
-      )
-    `);
-
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_cooccurrences_tool1 ON tool_cooccurrences(tool1_key)
     `);
   }
 
@@ -683,9 +644,7 @@ export class IndexStore {
           embedding: Buffer;
         },
         []
-      >(
-        "SELECT name, description, server_key, embedding FROM tools WHERE embedding IS NOT NULL",
-      )
+      >("SELECT name, description, server_key, embedding FROM tools WHERE embedding IS NOT NULL")
       .all();
 
     // Compute similarities and rank
@@ -737,9 +696,7 @@ export class IndexStore {
       .query<
         { name: string; description: string | null; server_key: string },
         []
-      >(
-        "SELECT name, description, server_key FROM tools WHERE embedding IS NULL",
-      )
+      >("SELECT name, description, server_key FROM tools WHERE embedding IS NULL")
       .all()
       .map((row) => ({
         name: row.name,
@@ -754,164 +711,5 @@ export class IndexStore {
    */
   clearEmbeddings(): void {
     this.db.run("UPDATE tools SET embedding = NULL");
-  }
-
-  // ============================================================
-  // Co-occurrence / Selection Caching Methods
-  // ============================================================
-
-  /**
-   * Records a co-occurrence between two tools.
-   * Used for selection caching to track which tools are used together.
-   *
-   * @param tool1Key - First tool key (serverKey:toolName)
-   * @param tool2Key - Second tool key (serverKey:toolName)
-   */
-  recordCooccurrence(tool1Key: string, tool2Key: string): void {
-    // Normalize order to avoid duplicate pairs (a,b) and (b,a)
-    const [first, second] =
-      tool1Key < tool2Key ? [tool1Key, tool2Key] : [tool2Key, tool1Key];
-
-    this.db.run(
-      `
-      INSERT INTO tool_cooccurrences (tool1_key, tool2_key, count, last_used_at)
-      VALUES (?, ?, 1, unixepoch())
-      ON CONFLICT(tool1_key, tool2_key) DO UPDATE SET
-        count = count + 1,
-        last_used_at = unixepoch()
-    `,
-      [first, second],
-    );
-  }
-
-  /**
-   * Records co-occurrences between multiple tools used in the same session.
-   * Generates all unique pairs from the tool list.
-   *
-   * @param toolKeys - Array of tool keys used together
-   */
-  recordCooccurrences(toolKeys: string[]): void {
-    if (toolKeys.length < 2) return;
-
-    const transaction = this.db.transaction((keys: string[]) => {
-      // Generate all unique pairs
-      for (let i = 0; i < keys.length; i++) {
-        for (let j = i + 1; j < keys.length; j++) {
-          const tool1 = keys[i]!;
-          const tool2 = keys[j]!;
-          // Normalize order
-          const [first, second] =
-            tool1 < tool2 ? [tool1, tool2] : [tool2, tool1];
-
-          this.db.run(
-            `
-            INSERT INTO tool_cooccurrences (tool1_key, tool2_key, count, last_used_at)
-            VALUES (?, ?, 1, unixepoch())
-            ON CONFLICT(tool1_key, tool2_key) DO UPDATE SET
-              count = count + 1,
-              last_used_at = unixepoch()
-          `,
-            [first, second],
-          );
-        }
-      }
-    });
-
-    transaction(toolKeys);
-  }
-
-  /**
-   * Gets tools that frequently co-occur with the given tool.
-   *
-   * @param toolKey - Tool key to find related tools for
-   * @param minCount - Minimum co-occurrence count (default: 1)
-   * @param limit - Maximum results to return (default: 10)
-   * @returns Array of related tools sorted by co-occurrence count
-   */
-  getRelatedTools(toolKey: string, minCount = 1, limit = 10): RelatedTool[] {
-    const results = this.db
-      .query<
-        { related_key: string; count: number },
-        [string, string, string, number, number]
-      >(
-        `
-        SELECT
-          CASE WHEN tool1_key = ? THEN tool2_key ELSE tool1_key END as related_key,
-          count
-        FROM tool_cooccurrences
-        WHERE (tool1_key = ? OR tool2_key = ?)
-          AND count >= ?
-        ORDER BY count DESC
-        LIMIT ?
-      `,
-      )
-      .all(toolKey, toolKey, toolKey, minCount, limit);
-
-    return results.map((row) => ({
-      toolKey: row.related_key,
-      count: row.count,
-    }));
-  }
-
-  /**
-   * Gets suggested tool bundles based on co-occurrence patterns.
-   * Returns tools that frequently appear with any of the given tools.
-   *
-   * @param toolKeys - Array of tool keys to find related bundles for
-   * @param minCount - Minimum co-occurrence count (default: 2)
-   * @param limit - Maximum suggestions to return (default: 5)
-   * @returns Array of related tools not in the input set
-   */
-  getSuggestedBundles(
-    toolKeys: string[],
-    minCount = 2,
-    limit = 5,
-  ): RelatedTool[] {
-    if (toolKeys.length === 0) return [];
-
-    const toolKeySet = new Set(toolKeys);
-    const relatedCounts = new Map<string, number>();
-
-    // Aggregate co-occurrence counts for all input tools
-    for (const toolKey of toolKeys) {
-      const related = this.getRelatedTools(toolKey, minCount, 50);
-      for (const r of related) {
-        if (!toolKeySet.has(r.toolKey)) {
-          relatedCounts.set(
-            r.toolKey,
-            (relatedCounts.get(r.toolKey) ?? 0) + r.count,
-          );
-        }
-      }
-    }
-
-    // Sort by aggregated count and return top results
-    const sorted = Array.from(relatedCounts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, limit);
-
-    return sorted.map(([toolKey, count]) => ({ toolKey, count }));
-  }
-
-  /**
-   * Clears all co-occurrence data.
-   * Used by the clear_selection_cache tool.
-   */
-  clearCooccurrences(): void {
-    this.db.run("DELETE FROM tool_cooccurrences");
-  }
-
-  /**
-   * Gets the total count of co-occurrence records.
-   *
-   * @returns Number of co-occurrence pairs stored
-   */
-  getCooccurrenceCount(): number {
-    const result = this.db
-      .query<{ count: number }, []>(
-        "SELECT COUNT(*) as count FROM tool_cooccurrences",
-      )
-      .get();
-    return result?.count ?? 0;
   }
 }

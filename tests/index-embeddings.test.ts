@@ -2,7 +2,7 @@
  * Tests for IndexStore vector embedding functionality.
  */
 
-import { beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test, beforeEach } from "bun:test";
 import { IndexStore } from "../src/index/index.js";
 import type { CatalogedTool } from "../src/upstream/cataloger.js";
 

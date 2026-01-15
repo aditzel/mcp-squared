@@ -12,8 +12,5 @@ export {
   type RetrieveResult,
   type RetrieverOptions,
   type SearchOptions,
-  type ToolFullSchema,
-  type ToolIdentity,
-  type ToolResult,
   type ToolSummary,
 } from "./retriever.js";

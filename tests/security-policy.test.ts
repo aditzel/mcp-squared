@@ -2,12 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { McpSquaredConfig } from "../src/config/schema.js";
 import {
   clearPendingConfirmations,
-  compilePolicy,
   createConfirmationToken,
   evaluatePolicy,
   getPendingConfirmationCount,
-  getToolVisibility,
-  getToolVisibilityCompiled,
   matchesPattern,
   validateConfirmationToken,
 } from "../src/security/policy.js";
@@ -29,19 +26,9 @@ function createConfig(security: {
       },
     },
     operations: {
-      findTools: {
-        defaultLimit: 5,
-        maxLimit: 50,
-        defaultMode: "fast",
-        defaultDetailLevel: "L1",
-      },
+      findTools: { defaultLimit: 5, maxLimit: 50, defaultMode: "fast" },
       index: { refreshIntervalMs: 30000 },
       logging: { level: "info" },
-      selectionCache: {
-        enabled: true,
-        minCooccurrenceThreshold: 2,
-        maxBundleSuggestions: 3,
-      },
     },
   };
 }
@@ -388,117 +375,5 @@ describe("token management", () => {
     createConfirmationToken("fs", "tool2");
     clearPendingConfirmations();
     expect(getPendingConfirmationCount()).toBe(0);
-  });
-});
-
-describe("getToolVisibility", () => {
-  test("returns visible: false for blocked tools", () => {
-    const config = createConfig({ allow: ["*:*"], block: ["fs:delete_file"] });
-    const result = getToolVisibility("fs", "delete_file", config);
-    expect(result.visible).toBe(false);
-    expect(result.requiresConfirmation).toBe(false);
-  });
-
-  test("returns visible: true, requiresConfirmation: true for confirm-list tools", () => {
-    const config = createConfig({ allow: ["*:*"], confirm: ["fs:write_file"] });
-    const result = getToolVisibility("fs", "write_file", config);
-    expect(result.visible).toBe(true);
-    expect(result.requiresConfirmation).toBe(true);
-  });
-
-  test("returns visible: true for allowed tools", () => {
-    const config = createConfig({ allow: ["fs:read_file"] });
-    const result = getToolVisibility("fs", "read_file", config);
-    expect(result.visible).toBe(true);
-    expect(result.requiresConfirmation).toBe(false);
-  });
-
-  test("returns visible: false for tools not in allow list (implicit deny)", () => {
-    const config = createConfig({ allow: ["fs:read_file"] });
-    const result = getToolVisibility("fs", "write_file", config);
-    expect(result.visible).toBe(false);
-    expect(result.requiresConfirmation).toBe(false);
-  });
-
-  test("block takes precedence over confirm", () => {
-    const config = createConfig({
-      allow: ["*:*"],
-      block: ["fs:dangerous"],
-      confirm: ["fs:*"],
-    });
-    const result = getToolVisibility("fs", "dangerous", config);
-    expect(result.visible).toBe(false);
-    expect(result.requiresConfirmation).toBe(false);
-  });
-
-  test("confirm takes precedence over allow", () => {
-    const config = createConfig({
-      allow: ["*:*"],
-      confirm: ["fs:*"],
-    });
-    const result = getToolVisibility("fs", "read_file", config);
-    expect(result.visible).toBe(true);
-    expect(result.requiresConfirmation).toBe(true);
-  });
-
-  test("wildcard patterns work correctly", () => {
-    const config = createConfig({
-      allow: ["*:*"],
-      block: ["dangerous:*"],
-      confirm: ["*:write_file"],
-    });
-
-    // All dangerous server tools are blocked
-    expect(getToolVisibility("dangerous", "any_tool", config).visible).toBe(
-      false,
-    );
-
-    // All write_file tools require confirmation
-    const writeResult = getToolVisibility("fs", "write_file", config);
-    expect(writeResult.visible).toBe(true);
-    expect(writeResult.requiresConfirmation).toBe(true);
-
-    // Other tools are allowed
-    const readResult = getToolVisibility("fs", "read_file", config);
-    expect(readResult.visible).toBe(true);
-    expect(readResult.requiresConfirmation).toBe(false);
-  });
-});
-
-describe("compilePolicy and getToolVisibilityCompiled", () => {
-  test("compiled version matches non-compiled version", () => {
-    const config = createConfig({
-      allow: ["*:*"],
-      block: ["fs:delete_file"],
-      confirm: ["fs:write_file"],
-    });
-    const compiled = compilePolicy(config);
-
-    // Test various tools
-    const tools = [
-      { server: "fs", tool: "read_file" },
-      { server: "fs", tool: "write_file" },
-      { server: "fs", tool: "delete_file" },
-      { server: "db", tool: "query" },
-    ];
-
-    for (const { server, tool } of tools) {
-      const normal = getToolVisibility(server, tool, config);
-      const compiledResult = getToolVisibilityCompiled(server, tool, compiled);
-      expect(compiledResult).toEqual(normal);
-    }
-  });
-
-  test("compilePolicy extracts correct patterns", () => {
-    const config = createConfig({
-      allow: ["a:*", "b:*"],
-      block: ["c:*"],
-      confirm: ["d:*"],
-    });
-    const compiled = compilePolicy(config);
-
-    expect(compiled.allowPatterns).toEqual(["a:*", "b:*"]);
-    expect(compiled.blockPatterns).toEqual(["c:*"]);
-    expect(compiled.confirmPatterns).toEqual(["d:*"]);
   });
 });
