@@ -17,7 +17,7 @@ import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { parseArgs, printHelp } from "./cli/index.js";
+import { parseArgs, printHelp, type MonitorArgs } from "./cli/index.js";
 import {
   type McpSquaredConfig,
   formatValidationIssues,
@@ -25,6 +25,12 @@ import {
   validateConfig,
   validateUpstreamConfig,
 } from "./config/index.js";
+import { getPidFilePath } from "./config/paths.js";
+import {
+  checkForRunningInstance,
+  deletePidFile,
+  writePidFile,
+} from "./config/pid.js";
 import type { UpstreamSseServerConfig } from "./config/schema.js";
 import { runImport } from "./import/runner.js";
 import { runInstall } from "./install/runner.js";
@@ -36,6 +42,7 @@ import {
 } from "./oauth/index.js";
 import { McpSquaredServer } from "./server/index.js";
 import { runConfigTui } from "./tui/config.js";
+import { runMonitorTui } from "./tui/monitor.js";
 import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
 
 /** Current version of MCP² */
@@ -47,6 +54,15 @@ export const VERSION = "0.1.0";
  * @internal
  */
 async function startServer(): Promise<void> {
+  // Check for existing running instance
+  const pidPath = getPidFilePath();
+  const runningPid = checkForRunningInstance(pidPath);
+
+  if (runningPid !== null) {
+    console.error(`Error: Server is already running with PID ${runningPid}`);
+    process.exit(1);
+  }
+
   // Load configuration
   const { config } = await loadConfig();
 
@@ -72,6 +88,9 @@ async function startServer(): Promise<void> {
 
   const server = new McpSquaredServer({ config });
 
+  // Create PID file
+  writePidFile(pidPath);
+
   // Track if shutdown is already in progress to prevent double cleanup
   let isShuttingDown = false;
 
@@ -88,10 +107,12 @@ async function startServer(): Promise<void> {
       forceExitTimer.unref();
 
       await server.stop();
+      deletePidFile(pidPath);
       process.exit(0);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`Error during shutdown: ${message}`);
+      deletePidFile(pidPath);
       process.exit(1);
     }
   };
@@ -459,6 +480,50 @@ async function runAuth(targetName: string): Promise<void> {
 }
 
 /**
+ * Runs the server monitor TUI.
+ * Checks if the MCP server is running and launches the monitor interface.
+ *
+ * @param options - Monitor options from CLI
+ * @internal
+ */
+async function runMonitor(options: MonitorArgs): Promise<void> {
+  // Check if server is running
+  const pidPath = getPidFilePath();
+  const runningPid = checkForRunningInstance(pidPath);
+
+  if (runningPid === null) {
+    console.error("Error: MCP² server is not running.");
+    console.error("");
+    console.error("To start the server, run:");
+    console.error("  mcp-squared");
+    console.error("");
+    console.error("The monitor requires a running server to connect to.");
+    process.exit(1);
+  }
+
+  console.log(`Connecting to MCP² server (PID: ${runningPid})...`);
+
+  try {
+    // Launch the monitor TUI
+    await runMonitorTui({
+      refreshInterval: options.noAutoRefresh ? 0 : options.refreshInterval,
+    });
+  } catch (error) {
+    const err = error as Error;
+    console.error(`Error launching monitor: ${err.message}`);
+    console.error("");
+    console.error("Possible causes:");
+    console.error("  - Server is not responding to monitor requests");
+    console.error("  - Socket file is not accessible (permission issues)");
+    console.error("  - Server was started without monitor support");
+    console.error("");
+    console.error("Try restarting the server:");
+    console.error("  mcp-squared");
+    process.exit(1);
+  }
+}
+
+/**
  * Main entry point for the MCP² CLI.
  * Parses arguments and dispatches to the appropriate mode.
  * @internal
@@ -496,6 +561,9 @@ async function main(): Promise<void> {
       break;
     case "install":
       await runInstall(args.install);
+      break;
+    case "monitor":
+      await runMonitor(args.monitor);
       break;
     default:
       await startServer();

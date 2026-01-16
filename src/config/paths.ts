@@ -14,6 +14,9 @@ import { existsSync, mkdirSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
+const PID_FILENAME = "mcp-squared.pid";
+const SOCKET_FILENAME = "mcp-squared.sock";
+
 /**
  * Source of the discovered configuration file.
  * - env: Found via MCP_SQUARED_CONFIG environment variable
@@ -74,6 +77,26 @@ function getUserConfigDir(): string {
  */
 function getUserConfigPath(): string {
   return join(getUserConfigDir(), "config.toml");
+}
+
+/**
+ * Gets the full path to the PID file.
+ * The PID file is stored in the user-level config directory.
+ *
+ * @returns Path to the PID file
+ */
+export function getPidFilePath(): string {
+  return join(getUserConfigDir(), PID_FILENAME);
+}
+
+/**
+ * Gets the full path to the Unix Domain Socket file.
+ * The socket file is stored in the user-level config directory.
+ *
+ * @returns Path to the socket file
+ */
+export function getSocketFilePath(): string {
+  return join(getUserConfigDir(), SOCKET_FILENAME);
 }
 
 /**

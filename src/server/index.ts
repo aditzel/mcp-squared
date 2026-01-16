@@ -17,6 +17,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { IndexRefreshManager } from "../background/index.js";
 import { SelectionTracker } from "../caching/index.js";
+import { getSocketFilePath } from "../config/index.js";
 import {
   DEFAULT_CONFIG,
   type DetailLevel,
@@ -39,6 +40,8 @@ import {
   getToolVisibilityCompiled,
 } from "../security/index.js";
 import { Cataloger } from "../upstream/index.js";
+import { MonitorServer } from "./monitor-server.js";
+import { type ServerStats, StatsCollector, type ToolStats } from "./stats.js";
 
 /**
  * Configuration options for creating an MCP² server instance.
@@ -58,6 +61,8 @@ export interface McpSquaredServerOptions {
   defaultLimit?: number;
   /** Maximum allowed results for find_tools (default: 50) */
   maxLimit?: number;
+  /** Whether to enable detailed tool-level stats tracking (default: false) */
+  enableToolStats?: boolean;
 }
 
 /**
@@ -89,6 +94,8 @@ export class McpSquaredServer {
   private readonly selectionTracker: SelectionTracker;
   private readonly compiledPolicy: CompiledPolicy;
   private readonly indexRefreshManager: IndexRefreshManager;
+  private readonly statsCollector: StatsCollector;
+  private readonly monitorServer: MonitorServer;
 
   /**
    * Creates a new MCP² server instance.
@@ -135,6 +142,23 @@ export class McpSquaredServer {
       cataloger: this.cataloger,
       retriever: this.retriever,
       refreshIntervalMs: this.config.operations.index.refreshIntervalMs,
+    });
+
+    // Initialize stats collector
+    this.statsCollector = new StatsCollector({
+      indexStore: this.retriever.getIndexStore(),
+      enableToolTracking: options.enableToolStats ?? false,
+    });
+
+    // Initialize monitor server
+    this.monitorServer = new MonitorServer({
+      socketPath: getSocketFilePath(),
+      statsCollector: this.statsCollector,
+    });
+
+    // Hook into index refresh events to update stats
+    this.indexRefreshManager.on("refresh:complete", () => {
+      this.statsCollector.updateIndexRefreshTime(Date.now());
     });
 
     this.registerMetaTools();
@@ -200,63 +224,81 @@ export class McpSquaredServer {
         },
       },
       async (args) => {
-        const result = await this.retriever.search(args.query, {
-          limit: args.limit,
-          mode: args.mode,
-        });
+        const requestId = this.statsCollector.startRequest();
+        const startTime = Date.now();
+        let success = false;
 
-        // Apply security policy filtering
-        const filteredTools = this.filterToolsByPolicy(result.tools);
+        try {
+          const result = await this.retriever.search(args.query, {
+            limit: args.limit,
+            mode: args.mode,
+          });
 
-        const detailLevel: DetailLevel =
-          args.detail_level ??
-          this.config.operations.findTools.defaultDetailLevel;
-        const tools = this.formatToolsForDetailLevel(
-          filteredTools,
-          detailLevel,
-        );
+          // Apply security policy filtering
+          const filteredTools = this.filterToolsByPolicy(result.tools);
 
-        // Get bundle suggestions if selection caching is enabled
-        const selectionCacheConfig = this.config.operations.selectionCache;
-        let suggestedTools:
-          | Array<{ tools: string[]; frequency: number }>
-          | undefined;
+          const detailLevel: DetailLevel =
+            args.detail_level ??
+            this.config.operations.findTools.defaultDetailLevel;
+          const tools = this.formatToolsForDetailLevel(
+            filteredTools,
+            detailLevel,
+          );
 
-        if (
-          selectionCacheConfig.enabled &&
-          selectionCacheConfig.maxBundleSuggestions > 0
-        ) {
-          const toolKeys = filteredTools.map((t) => `${t.serverKey}:${t.name}`);
-          const suggestions = this.retriever
-            .getIndexStore()
-            .getSuggestedBundles(
-              toolKeys,
-              selectionCacheConfig.minCooccurrenceThreshold,
-              selectionCacheConfig.maxBundleSuggestions,
+          // Get bundle suggestions if selection caching is enabled
+          const selectionCacheConfig = this.config.operations.selectionCache;
+          let suggestedTools:
+            | Array<{ tools: string[]; frequency: number }>
+            | undefined;
+
+          if (
+            selectionCacheConfig.enabled &&
+            selectionCacheConfig.maxBundleSuggestions > 0
+          ) {
+            const toolKeys = filteredTools.map(
+              (t) => `${t.serverKey}:${t.name}`,
             );
+            const suggestions = this.retriever
+              .getIndexStore()
+              .getSuggestedBundles(
+                toolKeys,
+                selectionCacheConfig.minCooccurrenceThreshold,
+                selectionCacheConfig.maxBundleSuggestions,
+              );
 
-          if (suggestions.length > 0) {
-            suggestedTools = suggestions.map((s) => ({
-              tools: [s.toolKey],
-              frequency: s.count,
-            }));
+            if (suggestions.length > 0) {
+              suggestedTools = suggestions.map((s) => ({
+                tools: [s.toolKey],
+                frequency: s.count,
+              }));
+            }
           }
-        }
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                query: result.query,
-                totalMatches: filteredTools.length,
-                detailLevel,
-                tools,
-                ...(suggestedTools && { suggestedTools }),
-              }),
-            },
-          ],
-        };
+          success = true;
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  query: result.query,
+                  totalMatches: filteredTools.length,
+                  detailLevel,
+                  tools,
+                  ...(suggestedTools && { suggestedTools }),
+                }),
+              },
+            ],
+          };
+        } finally {
+          const responseTime = Date.now() - startTime;
+          this.statsCollector.endRequest(
+            requestId,
+            success,
+            responseTime,
+            "find_tools",
+            "mcp-squared",
+          );
+        }
       },
     );
 
@@ -274,47 +316,63 @@ export class McpSquaredServer {
         },
       },
       async (args) => {
-        const result = this.retriever.getTools(args.tool_names);
+        const requestId = this.statsCollector.startRequest();
+        const startTime = Date.now();
+        let success = false;
 
-        // Apply security policy filtering
-        const filteredTools = this.filterToolsByPolicy(result.tools);
+        try {
+          const result = this.retriever.getTools(args.tool_names);
 
-        const schemas = filteredTools.map((tool) => ({
-          name: tool.name,
-          qualifiedName: `${tool.serverKey}:${tool.name}`,
-          description: tool.description,
-          serverKey: tool.serverKey,
-          inputSchema: tool.inputSchema,
-          ...(tool.requiresConfirmation && { requiresConfirmation: true }),
-        }));
+          // Apply security policy filtering
+          const filteredTools = this.filterToolsByPolicy(result.tools);
 
-        // Find blocked tools (requested but filtered out by policy)
-        const filteredNames = new Set(filteredTools.map((t) => t.name));
-        const blocked = result.tools
-          .filter((t) => !filteredNames.has(t.name))
-          .map((t) => `${t.serverKey}:${t.name}`);
+          const schemas = filteredTools.map((tool) => ({
+            name: tool.name,
+            qualifiedName: `${tool.serverKey}:${tool.name}`,
+            description: tool.description,
+            serverKey: tool.serverKey,
+            inputSchema: tool.inputSchema,
+            ...(tool.requiresConfirmation && { requiresConfirmation: true }),
+          }));
 
-        // Find names that weren't found (not in tools and not ambiguous)
-        const foundNames = new Set(result.tools.map((t) => t.name));
-        const ambiguousNames = new Set(result.ambiguous.map((a) => a.name));
-        const notFound = args.tool_names.filter(
-          (name) => !foundNames.has(name) && !ambiguousNames.has(name),
-        );
+          // Find blocked tools (requested but filtered out by policy)
+          const filteredNames = new Set(filteredTools.map((t) => t.name));
+          const blocked = result.tools
+            .filter((t) => !filteredNames.has(t.name))
+            .map((t) => `${t.serverKey}:${t.name}`);
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                schemas,
-                ambiguous:
-                  result.ambiguous.length > 0 ? result.ambiguous : undefined,
-                notFound: notFound.length > 0 ? notFound : undefined,
-                blocked: blocked.length > 0 ? blocked : undefined,
-              }),
-            },
-          ],
-        };
+          // Find names that weren't found (not in tools and not ambiguous)
+          const foundNames = new Set(result.tools.map((t) => t.name));
+          const ambiguousNames = new Set(result.ambiguous.map((a) => a.name));
+          const notFound = args.tool_names.filter(
+            (name) => !foundNames.has(name) && !ambiguousNames.has(name),
+          );
+
+          success = true;
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  schemas,
+                  ambiguous:
+                    result.ambiguous.length > 0 ? result.ambiguous : undefined,
+                  notFound: notFound.length > 0 ? notFound : undefined,
+                  blocked: blocked.length > 0 ? blocked : undefined,
+                }),
+              },
+            ],
+          };
+        } finally {
+          const responseTime = Date.now() - startTime;
+          this.statsCollector.endRequest(
+            requestId,
+            success,
+            responseTime,
+            "describe_tools",
+            "mcp-squared",
+          );
+        }
       },
     );
 
@@ -338,6 +396,12 @@ export class McpSquaredServer {
         },
       },
       async (args) => {
+        const requestId = this.statsCollector.startRequest();
+        const startTime = Date.now();
+        let success = false;
+        let toolName: string | undefined;
+        let serverKey: string | undefined;
+
         try {
           // Look up the tool to get its server key (supports qualified names)
           const lookupResult = this.cataloger.findTool(args.tool_name);
@@ -372,6 +436,8 @@ export class McpSquaredServer {
           }
 
           const tool = lookupResult.tool;
+          toolName = tool.name;
+          serverKey = tool.serverKey;
 
           // Evaluate security policy
           const policyResult = evaluatePolicy(
@@ -437,6 +503,7 @@ export class McpSquaredServer {
             }
           }
 
+          success = !result.isError;
           return {
             content: result.content.map((c) => {
               if (typeof c === "object" && c !== null && "type" in c) {
@@ -462,6 +529,15 @@ export class McpSquaredServer {
             ],
             isError: true,
           };
+        } finally {
+          const responseTime = Date.now() - startTime;
+          this.statsCollector.endRequest(
+            requestId,
+            success,
+            responseTime,
+            toolName,
+            serverKey,
+          );
         }
       },
     );
@@ -474,23 +550,39 @@ export class McpSquaredServer {
         inputSchema: {},
       },
       async () => {
-        const countBefore = this.retriever
-          .getIndexStore()
-          .getCooccurrenceCount();
-        this.retriever.getIndexStore().clearCooccurrences();
-        this.selectionTracker.reset();
+        const requestId = this.statsCollector.startRequest();
+        const startTime = Date.now();
+        let success = false;
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                message: "Selection cache cleared",
-                patternsRemoved: countBefore,
-              }),
-            },
-          ],
-        };
+        try {
+          const countBefore = this.retriever
+            .getIndexStore()
+            .getCooccurrenceCount();
+          this.retriever.getIndexStore().clearCooccurrences();
+          this.selectionTracker.reset();
+
+          success = true;
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  message: "Selection cache cleared",
+                  patternsRemoved: countBefore,
+                }),
+              },
+            ],
+          };
+        } finally {
+          const responseTime = Date.now() - startTime;
+          this.statsCollector.endRequest(
+            requestId,
+            success,
+            responseTime,
+            "clear_selection_cache",
+            "mcp-squared",
+          );
+        }
       },
     );
 
@@ -509,66 +601,82 @@ export class McpSquaredServer {
         },
       },
       async (args) => {
-        const status = this.cataloger.getStatus();
-        const namespaces: Array<{
-          name: string;
-          status: string;
-          toolCount: number;
-          error?: string;
-          tools?: string[];
-        }> = [];
+        const requestId = this.statsCollector.startRequest();
+        const startTime = Date.now();
+        let success = false;
 
-        for (const [key, info] of status) {
-          const tools = this.cataloger.getToolsForServer(key);
-          const namespace: {
+        try {
+          const status = this.cataloger.getStatus();
+          const namespaces: Array<{
             name: string;
             status: string;
             toolCount: number;
             error?: string;
             tools?: string[];
-          } = {
-            name: key,
-            status: info.status,
-            toolCount: tools.length,
-          };
+          }> = [];
 
-          if (info.error) {
-            namespace.error = info.error;
+          for (const [key, info] of status) {
+            const tools = this.cataloger.getToolsForServer(key);
+            const namespace: {
+              name: string;
+              status: string;
+              toolCount: number;
+              error?: string;
+              tools?: string[];
+            } = {
+              name: key,
+              status: info.status,
+              toolCount: tools.length,
+            };
+
+            if (info.error) {
+              namespace.error = info.error;
+            }
+
+            if (args.include_tools && tools.length > 0) {
+              namespace.tools = tools.map((t) => t.name);
+            }
+
+            namespaces.push(namespace);
           }
 
-          if (args.include_tools && tools.length > 0) {
-            namespace.tools = tools.map((t) => t.name);
+          // Also detect tool conflicts to help with disambiguation
+          const conflicts = this.cataloger.getConflictingTools();
+          const conflictingTools: Record<string, string[]> = {};
+          for (const [toolName, qualifiedNames] of conflicts) {
+            conflictingTools[toolName] = qualifiedNames;
           }
 
-          namespaces.push(namespace);
-        }
-
-        // Also detect tool conflicts to help with disambiguation
-        const conflicts = this.cataloger.getConflictingTools();
-        const conflictingTools: Record<string, string[]> = {};
-        for (const [toolName, qualifiedNames] of conflicts) {
-          conflictingTools[toolName] = qualifiedNames;
-        }
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({
-                namespaces,
-                totalNamespaces: namespaces.length,
-                connectedCount: namespaces.filter(
-                  (n) => n.status === "connected",
-                ).length,
-                ...(Object.keys(conflictingTools).length > 0 && {
-                  conflictingTools,
-                  conflictNote:
-                    "These tools exist on multiple servers. Use qualified names (namespace:tool_name) to disambiguate.",
+          success = true;
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  namespaces,
+                  totalNamespaces: namespaces.length,
+                  connectedCount: namespaces.filter(
+                    (n) => n.status === "connected",
+                  ).length,
+                  ...(Object.keys(conflictingTools).length > 0 && {
+                    conflictingTools,
+                    conflictNote:
+                      "These tools exist on multiple servers. Use qualified names (namespace:tool_name) to disambiguate.",
+                  }),
                 }),
-              }),
-            },
-          ],
-        };
+              },
+            ],
+          };
+        } finally {
+          const responseTime = Date.now() - startTime;
+          this.statsCollector.endRequest(
+            requestId,
+            success,
+            responseTime,
+            "list_namespaces",
+            "mcp-squared",
+          );
+        }
       },
     );
   }
@@ -632,6 +740,7 @@ export class McpSquaredServer {
    */
   syncIndex(): void {
     this.retriever.syncFromCataloger();
+    this.statsCollector.updateIndexRefreshTime(Date.now());
   }
 
   /**
@@ -651,6 +760,34 @@ export class McpSquaredServer {
    */
   getRetriever(): Retriever {
     return this.retriever;
+  }
+
+  /**
+   * Returns the stats collector instance used for metrics tracking.
+   *
+   * @returns The StatsCollector instance
+   */
+  getStatsCollector(): StatsCollector {
+    return this.statsCollector;
+  }
+
+  /**
+   * Gets current server statistics.
+   *
+   * @returns Current server statistics
+   */
+  getStats(): ServerStats {
+    return this.statsCollector.getStats();
+  }
+
+  /**
+   * Gets tool-level statistics.
+   *
+   * @param limit - Maximum number of tools to return (default: 100)
+   * @returns Array of tool statistics sorted by call count
+   */
+  getToolStats(limit = 100): ToolStats[] {
+    return this.statsCollector.getToolStats(limit);
   }
 
   /**
@@ -683,12 +820,21 @@ export class McpSquaredServer {
     // Sync the tool index after connecting to upstreams
     this.syncIndex();
 
+    // Update index refresh time
+    this.statsCollector.updateIndexRefreshTime(Date.now());
+
     // Start background index refresh
     this.indexRefreshManager.start();
+
+    // Start the monitor server
+    await this.monitorServer.start();
 
     // Start the MCP transport
     this.transport = new StdioServerTransport();
     await this.mcpServer.connect(this.transport);
+
+    // Track active connection
+    this.statsCollector.incrementActiveConnections();
   }
 
   /**
@@ -701,12 +847,18 @@ export class McpSquaredServer {
     // Stop background refresh first
     this.indexRefreshManager.stop();
 
+    // Stop the monitor server
+    await this.monitorServer.stop();
+
     await this.mcpServer.close();
     this.retriever.close();
     if (this.ownsCataloger) {
       await this.cataloger.disconnectAll();
     }
     this.transport = null;
+
+    // Decrement active connection
+    this.statsCollector.decrementActiveConnections();
   }
 
   /**

@@ -30,6 +30,8 @@ export {
   discoverConfigPath,
   ensureConfigDir,
   getDefaultConfigPath,
+  getPidFilePath,
+  getSocketFilePath,
   type ConfigPathResult,
   type ConfigSource,
 } from "./paths.js";

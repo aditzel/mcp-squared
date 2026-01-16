@@ -14,8 +14,8 @@ import type { InstallMode, InstallScope } from "../install/types.js";
  * Parsed command-line arguments.
  */
 export interface CliArgs {
-  /** Operating mode: server, config TUI, test, import, auth, or install */
-  mode: "server" | "config" | "test" | "import" | "auth" | "install";
+  /** Operating mode: server, config TUI, test, import, auth, install, or monitor */
+  mode: "server" | "config" | "test" | "import" | "auth" | "install" | "monitor";
   /** Whether --help was requested */
   help: boolean;
   /** Whether --version was requested */
@@ -30,6 +30,8 @@ export interface CliArgs {
   authTarget: string | undefined;
   /** Install-specific options */
   install: InstallArgs;
+  /** Monitor-specific options */
+  monitor: MonitorArgs;
 }
 
 /**
@@ -72,6 +74,16 @@ export interface InstallArgs {
   serverName: string;
   /** Command to run (default: "mcp-squared") */
   command: string;
+}
+
+/**
+ * Monitor-specific command-line arguments.
+ */
+export interface MonitorArgs {
+  /** Auto-refresh interval in milliseconds (default: 2000) */
+  refreshInterval: number;
+  /** Disable auto-refresh (manual refresh only) */
+  noAutoRefresh: boolean;
 }
 
 /**
@@ -167,6 +179,10 @@ export function parseArgs(args: string[]): CliArgs {
       serverName: "mcp-squared",
       command: "mcp-squared",
     },
+    monitor: {
+      refreshInterval: 2000,
+      noAutoRefresh: false,
+    },
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -212,6 +228,10 @@ export function parseArgs(args: string[]): CliArgs {
 
       case "install":
         result.mode = "install";
+        break;
+
+      case "monitor":
+        result.mode = "monitor";
         break;
 
       case "--tool": {
@@ -302,6 +322,21 @@ export function parseArgs(args: string[]): CliArgs {
         break;
       }
 
+      case "--refresh-interval": {
+        const value = argValue ?? args[++i];
+        if (value) {
+          const interval = Number.parseInt(value, 10);
+          if (!isNaN(interval) && interval > 0) {
+            result.monitor.refreshInterval = interval;
+          }
+        }
+        break;
+      }
+
+      case "--no-auto-refresh":
+        result.monitor.noAutoRefresh = true;
+        break;
+
       case "--help":
       case "-h":
         result.help = true;
@@ -332,6 +367,7 @@ Usage:
   mcp-squared auth <upstream>   Authenticate with an OAuth-protected upstream
   mcp-squared import [options]  Import MCP configs from other tools
   mcp-squared install [options] Install MCP² into other MCP clients
+  mcp-squared monitor [options] Launch server monitor TUI
   mcp-squared --help            Show this help message
   mcp-squared --version         Show version information
 
@@ -341,6 +377,7 @@ Commands:
   auth <name>                   Authenticate with an OAuth-protected upstream
   import                        Import MCP server configs from other tools
   install                       Install MCP² as a server in other MCP clients
+  monitor                       Launch server monitor TUI
   --help, -h                    Show help
   --version, -v                 Show version
 
@@ -366,6 +403,10 @@ Install Options:
   --dry-run                     Preview changes without writing
   --no-interactive              Disable interactive prompts
 
+Monitor Options:
+  --refresh-interval=<ms>       Auto-refresh interval in milliseconds (default: 2000)
+  --no-auto-refresh             Disable auto-refresh (manual refresh only)
+
 Supported Tools:
   ${VALID_TOOL_IDS.join(", ")}
 
@@ -380,5 +421,8 @@ Examples:
   mcp-squared install           Install MCP² interactively
   mcp-squared install --tool=cursor --scope=user --mode=add
   mcp-squared install --dry-run Preview installation changes
+  mcp-squared monitor           Launch server monitor with default settings
+  mcp-squared monitor --refresh-interval=5000  Refresh every 5 seconds
+  mcp-squared monitor --no-auto-refresh  Manual refresh only
 `);
 }
