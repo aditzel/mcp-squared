@@ -290,8 +290,12 @@ export class Cataloger {
       connection.status = "error";
       connection.error = err instanceof Error ? err.message : String(err);
 
-      // Clean up on error
-      await this.cleanupConnection(connection);
+      // Clean up on error - handle any cleanup errors to ensure the connection stays in error state
+      try {
+        await this.cleanupConnection(connection);
+      } catch (cleanupErr) {
+        // Ignore cleanup errors
+      }
     }
   }
 

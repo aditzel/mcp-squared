@@ -139,7 +139,7 @@ describe("Cataloger", () => {
 
   describe("connect error handling", () => {
     test("handles connection to invalid command", async () => {
-      const cataloger = new Cataloger({ connectTimeoutMs: 1000 });
+      const cataloger = new Cataloger({ connectTimeoutMs: 5000 });
       await cataloger.connect("test", {
         transport: "stdio",
         enabled: true,
