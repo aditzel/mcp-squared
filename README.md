@@ -5,6 +5,39 @@ MCP² (Mercury Control Plane) is a local-first meta-server and proxy for the Mod
 ## Status
 **Inception / Pre-alpha**
 
+## Install & Run
+
+MCP² is published on npm as `mcp-squared`. The CLI runs on Bun (even when installed via npm), so you’ll need Bun installed on your machine.
+
+### Prerequisite: Bun
+
+Install Bun (>= 1.0.0): https://bun.sh
+
+### Run without installing (recommended)
+
+```bash
+bunx mcp-squared --help
+bunx mcp-squared
+```
+
+### Run via npm / npx
+
+```bash
+npx mcp-squared --help
+npm exec --yes mcp-squared -- --help
+```
+
+### Install globally
+
+```bash
+npm i -g mcp-squared
+mcp-squared --help
+
+# or
+bun add -g mcp-squared
+mcp-squared --help
+```
+
 ## High-Level Approach
 MCP² acts as an intelligent middleware between your MCP clients (IDEs, agents) and upstream MCP servers. It provides:
 - `find_tools`: A semantic search interface to locate relevant capabilities.
