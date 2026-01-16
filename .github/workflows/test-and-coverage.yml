@@ -1,24 +1,22 @@
-name: Publish to npm
+name: Test and Coverage
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: npm-publish
-  cancel-in-progress: false
+  group: test-and-coverage
+  cancel-in-progress: true
 
 jobs:
-  publish:
+  test:
     runs-on: ubuntu-latest
-    environment:
-      name: npm-publish
-      url: https://www.npmjs.com/package/mcp-squared
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,7 +25,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -37,7 +34,7 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Test
+      - name: Test with Coverage
         run: bun test --coverage --coverage-reporter=lcov
 
       - name: Upload coverage reports to Codecov
@@ -50,6 +47,3 @@ jobs:
 
       - name: Typecheck
         run: bun run typecheck
-
-      - name: Publish
-        run: npm publish
