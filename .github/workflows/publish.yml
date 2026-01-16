@@ -16,6 +16,9 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/mcp-squared
     steps:
       - name: Checkout
         uses: actions/checkout@v4
