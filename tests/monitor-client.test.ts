@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
-import {
-  type AddressInfo,
-  type Server,
-  createServer,
-} from "node:net";
+import { type AddressInfo, type Server, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { StatsCollector } from "@/server/stats";
