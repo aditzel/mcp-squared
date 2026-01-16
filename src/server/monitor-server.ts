@@ -10,7 +10,33 @@
 
 import { existsSync, unlinkSync } from "node:fs";
 import { type Server, type Socket, createServer } from "node:net";
-import type { ServerStats, StatsCollector, ToolStats } from "./stats.js";
+import type { StatsCollector } from "./stats.js";
+
+function isTcpEndpoint(endpoint: string): boolean {
+  return endpoint.startsWith("tcp://");
+}
+
+function parseTcpEndpoint(endpoint: string): { host: string; port: number } {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw new Error(`Invalid TCP endpoint: ${endpoint}`);
+  }
+
+  if (url.protocol !== "tcp:") {
+    throw new Error(`Invalid TCP endpoint protocol: ${url.protocol}`);
+  }
+
+  const host = url.hostname;
+  const port = Number.parseInt(url.port, 10);
+
+  if (!host || Number.isNaN(port)) {
+    throw new Error(`Invalid TCP endpoint: ${endpoint}`);
+  }
+
+  return { host, port };
+}
 
 /**
  * Supported commands for the monitor server.
@@ -66,7 +92,7 @@ export interface MonitorServerOptions {
  * ```
  */
 export class MonitorServer {
-  private readonly socketPath: string;
+  private socketPath: string;
   private readonly statsCollector: StatsCollector;
   private server: Server | null = null;
   private isRunning = false;
@@ -93,8 +119,10 @@ export class MonitorServer {
       return;
     }
 
+    const tcp = isTcpEndpoint(this.socketPath);
+
     // Clean up existing socket file if it exists
-    if (existsSync(this.socketPath)) {
+    if (!tcp && existsSync(this.socketPath)) {
       try {
         unlinkSync(this.socketPath);
       } catch (error) {
@@ -106,26 +134,39 @@ export class MonitorServer {
       }
     }
 
-    // Create the UDS server
-    this.server = createServer((socket) => {
+    const server = createServer((socket) => {
       this.handleConnection(socket);
     });
+    this.server = server;
 
     // Handle server errors
-    this.server.on("error", (error) => {
+    server.on("error", (error) => {
       console.error(`Monitor server error: ${error.message}`);
     });
 
-    // Listen on the socket path and wait for it to be ready
+    // Listen on the socket path/endpoint and wait for it to be ready
     await new Promise<void>((resolve, reject) => {
-      this.server!.listen(this.socketPath, () => {
-        this.isRunning = true;
-        resolve();
+      // Set up error handler for the listen call
+      server.once("error", (error) => {
+        reject(error);
       });
 
-      // Set up error handler for the listen call
-      this.server!.once("error", (error) => {
-        reject(error);
+      if (tcp) {
+        const { host, port } = parseTcpEndpoint(this.socketPath);
+        server.listen({ host, port }, () => {
+          const address = server.address();
+          if (address && typeof address !== "string") {
+            this.socketPath = `tcp://${host}:${address.port}`;
+          }
+          this.isRunning = true;
+          resolve();
+        });
+        return;
+      }
+
+      server.listen(this.socketPath, () => {
+        this.isRunning = true;
+        resolve();
       });
     });
   }
@@ -158,15 +199,17 @@ export class MonitorServer {
       });
     });
 
-    // Clean up socket file
-    try {
-      if (existsSync(this.socketPath)) {
-        unlinkSync(this.socketPath);
+    // Clean up socket file (UDS only)
+    if (!isTcpEndpoint(this.socketPath)) {
+      try {
+        if (existsSync(this.socketPath)) {
+          unlinkSync(this.socketPath);
+        }
+      } catch (error) {
+        // Ignore errors during cleanup
+        const err = error as Error;
+        console.warn(`Warning: Could not remove socket file: ${err.message}`);
       }
-    } catch (error) {
-      // Ignore errors during cleanup
-      const err = error as Error;
-      console.warn(`Warning: Could not remove socket file: ${err.message}`);
     }
 
     this.server = null;

@@ -36,7 +36,7 @@ export function readPidFile(pidPath: string): number | null {
     const content = readFileSync(pidPath, { encoding: "utf8" }).trim();
     const pid = Number.parseInt(content, 10);
 
-    if (isNaN(pid) || pid <= 0) {
+    if (Number.isNaN(pid) || pid <= 0) {
       return null;
     }
 
@@ -80,9 +80,13 @@ export function isProcessRunning(pid: number): boolean {
     // On Unix-like systems, sending signal 0 to a PID will test if it exists
     process.kill(pid, 0);
     return true;
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? (err as { code?: unknown }).code
+        : undefined;
     // If the error is ESRCH (no such process), the PID is not running
-    return err.code !== "ESRCH";
+    return code !== "ESRCH";
   }
 }
 

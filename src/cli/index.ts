@@ -15,7 +15,14 @@ import type { InstallMode, InstallScope } from "../install/types.js";
  */
 export interface CliArgs {
   /** Operating mode: server, config TUI, test, import, auth, install, or monitor */
-  mode: "server" | "config" | "test" | "import" | "auth" | "install" | "monitor";
+  mode:
+    | "server"
+    | "config"
+    | "test"
+    | "import"
+    | "auth"
+    | "install"
+    | "monitor";
   /** Whether --help was requested */
   help: boolean;
   /** Whether --version was requested */
@@ -326,7 +333,7 @@ export function parseArgs(args: string[]): CliArgs {
         const value = argValue ?? args[++i];
         if (value) {
           const interval = Number.parseInt(value, 10);
-          if (!isNaN(interval) && interval > 0) {
+          if (!Number.isNaN(interval) && interval > 0) {
             result.monitor.refreshInterval = interval;
           }
         }

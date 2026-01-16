@@ -1,9 +1,9 @@
 /**
  * Tests for CLI entry point shebang line.
  *
- * When the package is installed globally (bun link), the src/index.ts
- * file is executed directly. It must have a shebang line to tell the
- * shell to use bun as the interpreter.
+ * When the package is installed globally, the bin wrapper is executed
+ * directly. It must have a shebang line to tell the shell to use bun as
+ * the interpreter.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 describe("CLI entry point", () => {
-  const entryPointPath = join(import.meta.dirname, "../src/index.ts");
+  const entryPointPath = join(import.meta.dirname, "../bin/mcp-squared");
 
   it("should have a shebang line as the first line", () => {
     const content = readFileSync(entryPointPath, "utf-8");

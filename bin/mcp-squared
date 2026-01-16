@@ -1,0 +1,18 @@
+#!/usr/bin/env bun
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const distEntry = join(here, "../dist/index.js");
+const srcEntry = join(here, "../src/index.ts");
+
+// Prefer source when present (repo/dev), otherwise use built output (published package).
+const entry = existsSync(srcEntry) ? srcEntry : distEntry;
+
+const mod = await import(pathToFileURL(entry).href);
+if (typeof mod.main !== "function") {
+  throw new Error(`Expected ${entry} to export main()`);
+}
+
+await mod.main(process.argv.slice(2));

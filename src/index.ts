@@ -17,7 +17,7 @@ import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { parseArgs, printHelp, type MonitorArgs } from "./cli/index.js";
+import { type MonitorArgs, parseArgs, printHelp } from "./cli/index.js";
 import {
   type McpSquaredConfig,
   formatValidationIssues,
@@ -528,8 +528,10 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
  * Parses arguments and dispatches to the appropriate mode.
  * @internal
  */
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+export async function main(
+  argv: string[] = process.argv.slice(2),
+): Promise<void> {
+  const args = parseArgs(argv);
 
   if (args.help) {
     printHelp();
@@ -570,7 +572,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error: unknown) => {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  });
+}

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { IndexStore } from "@/index/index";
 import { StatsCollector } from "@/server/stats";
 
 describe("StatsCollector", () => {
@@ -9,12 +10,17 @@ describe("StatsCollector", () => {
     });
 
     test("creates collector with index store", () => {
-      const mockIndexStore = {
+      const mockIndexStore: Pick<
+        IndexStore,
+        "getToolCount" | "getEmbeddingCount" | "getCooccurrenceCount"
+      > = {
         getToolCount: () => 10,
         getEmbeddingCount: () => 5,
         getCooccurrenceCount: () => 3,
       };
-      const collector = new StatsCollector({ indexStore: mockIndexStore as any });
+      const collector = new StatsCollector({
+        indexStore: mockIndexStore as unknown as IndexStore,
+      });
       expect(collector).toBeDefined();
     });
 
@@ -174,12 +180,17 @@ describe("StatsCollector", () => {
     });
 
     test("returns index stats from index store", () => {
-      const mockIndexStore = {
+      const mockIndexStore: Pick<
+        IndexStore,
+        "getToolCount" | "getEmbeddingCount" | "getCooccurrenceCount"
+      > = {
         getToolCount: () => 10,
         getEmbeddingCount: () => 5,
         getCooccurrenceCount: () => 3,
       };
-      const collector = new StatsCollector({ indexStore: mockIndexStore as any });
+      const collector = new StatsCollector({
+        indexStore: mockIndexStore as unknown as IndexStore,
+      });
       const stats = collector.getStats();
 
       expect(stats.index.toolCount).toBe(10);

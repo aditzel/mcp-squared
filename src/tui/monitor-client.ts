@@ -10,6 +10,32 @@
 import { type Socket, connect } from "node:net";
 import type { ServerStats, ToolStats } from "../server/stats.js";
 
+function isTcpEndpoint(endpoint: string): boolean {
+  return endpoint.startsWith("tcp://");
+}
+
+function parseTcpEndpoint(endpoint: string): { host: string; port: number } {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw new Error(`Invalid TCP endpoint: ${endpoint}`);
+  }
+
+  if (url.protocol !== "tcp:") {
+    throw new Error(`Invalid TCP endpoint protocol: ${url.protocol}`);
+  }
+
+  const host = url.hostname;
+  const port = Number.parseInt(url.port, 10);
+
+  if (!host || Number.isNaN(port)) {
+    throw new Error(`Invalid TCP endpoint: ${endpoint}`);
+  }
+
+  return { host, port };
+}
+
 /**
  * Supported commands for the monitor client.
  */
@@ -89,10 +115,9 @@ export class MonitorClient {
     }
 
     return new Promise((resolve, reject) => {
-      this.socket = connect(this.socketPath, () => {
-        this.isConnected = true;
-        resolve();
-      });
+      this.socket = isTcpEndpoint(this.socketPath)
+        ? connect(parseTcpEndpoint(this.socketPath))
+        : connect(this.socketPath);
 
       this.socket.on("error", (error) => {
         this.isConnected = false;
@@ -111,8 +136,10 @@ export class MonitorClient {
         reject(new Error(`Connection timeout after ${this.timeout}ms`));
       }, this.timeout);
 
-      this.socket.on("connect", () => {
+      this.socket.once("connect", () => {
         clearTimeout(timeoutId);
+        this.isConnected = true;
+        resolve();
       });
     });
   }

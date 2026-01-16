@@ -400,11 +400,6 @@ export class StatsCollector {
    * @internal
    */
   private getRequestStats(): RequestStats {
-    const avgResponseTime =
-      this.requestStats.total > 0
-        ? this.requestStats.totalResponseTime / this.requestStats.total
-        : 0;
-
     return {
       total: this.requestStats.total,
       successful: this.requestStats.successful,
