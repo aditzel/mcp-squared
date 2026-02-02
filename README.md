@@ -1,13 +1,13 @@
 # MCP²: Mercury Control Plane for MCP
 
-MCP² (Mercury Control Plane) is a local-first meta-server and proxy for the Model Context Protocol (MCP). It addresses the problem of tool context bloat and schema token overhead by enabling dynamic, progressive disclosure of tools to LLMs. Instead of flooding the model context with every available tool schema, MCP² exposes a stable, minimal surface area for tool discovery and execution.
+MCP² (Mercury Control Plane) is a local-first meta-server and proxy for the Model Context Protocol (MCP). It addresses tool context bloat by enabling dynamic, progressive disclosure of tools to LLMs. Instead of flooding the model context with every available tool schema, MCP² exposes a stable, minimal surface area for tool discovery and execution.
 
 ## Status
-**Alpha** - The project is actively developed with core functionality implemented and tested.
+**Alpha (v0.1.x)** - Core functionality is implemented and tested; CLI and config details may evolve.
 
 ## Install & Run
 
-MCP² is published on npm as `mcp-squared`. The CLI runs on Bun (even when installed via npm), so you’ll need Bun installed on your machine.
+MCP² is published on npm as `mcp-squared`. The CLI runs on Bun (even when installed via npm), so you'll need Bun installed on your machine.
 
 ### Prerequisite: Bun
 
@@ -58,24 +58,79 @@ bun run build
 bun test
 ```
 
-## High-Level Approach
-MCP² acts as an intelligent middleware between your MCP clients (IDEs, agents) and upstream MCP servers. It provides:
-- `find_tools`: A semantic search interface to locate relevant capabilities using embeddings.
-- `describe_tools`: On-demand retrieval of full schemas for selected tools.
-- `execute`: A passthrough execution layer with optional result caching and summarization.
-- Tool cataloging and indexing from multiple MCP providers
-- Embeddings-based semantic search for tool discovery
-- Configuration management and persistence
-- Real-time monitoring and statistics
+## CLI Commands (Common)
+
+```bash
+mcp-squared                 # Start MCP server (stdio mode)
+mcp-squared config          # Launch configuration TUI
+mcp-squared test [upstream] # Test upstream server connections
+mcp-squared auth <upstream> # OAuth auth for SSE/HTTP upstreams
+mcp-squared import          # Import MCP configs from other tools
+mcp-squared install         # Install MCP² into other MCP clients
+mcp-squared monitor         # Launch server monitor TUI
+mcp-squared --help          # Full command reference
+```
+
+## Configuration
+
+Config discovery order:
+1. `MCP_SQUARED_CONFIG` environment variable
+2. Project-local `mcp-squared.toml` or `.mcp-squared/config.toml`
+3. User-level `~/.config/mcp-squared/config.toml` (or `%APPDATA%/mcp-squared/config.toml` on Windows)
+
+Minimal example:
+
+```toml
+schemaVersion = 1
+
+[upstreams.local]
+transport = "stdio"
+[upstreams.local.stdio]
+command = "mcp-server-local"
+args = []
+
+[upstreams.remote]
+transport = "sse"
+[upstreams.remote.sse]
+url = "https://example.com/mcp"
+auth = true
+```
+
+Security policies (allow/block/confirm) live under `security.tools`. Confirmation flows return a short-lived token that must be provided to `execute` to proceed. OAuth tokens for SSE upstreams are stored under `~/.config/mcp-squared/tokens/<upstream>.json`.
+
+## Tool API (Meta-Tools)
+
+MCP² exposes these tools to MCP clients:
+- `find_tools` - Search tools across upstream servers
+- `describe_tools` - Fetch full JSON schemas for selected tools
+- `execute` - Call an upstream tool with policy enforcement
+- `list_namespaces` - List upstream namespaces (optionally with tool names)
+- `clear_selection_cache` - Reset co-occurrence based suggestions
+
+## Search Modes
+
+`find_tools` supports three search modes:
+- `fast` (default): SQLite FTS5 full-text search
+- `semantic`: Embedding similarity search (falls back to `fast` if embeddings are missing)
+- `hybrid`: FTS5 + embedding rerank (falls back to `fast` if embeddings are missing)
+
+Embeddings are generated locally using Transformers.js (BGE-small). They are optional and can be generated programmatically via the retriever API.
+
+## Supported MCP Clients (Import/Install)
+
+MCP² can import or install MCP server configs for:
+`claude-code`, `claude-desktop`, `cursor`, `windsurf`, `vscode`, `cline`, `roo-code`, `kilo-code`, `gemini-cli`, `zed`, `jetbrains`, `factory`, `opencode`, `qwen-code`, `trae`, `antigravity`, `warp` (import via explicit path), and `codex`.
 
 ## Key Features
-- **Multi-provider support**: Works with various MCP server implementations
-- **Semantic search**: Find tools using natural language queries
-- **Dynamic tool disclosure**: Expose only relevant tool schemas to LLMs
-- **Caching**: Optional result caching and tool selection tracking
-- **Local-first architecture**: No cloud dependency, runs entirely on your machine
-- **TUI interface**: Interactive terminal interface for monitoring and configuration
-- **Monitoring**: Real-time statistics and health monitoring
+- Multi-upstream support (stdio + SSE/HTTP)
+- OAuth 2.0 dynamic client registration for SSE upstreams
+- Hybrid search with optional local embeddings (FTS5 + Transformers.js)
+- Detail levels (L0/L1/L2) for progressive schema disclosure
+- Selection caching with co-occurrence suggestions
+- Background index refresh with change detection
+- Security policies (allow/block/confirm) with confirmation tokens
+- Local-first architecture (SQLite index)
+- TUI interfaces for configuration and monitoring
 
 ## Non-Goals
 - Not a hosted SaaS platform (local-first).
@@ -83,14 +138,19 @@ MCP² acts as an intelligent middleware between your MCP clients (IDEs, agents) 
 - Not shipping language runtimes or SDKs at this stage.
 
 ## Architecture
+
 MCP² is built with Bun and TypeScript, leveraging:
 - @modelcontextprotocol/sdk for MCP communication
 - @huggingface/transformers for embeddings generation
 - @opentui/core for the terminal user interface
 - Zod for validation
 
+See `docs/ARCHITECTURE.md` for a full architecture breakdown.
+
 ## Contributing
-We welcome contributions! Please see [CONTRIBUTING.md](.github/CONTRIBUTING.md) for details on how to get started.
+
+We welcome contributions! Please see `.github/CONTRIBUTING.md` for details on how to get started.
 
 ## License
+
 Apache-2.0

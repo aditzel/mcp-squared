@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MCP² (Mercury Control Plane) is a local-first meta-server and proxy for the Model Context Protocol (MCP). It reduces tool context bloat by exposing a minimal surface area (`find_tools`, `describe_tools`, `execute`) instead of loading all tool schemas into LLM context.
+MCP² (Mercury Control Plane) is a local-first meta-server and proxy for the Model Context Protocol (MCP). It reduces tool context bloat by exposing a minimal surface area (`find_tools`, `describe_tools`, `execute`, plus supporting meta-tools) instead of loading all tool schemas into LLM context.
 
-**Status**: Pre-alpha / Inception
+**Status**: Alpha (v0.1.x)
 
 ## Development Commands
 
@@ -21,6 +21,7 @@ bun test --watch         # Watch mode
 bun run typecheck        # TypeScript type checking
 bun run lint             # Biome linting
 bun run lint:fix         # Auto-fix lint issues
+bun run format           # Format with Biome
 
 # Build
 bun run build            # Build to dist/
@@ -37,10 +38,13 @@ bun test -t "test name pattern"      # Filter by test name
 ## CLI Usage
 
 ```bash
-mcp-squared              # Start MCP server (stdio mode)
-mcp-squared config       # Launch TUI configuration interface
-mcp-squared test         # Test all configured upstreams
-mcp-squared test <name>  # Test specific upstream
+mcp-squared                 # Start MCP server (stdio mode)
+mcp-squared config          # Launch config TUI
+mcp-squared test [name]     # Test upstream connection(s)
+mcp-squared auth <name>     # OAuth auth for SSE/HTTP upstream
+mcp-squared import          # Import MCP configs from other tools
+mcp-squared install         # Install MCP² into other MCP clients
+mcp-squared monitor         # Launch server monitor TUI
 ```
 
 ## Architecture
@@ -57,15 +61,23 @@ MCP Client → MCP² Meta-Server → Upstream MCP Servers
 
 ### Core Components
 
-- **`src/index.ts`** - Entry point; CLI argument handling and mode dispatch (server, config TUI, test)
-- **`src/server/`** - MCP server implementation using `@modelcontextprotocol/sdk`. Exposes three meta-tools:
-  - `find_tools` - Semantic search for tools across upstreams
-  - `describe_tools` - Get full schemas for specific tools
-  - `execute` - Passthrough execution to upstream servers
-- **`src/upstream/`** - Client for connecting to upstream MCP servers (stdio transport implemented, SSE planned)
-- **`src/config/`** - Configuration management with TOML format, Zod validation, and schema migrations
-- **`src/tui/`** - OpenTUI-based interactive configuration interface
+- **`src/index.ts`** - Entry point; CLI argument handling and mode dispatch
+- **`src/server/`** - MCP server implementation using `@modelcontextprotocol/sdk`. Exposes meta-tools:
+  - `find_tools`, `describe_tools`, `execute`
+  - `list_namespaces`, `clear_selection_cache`
+- **`src/retriever/`** - Search and retrieval logic (FTS5, semantic, hybrid)
+- **`src/index/`** - SQLite index store (FTS5 + embeddings + co-occurrence)
+- **`src/embeddings/`** - Transformers.js embedding generation (BGE-small)
+- **`src/upstream/`** - Connectivity to upstream MCP servers (stdio + SSE/HTTP)
+- **`src/oauth/`** - OAuth 2.0 dynamic client registration + token storage
+- **`src/security/`** - Policy enforcement (allow/block/confirm) and sanitization
+- **`src/background/`** - Background index refresh + change detection
+- **`src/caching/`** - Selection cache tracking for co-occurrence suggestions
+- **`src/tui/`** - OpenTUI-based configuration and monitor UIs
+- **`src/import/`** - Import MCP configs from other tools
+- **`src/install/`** - Install MCP² into other MCP clients
 - **`src/cli/`** - Argument parsing and help output
+- **`src/utils/`** - Shared utility helpers
 
 ### Configuration System
 
@@ -75,17 +87,20 @@ Config is stored in TOML format with this discovery order:
 3. User-level: `~/.config/mcp-squared/config.toml` (Linux/macOS) or `%APPDATA%/mcp-squared/config.toml` (Windows)
 
 Schema is validated with Zod (`src/config/schema.ts`). Key sections:
-- `upstreams` - Map of named upstream servers (stdio or SSE transport)
+- `upstreams` - Map of named upstream servers (stdio or SSE/HTTP transport)
 - `security.tools` - Allow/block/confirm lists for tool access
-- `operations` - Runtime settings (find_tools limits, index refresh, logging)
+- `operations.findTools` - Default search mode, limits, and detail level
+- `operations.index` - Background refresh interval
+- `operations.selectionCache` - Co-occurrence suggestion settings
+- `operations.logging` - Log level
 
 ### Upstream Configuration
 
 Two transport types supported in schema:
 - **stdio**: Launches subprocess with command/args/env
-- **sse**: HTTP SSE connection (not yet implemented for testing)
+- **sse**: HTTP streaming connection (Streamable HTTP transport)
 
-Environment variables in upstream `env` config can reference process env with `$VAR` syntax.
+SSE upstreams can enable OAuth via `auth = true` (or an object with `callbackPort`/`clientName`). Tokens are stored under `~/.config/mcp-squared/tokens/<upstream>.json`.
 
 ## Key Conventions
 
@@ -95,14 +110,16 @@ Environment variables in upstream `env` config can reference process env with `$
 - **TypeScript**: Strict mode with `noUncheckedIndexedAccess`
 - **Imports**: Use `.js` extension for local imports (ESM)
 - **Path alias**: `@/*` maps to `src/*`
+- **Embeddings**: Optional; semantic/hybrid search falls back to FTS5 if embeddings are missing
 
 ## Issue Tracking
 
-This project uses **bd** (beads) for issue tracking. See AGENTS.md for workflow.
+This project uses **bd** (beads) for issue tracking. See `AGENTS.md` for workflow.
 
 ## Key Dependencies
 
 - **@modelcontextprotocol/sdk** - Official MCP SDK for server and client
-- **@opentui/core** - Terminal UI framework for config interface
+- **@huggingface/transformers** - Local embedding generation
+- **@opentui/core** - Terminal UI framework for config/monitor
 - **smol-toml** - TOML parsing
 - **zod** - Schema validation

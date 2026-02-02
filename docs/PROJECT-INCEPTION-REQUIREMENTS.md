@@ -1,5 +1,13 @@
 # MCP²: Project Inception Requirements
 
+> Note: This document captures the original inception requirements. For the current implementation and architecture, see `README.md` and `docs/ARCHITECTURE.md`.
+
+## 0. Current Status (Alpha, v0.1.x)
+- Multi-upstream support (stdio + SSE/HTTP) with OAuth for SSE upstreams
+- Hybrid search (FTS5 + optional embeddings) with L0/L1/L2 detail levels
+- Selection caching with co-occurrence suggestions
+- Background index refresh and monitor TUI
+
 ## 1. Summary
 MCP² (Mercury Control Plane) is a local-first middleware designed to optimize the interaction between Model Context Protocol (MCP) clients (agents, IDEs) and servers. It introduces a "meta-server" layer that indexes tools and progressively discloses them to the LLM, reducing context window usage and improving tool selection accuracy.
 
@@ -67,10 +75,10 @@ The meta-server exposes these tools to the client:
 *   `execute(tool_name: string, arguments: dict) -> Result`
 *   *(Optional)* `list_namespaces() -> List[string]`
 
-## 10. Milestones
-*   **MVP**: Connect to 1 upstream server, index it, and expose `find_tools`.
-*   **v0.2**: Support multiple upstream servers and hybrid search.
-*   **v0.3**: Implement selection caching and "detail levels".
+## 10. Milestones (Status)
+*   **MVP**: Connect to 1 upstream server, index it, and expose `find_tools`. (Implemented in alpha)
+*   **v0.2**: Support multiple upstream servers and hybrid search. (Implemented in alpha)
+*   **v0.3**: Implement selection caching and "detail levels". (Implemented in alpha)
 
 ## 11. Open Questions / Risks
 *   How to handle tools with identical names from different servers? (Namespacing strategy needed).

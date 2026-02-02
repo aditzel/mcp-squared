@@ -5,7 +5,7 @@
 If you discover a security vulnerability within MCP², please do NOT report it publicly (e.g., via GitHub issues).
 
 Instead, please report it via:
-*   Email: [INSERT EMAIL]
+*   Email: allan@allanditzel.com
 *   Private disclosure via GitHub Security Advisories (if enabled)
 
 We will investigate all reports and provide a response.
