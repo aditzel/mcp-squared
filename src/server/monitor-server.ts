@@ -112,8 +112,8 @@ export interface MonitorClientInfo {
 export class MonitorServer {
   private socketPath: string;
   private readonly statsCollector: StatsCollector;
-  private readonly cataloger?: Cataloger;
-  private clientInfoProvider?: () => MonitorClientInfo[];
+  private readonly cataloger: Cataloger | undefined;
+  private clientInfoProvider: (() => MonitorClientInfo[]) | undefined;
   private server: Server | null = null;
   private isRunning = false;
   private activeSockets: Set<Socket> = new Set();

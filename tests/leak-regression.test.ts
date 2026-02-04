@@ -8,6 +8,10 @@ let lastMockKill: any;
 class MockStdioClientTransport {
   // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
   _process: any;
+  onclose?: () => void;
+  onerror?: (error: Error) => void;
+  // biome-ignore lint/suspicious/noExplicitAny: test transport hook
+  onmessage?: (message: any) => void;
 
   constructor() {
     const killFn = mock((_signal) => true);
@@ -23,6 +27,9 @@ class MockStdioClientTransport {
   }
 
   async start() {}
+
+  // biome-ignore lint/suspicious/noExplicitAny: test transport mock
+  async send(_message: any) {}
 
   async close() {
     // CRITICAL: Replicate the real SDK behavior

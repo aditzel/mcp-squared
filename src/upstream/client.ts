@@ -18,7 +18,7 @@ import { safelyCloseTransport } from "../utils/transport.js";
 
 export interface ToolInfo {
   name: string;
-  description: string | undefined;
+  description?: string;
 }
 
 export interface TestResult {
@@ -32,13 +32,22 @@ export interface TestResult {
   stderr: string | undefined;
 }
 
+export interface ClientLike {
+  connect: (transport: Transport) => Promise<void>;
+  close: () => Promise<void>;
+  listTools: () => Promise<{
+    tools: Array<{ name: string; description?: string | undefined }>;
+  }>;
+  getServerVersion: () => { name: string; version: string } | undefined;
+}
+
 export interface TestOptions {
   /** Connection timeout in milliseconds (default: 30000) */
   timeoutMs?: number;
   /** Enable verbose logging */
   verbose?: boolean;
   /** Override Client construction (testing only) */
-  clientFactory?: () => Client;
+  clientFactory?: () => ClientLike;
   /** Override stdio transport construction (testing only) */
   stdioTransportFactory?: (
     config: UpstreamStdioServerConfig,
@@ -208,7 +217,7 @@ export async function testUpstreamConnection(
   const log = (msg: string) => verbose && console.log(`  [${name}] ${msg}`);
   let stderrOutput = "";
 
-  let client: Client | null = null;
+  let client: ClientLike | null = null;
   let transport: Transport | null = null;
   let httpTransport: StreamableHTTPClientTransport | null = null;
   let authProvider: McpOAuthProvider | undefined;
@@ -220,6 +229,9 @@ export async function testUpstreamConnection(
         name: "mcp-squared-test",
         version: "1.0.0",
       });
+    if (!client) {
+      throw new Error("Client initialization failed");
+    }
 
     // Create appropriate transport based on config
     if (config.transport === "stdio") {
@@ -321,10 +333,13 @@ export async function testUpstreamConnection(
     const { tools } = await client.listTools();
     log(`Got ${tools.length} tools in ${Date.now() - toolsStart}ms`);
 
-    const toolInfos: ToolInfo[] = tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-    }));
+    const toolInfos: ToolInfo[] = tools.map((tool) => {
+      const info: ToolInfo = { name: tool.name };
+      if (tool.description !== undefined) {
+        info.description = tool.description;
+      }
+      return info;
+    });
 
     return {
       success: true,

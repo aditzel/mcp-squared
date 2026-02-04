@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createServer } from "node:net";
 import {
-  type DaemonEnvelope,
   SocketClientTransport,
   SocketServerTransport,
 } from "@/daemon/transport";
@@ -34,7 +33,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
     });
 
     test("exchanges MCP and control messages", async () => {
-      let serverControl: DaemonEnvelope | null = null;
+      let serverControl: { type?: string } | null = null;
       let serverMessage: unknown = null;
 
       server = createServer((socket) => {
@@ -70,7 +69,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       endpoint = `tcp://${address.address}:${address.port}`;
 
       const client = new SocketClientTransport({ endpoint });
-      let clientControl: DaemonEnvelope | null = null;
+      let clientControl: { type?: string } | null = null;
       let clientMessage: unknown = null;
       client.oncontrol = (msg) => {
         clientControl = msg;
@@ -85,12 +84,12 @@ if (!SOCKET_LISTEN_SUPPORTED) {
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      expect(serverControl?.type).toBe("hello");
+      expect(serverControl).toMatchObject({ type: "hello" });
       expect(serverMessage).toEqual({ jsonrpc: "2.0", id: 1, method: "ping" });
 
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(clientControl?.type).toBe("helloAck");
+      expect(clientControl).toMatchObject({ type: "helloAck" });
       expect(clientMessage).toEqual({
         jsonrpc: "2.0",
         id: 2,

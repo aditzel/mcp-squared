@@ -119,7 +119,8 @@ abstract class BaseSocketTransport implements Transport {
     }
 
     this.socket.on("data", (chunk) => {
-      const messages = this.decoder.push(chunk);
+      const buffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+      const messages = this.decoder.push(buffer);
       for (const message of messages) {
         if (message.type === "mcp") {
           this.onmessage?.(message.payload as JSONRPCMessage);
@@ -178,7 +179,7 @@ export class SocketClientTransport extends BaseSocketTransport {
     this.timeoutMs = options.timeoutMs ?? 5000;
   }
 
-  async start(): Promise<void> {
+  override async start(): Promise<void> {
     if (this.started) {
       return;
     }

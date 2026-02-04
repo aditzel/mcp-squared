@@ -38,18 +38,18 @@ export async function withTempConfigHome(): Promise<{
   restore: () => void;
 }> {
   const release = await acquireLock();
-  const original = process.env.XDG_CONFIG_HOME;
+  const original = process.env["XDG_CONFIG_HOME"];
   const dir = join(tmpdir(), `mcp-squared-test-${Date.now()}`);
   mkdirSync(dir, { recursive: true });
-  process.env.XDG_CONFIG_HOME = dir;
+  process.env["XDG_CONFIG_HOME"] = dir;
 
   return {
     dir,
     restore: () => {
       if (original === undefined) {
-        process.env.XDG_CONFIG_HOME = undefined;
+        process.env["XDG_CONFIG_HOME"] = undefined;
       } else {
-        process.env.XDG_CONFIG_HOME = original;
+        process.env["XDG_CONFIG_HOME"] = original;
       }
       rmSync(dir, { recursive: true, force: true });
       release();

@@ -60,11 +60,18 @@ export async function runMonitorTui(
 
   renderer.setBackgroundColor("#0f172a");
 
-  const app = new MonitorTuiApp(renderer, {
-    socketPath,
+  const appOptions = {
     refreshInterval,
     instances: options.instances ?? [],
-  });
+  } as {
+    socketPath?: string;
+    refreshInterval: number;
+    instances: InstanceRegistryEntry[];
+  };
+  if (socketPath) {
+    appOptions.socketPath = socketPath;
+  }
+  const app = new MonitorTuiApp(renderer, appOptions);
   await app.start();
 }
 
@@ -241,6 +248,9 @@ class MonitorTuiApp {
    */
   private setupMonitorLayout(): void {
     this.clearScreen();
+    if (!this.container) {
+      return;
+    }
 
     // Header
     this.addHeader();

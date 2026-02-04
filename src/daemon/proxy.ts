@@ -71,7 +71,7 @@ export async function createProxyBridge(
   let isOwner = false;
   let daemonClosed = false;
   let stdioClosed = false;
-  const debug = options.debug ?? process.env.MCP_SQUARED_PROXY_DEBUG === "1";
+  const debug = options.debug ?? process.env["MCP_SQUARED_PROXY_DEBUG"] === "1";
 
   if (!endpoint) {
     const registry = await loadLiveDaemonRegistry(options.configHash);
@@ -96,10 +96,13 @@ export async function createProxyBridge(
     throw new Error("Daemon endpoint not available");
   }
 
-  const daemonTransport = new SocketClientTransport({
+  const transportOptions: { endpoint: string; timeoutMs?: number } = {
     endpoint,
-    timeoutMs: options.timeoutMs,
-  });
+  };
+  if (options.timeoutMs !== undefined) {
+    transportOptions.timeoutMs = options.timeoutMs;
+  }
+  const daemonTransport = new SocketClientTransport(transportOptions);
   const stdioTransport = options.stdioTransport;
 
   const closeDaemon = async (sendGoodbye: boolean): Promise<void> => {
@@ -169,9 +172,9 @@ export async function createProxyBridge(
 
   await daemonTransport.start();
   const launcherHint =
-    process.env.MCP_SQUARED_LAUNCHER ??
-    process.env.MCP_CLIENT_NAME ??
-    process.env.MCP_SQUARED_AGENT;
+    process.env["MCP_SQUARED_LAUNCHER"] ??
+    process.env["MCP_CLIENT_NAME"] ??
+    process.env["MCP_SQUARED_AGENT"];
   const clientId = launcherHint
     ? `${launcherHint}-${process.pid}`
     : `proxy-${process.pid}`;

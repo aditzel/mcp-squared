@@ -38,7 +38,7 @@ export class DaemonServer {
   private endpoint: string | null = null;
   private readonly idleTimeoutMs: number;
   private readonly heartbeatTimeoutMs: number;
-  private readonly configHash?: string;
+  private readonly configHash: string | undefined;
   private server: Server | null = null;
   private sessions = new Map<string, DaemonSession>();
   private ownerSessionId: string | null = null;
@@ -106,14 +106,15 @@ export class DaemonServer {
       this.endpoint = this.socketPath;
     }
 
-    writeDaemonRegistry({
+    const registryEntry = {
       daemonId: randomUUID(),
       endpoint: this.endpoint ?? this.socketPath,
       pid: process.pid,
       startedAt: Date.now(),
       version: VERSION,
-      configHash: this.configHash,
-    });
+      ...(this.configHash ? { configHash: this.configHash } : {}),
+    };
+    writeDaemonRegistry(registryEntry);
 
     if (!this.heartbeatTimer) {
       this.heartbeatTimer = setInterval(() => {
@@ -195,7 +196,9 @@ export class DaemonServer {
     transport.oncontrol = (message) => {
       switch (message.type) {
         case "hello":
-          session.clientId = message.clientId;
+          if (message.clientId !== undefined) {
+            session.clientId = message.clientId;
+          }
           session.lastSeen = Date.now();
           void transport.sendControl({
             type: "helloAck",
@@ -313,12 +316,17 @@ export class DaemonServer {
   }
 
   private getClientInfo(): MonitorClientInfo[] {
-    return Array.from(this.sessions.values()).map((session) => ({
-      sessionId: session.id,
-      clientId: session.clientId,
-      connectedAt: session.connectedAt,
-      lastSeen: session.lastSeen,
-      isOwner: session.id === this.ownerSessionId,
-    }));
+    return Array.from(this.sessions.values()).map((session) => {
+      const info: MonitorClientInfo = {
+        sessionId: session.id,
+        connectedAt: session.connectedAt,
+        lastSeen: session.lastSeen,
+        isOwner: session.id === this.ownerSessionId,
+      };
+      if (session.clientId !== undefined) {
+        info.clientId = session.clientId;
+      }
+      return info;
+    });
   }
 }

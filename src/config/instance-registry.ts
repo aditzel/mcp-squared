@@ -119,55 +119,64 @@ function isValidEntry(data: unknown): data is InstanceRegistryEntry {
     return false;
   }
   const record = data as Record<string, unknown>;
-  if (typeof record.id !== "string" || record.id.trim() === "") {
+  const id = record["id"];
+  if (typeof id !== "string" || id.trim() === "") {
     return false;
   }
-  if (typeof record.pid !== "number" || record.pid <= 0) {
+  const pid = record["pid"];
+  if (typeof pid !== "number" || pid <= 0) {
     return false;
   }
-  if (
-    typeof record.socketPath !== "string" ||
-    record.socketPath.trim() === ""
-  ) {
+  const socketPath = record["socketPath"];
+  if (typeof socketPath !== "string" || socketPath.trim() === "") {
     return false;
   }
-  if (typeof record.startedAt !== "number" || record.startedAt <= 0) {
+  const startedAt = record["startedAt"];
+  if (typeof startedAt !== "number" || startedAt <= 0) {
     return false;
   }
-  if (record.cwd && typeof record.cwd !== "string") {
+  const cwd = record["cwd"];
+  if (cwd && typeof cwd !== "string") {
     return false;
   }
-  if (record.role && typeof record.role !== "string") {
+  const role = record["role"];
+  if (role && typeof role !== "string") {
     return false;
   }
-  if (record.launcher && typeof record.launcher !== "string") {
+  const launcher = record["launcher"];
+  if (launcher && typeof launcher !== "string") {
     return false;
   }
-  if (record.ppid && typeof record.ppid !== "number") {
+  const ppid = record["ppid"];
+  if (ppid && typeof ppid !== "number") {
     return false;
   }
-  if (record.user && typeof record.user !== "string") {
+  const user = record["user"];
+  if (user && typeof user !== "string") {
     return false;
   }
-  if (record.processName && typeof record.processName !== "string") {
+  const processName = record["processName"];
+  if (processName && typeof processName !== "string") {
     return false;
   }
-  if (
-    record.parentProcessName &&
-    typeof record.parentProcessName !== "string"
-  ) {
+  const parentProcessName = record["parentProcessName"];
+  if (parentProcessName && typeof parentProcessName !== "string") {
     return false;
   }
-  if (record.parentCommand && typeof record.parentCommand !== "string") {
+  const parentCommand = record["parentCommand"];
+  if (parentCommand && typeof parentCommand !== "string") {
     return false;
   }
-  if (record.configPath && typeof record.configPath !== "string") {
+  const configPath = record["configPath"];
+  if (configPath && typeof configPath !== "string") {
     return false;
   }
-  if (record.version && typeof record.version !== "string") {
+  const version = record["version"];
+  if (version && typeof version !== "string") {
     return false;
   }
-  if (record.command && typeof record.command !== "string") {
+  const command = record["command"];
+  if (command && typeof command !== "string") {
     return false;
   }
   return true;

@@ -100,6 +100,7 @@ async function startServer(): Promise<void> {
   });
 
   let instanceEntryPath: string | null = null;
+  const launcher = resolveLauncherHint();
   const instanceEntry: InstanceRegistryEntry = {
     id: instanceId,
     pid: process.pid,
@@ -110,7 +111,7 @@ async function startServer(): Promise<void> {
     version: VERSION,
     command: process.argv.join(" "),
     role: "server",
-    launcher: resolveLauncherHint(),
+    ...(launcher ? { launcher } : {}),
   };
 
   const registerInstance = (): void => {
@@ -545,11 +546,12 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
           pid: daemonRegistry.pid,
           socketPath: getSocketFilePath(configHash),
           startedAt: daemonRegistry.startedAt,
-          version: daemonRegistry.version,
-          cwd: undefined,
           configPath,
           command: "mcp-squared daemon",
           role: "daemon",
+          ...(daemonRegistry.version
+            ? { version: daemonRegistry.version }
+            : {}),
         };
         instances.push(daemonEntry);
       }
@@ -557,11 +559,10 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
 
     augmentProcessInfo(instances);
 
-    if (options.instanceId) {
+    const instanceId = options.instanceId;
+    if (instanceId) {
       const matches = instances.filter(
-        (entry) =>
-          entry.id === options.instanceId ||
-          entry.id.startsWith(options.instanceId),
+        (entry) => entry.id === instanceId || entry.id.startsWith(instanceId),
       );
 
       if (matches.length === 0) {
@@ -611,11 +612,18 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
 
   try {
     // Launch the monitor TUI
-    await runMonitorTui({
-      socketPath,
+    const monitorOptions = {
       instances,
       refreshInterval: options.noAutoRefresh ? 0 : options.refreshInterval,
-    });
+    } as {
+      socketPath?: string;
+      instances: InstanceRegistryEntry[];
+      refreshInterval: number;
+    };
+    if (socketPath) {
+      monitorOptions.socketPath = socketPath;
+    }
+    await runMonitorTui(monitorOptions);
   } catch (error) {
     const err = error as Error;
     console.error(`Error launching monitor: ${err.message}`);
@@ -666,10 +674,16 @@ function augmentProcessInfo(entries: InstanceRegistryEntry[]): void {
     if (!entry) {
       continue;
     }
-    entry.ppid = Number.isNaN(ppid) ? undefined : ppid;
-    entry.user = user;
-    entry.processName = comm;
-    if (!entry.command) {
+    if (!Number.isNaN(ppid)) {
+      entry.ppid = ppid;
+    }
+    if (user !== undefined) {
+      entry.user = user;
+    }
+    if (comm !== undefined) {
+      entry.processName = comm;
+    }
+    if (!entry.command && command !== undefined) {
       entry.command = command;
     }
   }
@@ -726,9 +740,9 @@ function augmentProcessInfo(entries: InstanceRegistryEntry[]): void {
 
 function resolveLauncherHint(): string | undefined {
   return (
-    process.env.MCP_SQUARED_LAUNCHER ??
-    process.env.MCP_CLIENT_NAME ??
-    process.env.MCP_SQUARED_AGENT ??
+    process.env["MCP_SQUARED_LAUNCHER"] ??
+    process.env["MCP_CLIENT_NAME"] ??
+    process.env["MCP_SQUARED_AGENT"] ??
     undefined
   );
 }
@@ -747,15 +761,23 @@ async function runDaemon(options: DaemonArgs): Promise<void> {
     config,
     monitorSocketPath,
   });
-  const daemon = new DaemonServer({
+  const daemonOptions: {
+    runtime: McpSquaredServer;
+    configHash: string;
+    socketPath?: string;
+  } = {
     runtime,
-    socketPath: options.socketPath,
     configHash,
-  });
+  };
+  if (options.socketPath) {
+    daemonOptions.socketPath = options.socketPath;
+  }
+  const daemon = new DaemonServer(daemonOptions);
 
   ensureInstanceRegistryDir();
   ensureSocketDir();
 
+  const daemonLauncher = resolveLauncherHint();
   const instanceEntry: InstanceRegistryEntry = {
     id: `daemon-${configHash}`,
     pid: process.pid,
@@ -766,7 +788,7 @@ async function runDaemon(options: DaemonArgs): Promise<void> {
     version: VERSION,
     command: process.argv.join(" "),
     role: "daemon",
-    launcher: resolveLauncherHint(),
+    ...(daemonLauncher ? { launcher: daemonLauncher } : {}),
   };
   let instanceEntryPath: string | null = null;
   const registerInstance = (): void => {
@@ -815,6 +837,7 @@ async function runProxyCommand(options: ProxyArgs): Promise<void> {
   ensureInstanceRegistryDir();
   ensureSocketDir();
 
+  const proxyLauncher = resolveLauncherHint();
   const instanceEntry: InstanceRegistryEntry = {
     id: `proxy-${process.pid}`,
     pid: process.pid,
@@ -825,7 +848,7 @@ async function runProxyCommand(options: ProxyArgs): Promise<void> {
     version: VERSION,
     command: process.argv.join(" "),
     role: "proxy",
-    launcher: resolveLauncherHint(),
+    ...(proxyLauncher ? { launcher: proxyLauncher } : {}),
   };
   let instanceEntryPath: string | null = null;
   let proxyHandle: ProxyBridge | null = null;
@@ -876,11 +899,18 @@ async function runProxyCommand(options: ProxyArgs): Promise<void> {
 
   registerInstance();
 
-  proxyHandle = await runProxy({
-    endpoint: options.socketPath,
+  const proxyOptions: {
+    endpoint?: string;
+    noSpawn: boolean;
+    configHash: string;
+  } = {
     noSpawn: options.noSpawn,
     configHash,
-  });
+  };
+  if (options.socketPath) {
+    proxyOptions.endpoint = options.socketPath;
+  }
+  proxyHandle = await runProxy(proxyOptions);
 }
 
 function printInstanceList(entries: InstanceRegistryEntry[]): void {
