@@ -47,7 +47,7 @@ export async function withTempConfigHome(): Promise<{
     dir,
     restore: () => {
       if (original === undefined) {
-        process.env["XDG_CONFIG_HOME"] = undefined;
+        delete process.env["XDG_CONFIG_HOME"];
       } else {
         process.env["XDG_CONFIG_HOME"] = original;
       }
