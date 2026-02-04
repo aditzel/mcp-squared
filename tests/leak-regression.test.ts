@@ -5,80 +5,60 @@ import { testUpstreamConnection } from "../src/upstream/client.js";
 // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
 let lastMockKill: any;
 
-// Mock the SDK classes
-mock.module("@modelcontextprotocol/sdk/client/stdio.js", () => {
-  return {
-    StdioClientTransport: class MockStdioClientTransport {
-      // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
-      _process: any;
-      // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
-      stderr: any;
+class MockStdioClientTransport {
+  // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
+  _process: any;
 
-      // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
-      constructor(_config: any) {
-        // Create a new mock kill function for this instance
-        const killFn = mock((_signal) => {
-          return true;
-        });
+  constructor() {
+    const killFn = mock((_signal) => true);
+    lastMockKill = killFn;
+    this._process = {
+      killed: false,
+      kill: killFn,
+      on: mock(() => {}),
+      stdin: { end: mock(() => {}) },
+      stdout: { on: mock(() => {}) },
+      stderr: { on: mock(() => {}) },
+    };
+  }
 
-        lastMockKill = killFn;
+  async start() {}
 
-        this._process = {
-          killed: false,
-          kill: killFn,
-          on: mock(() => {}),
-          stdin: { end: mock(() => {}) },
-          stdout: { on: mock(() => {}) },
-          stderr: { on: mock(() => {}) },
-        };
+  async close() {
+    // CRITICAL: Replicate the real SDK behavior
+    this._process = undefined;
+  }
+}
 
-        this.stderr = {
-          on: mock(() => {}),
-        };
-      }
+class MockClient {
+  // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
+  transport: any;
 
-      async start() {}
+  // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
+  async connect(transport: any) {
+    this.transport = transport;
+    await transport.start();
+  }
 
-      async close() {
-        // CRITICAL: Replicate the real SDK behavior
-        this._process = undefined;
-      }
-    },
-  };
-});
+  getServerVersion() {
+    return { name: "test-server", version: "1.0.0" };
+  }
 
-mock.module("@modelcontextprotocol/sdk/client/index.js", () => {
-  return {
-    Client: class MockClient {
-      // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
-      transport: any;
+  async listTools() {
+    return { tools: [] };
+  }
 
-      // biome-ignore lint/suspicious/noExplicitAny: mock requires flexible typing
-      async connect(transport: any) {
-        this.transport = transport;
-        await transport.start();
-      }
+  async close() {
+    if (this.transport) {
+      await this.transport.close();
+    }
+  }
+}
 
-      getServerVersion() {
-        return { name: "test-server", version: "1.0.0" };
-      }
-
-      async listTools() {
-        return { tools: [] };
-      }
-
-      async close() {
-        if (this.transport) {
-          await this.transport.close();
-        }
-      }
-    },
-  };
-});
-
-describe("Regression Test: Process Leak", () => {
+describe.serial("Regression Test: Process Leak", () => {
   afterEach(() => {
     lastMockKill = undefined;
+    mock.restore();
   });
 
   test("ensures process is killed BEFORE client.close() clears the reference", async () => {
@@ -92,7 +72,10 @@ describe("Regression Test: Process Leak", () => {
       // biome-ignore lint/suspicious/noExplicitAny: test config mock
     } as any;
 
-    await testUpstreamConnection("test-upstream", config);
+    await testUpstreamConnection("test-upstream", config, {
+      clientFactory: () => new MockClient(),
+      stdioTransportFactory: () => new MockStdioClientTransport(),
+    });
 
     expect(lastMockKill).toBeDefined();
     // This assertion passes ONLY if safelyCloseTransport ran before client.close()

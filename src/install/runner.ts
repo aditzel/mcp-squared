@@ -206,6 +206,31 @@ async function promptModeSelection(): Promise<InstallMode> {
 }
 
 /**
+ * Prompts user to choose stdio vs auto mode.
+ *
+ * @returns Args to pass to the installed command (undefined for auto)
+ */
+async function promptProxySelection(): Promise<string[] | undefined> {
+  console.log("\nShared daemon mode:\n");
+  console.log(
+    `  ${colors.cyan}1.${colors.reset} Auto (recommended) - Use daemon/proxy automatically`,
+  );
+  console.log(
+    `  ${colors.cyan}2.${colors.reset} Force stdio - Each client starts its own MCP² instance`,
+  );
+  console.log("");
+
+  while (true) {
+    const answer = await promptUser("Select mode [1-2]: ");
+    if (answer === "1") return undefined;
+    if (answer === "2") return ["--stdio"];
+    console.log(
+      `${colors.red}Invalid selection. Please enter 1 or 2.${colors.reset}`,
+    );
+  }
+}
+
+/**
  * Prompts user for confirmation.
  *
  * @param message - Confirmation message
@@ -232,12 +257,16 @@ function isTomlTool(toolId: ToolId): boolean {
 export function performInstallation(
   options: InstallOptions,
 ): ToolInstallResult {
-  const { tool, path, scope, mode, serverName, command, dryRun } = options;
+  const { tool, path, scope, mode, serverName, command, args, dryRun } =
+    options;
   const writer = getWriter(tool);
   const isToml = isTomlTool(tool);
 
   // Prepare the server entry
-  const entry: McpServerEntry = { command };
+  const entry: McpServerEntry = {
+    command,
+    ...(args && args.length > 0 ? { args } : {}),
+  };
 
   // Read existing config if it exists
   let existingConfig: Record<string, unknown> | null = null;
@@ -265,7 +294,12 @@ export function performInstallation(
   // Check if server already exists
   if (mode === "add" && writer.hasServer(existingConfig, serverName)) {
     const existingEntry = writer.getServer(existingConfig, serverName);
-    if (existingEntry?.command === command) {
+    const existingArgs = existingEntry?.args;
+    const incomingArgs = args;
+    if (
+      existingEntry?.command === command &&
+      areArgsEqual(existingArgs, incomingArgs)
+    ) {
       return {
         tool,
         path,
@@ -328,6 +362,15 @@ export function performInstallation(
     created: !configExists,
     backupPath,
   };
+}
+
+function areArgsEqual(a?: string[], b?: string[]): boolean {
+  const left = a?.filter((value) => value !== "") ?? [];
+  const right = b?.filter((value) => value !== "") ?? [];
+  if (left.length !== right.length) {
+    return left.length === 0 && right.length === 0;
+  }
+  return left.every((value, index) => value === right[index]);
 }
 
 /**
@@ -413,6 +456,12 @@ export async function runInstall(args: InstallArgs): Promise<void> {
     process.exit(1);
   }
 
+  // Determine proxy args if not explicitly provided
+  let installArgs = args.args;
+  if (!installArgs && args.interactive) {
+    installArgs = await promptProxySelection();
+  }
+
   // Determine target path
   const targetPath =
     selectedScope === "user"
@@ -429,7 +478,11 @@ export async function runInstall(args: InstallArgs): Promise<void> {
   console.log(
     `  Mode:    ${selectedMode === "replace" ? "Replace all servers" : "Add alongside existing"}`,
   );
-  console.log(`  Entry:   { "command": "${args.command}" }`);
+  const entrySummary =
+    installArgs && installArgs.length > 0
+      ? `{ "command": "${args.command}", "args": ${JSON.stringify(installArgs)} }`
+      : `{ "command": "${args.command}" }`;
+  console.log(`  Entry:   ${entrySummary}`);
   console.log(`  Name:    ${args.serverName}`);
 
   if (args.dryRun) {
@@ -456,6 +509,7 @@ export async function runInstall(args: InstallArgs): Promise<void> {
     mode: selectedMode,
     serverName: args.serverName,
     command: args.command,
+    args: installArgs,
     dryRun: args.dryRun,
   });
 

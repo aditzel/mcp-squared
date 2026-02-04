@@ -16,6 +16,11 @@ import { dirname, join, resolve } from "node:path";
 
 const PID_FILENAME = "mcp-squared.pid";
 const SOCKET_FILENAME = "mcp-squared.sock";
+const INSTANCE_DIR_NAME = "instances";
+const SOCKET_DIR_NAME = "sockets";
+const DAEMON_DIR_NAME = "daemon";
+const DAEMON_REGISTRY_FILENAME = "daemon.json";
+const DAEMON_SOCKET_FILENAME = "daemon.sock";
 
 /**
  * Source of the discovered configuration file.
@@ -71,6 +76,12 @@ function getUserConfigDir(): string {
   return join(getXdgConfigHome(), APP_NAME);
 }
 
+function ensureDir(dir: string): void {
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+}
+
 /**
  * Gets the full path to the user-level config file.
  * @internal
@@ -91,12 +102,86 @@ export function getPidFilePath(): string {
 
 /**
  * Gets the full path to the Unix Domain Socket file.
- * The socket file is stored in the user-level config directory.
+ * When instanceId is provided, it uses the per-instance socket directory.
+ * The default path is retained for backward compatibility.
  *
+ * @param instanceId - Optional instance ID for multi-instance sockets
  * @returns Path to the socket file
  */
-export function getSocketFilePath(): string {
-  return join(getUserConfigDir(), SOCKET_FILENAME);
+export function getSocketFilePath(instanceId?: string): string {
+  if (!instanceId) {
+    return join(getUserConfigDir(), SOCKET_FILENAME);
+  }
+  return join(getSocketDir(), `mcp-squared.${instanceId}.sock`);
+}
+
+/**
+ * Gets the directory used for the shared daemon registry and socket.
+ *
+ * @returns Path to the daemon directory
+ */
+export function getDaemonDir(configHash?: string): string {
+  if (configHash) {
+    return join(getUserConfigDir(), DAEMON_DIR_NAME, configHash);
+  }
+  return join(getUserConfigDir(), DAEMON_DIR_NAME);
+}
+
+/**
+ * Gets the daemon registry file path.
+ *
+ * @returns Path to the daemon registry file
+ */
+export function getDaemonRegistryPath(configHash?: string): string {
+  return join(getDaemonDir(configHash), DAEMON_REGISTRY_FILENAME);
+}
+
+/**
+ * Gets the daemon socket path.
+ *
+ * @returns Path to the daemon socket
+ */
+export function getDaemonSocketPath(configHash?: string): string {
+  return join(getDaemonDir(configHash), DAEMON_SOCKET_FILENAME);
+}
+
+/**
+ * Gets the directory used to store per-instance registry entries.
+ *
+ * @returns Path to the instance registry directory
+ */
+export function getInstanceRegistryDir(): string {
+  return join(getUserConfigDir(), INSTANCE_DIR_NAME);
+}
+
+/**
+ * Gets the directory used to store per-instance socket files.
+ *
+ * @returns Path to the socket directory
+ */
+export function getSocketDir(): string {
+  return join(getUserConfigDir(), SOCKET_DIR_NAME);
+}
+
+/**
+ * Ensures the instance registry directory exists.
+ */
+export function ensureInstanceRegistryDir(): void {
+  ensureDir(getInstanceRegistryDir());
+}
+
+/**
+ * Ensures the socket directory exists.
+ */
+export function ensureSocketDir(): void {
+  ensureDir(getSocketDir());
+}
+
+/**
+ * Ensures the daemon directory exists.
+ */
+export function ensureDaemonDir(configHash?: string): void {
+  ensureDir(getDaemonDir(configHash));
 }
 
 /**
@@ -186,7 +271,5 @@ export function getDefaultConfigPath(): ConfigPathResult {
  */
 export function ensureConfigDir(configPath: string): void {
   const dir = dirname(configPath);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
+  ensureDir(dir);
 }

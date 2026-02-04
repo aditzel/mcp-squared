@@ -6,6 +6,7 @@ describe("parseArgs", () => {
     test("defaults to server mode with no args", () => {
       const result = parseArgs([]);
       expect(result.mode).toBe("server");
+      expect(result.stdio).toBe(false);
       expect(result.help).toBe(false);
       expect(result.version).toBe(false);
     });
@@ -38,6 +39,13 @@ describe("parseArgs", () => {
     test("parses '--version' flag", () => {
       const result = parseArgs(["--version"]);
       expect(result.version).toBe(true);
+    });
+
+    test("parses '--stdio' flag", () => {
+      const result = parseArgs(["--stdio"]);
+      expect(result.mode).toBe("server");
+      expect(result.stdio).toBe(true);
+      expect(result.install.args).toEqual(["--stdio"]);
     });
 
     test("parses '-v' flag", () => {
@@ -230,6 +238,7 @@ describe("parseArgs", () => {
       expect(result.install.dryRun).toBe(false);
       expect(result.install.serverName).toBe("mcp-squared");
       expect(result.install.command).toBe("mcp-squared");
+      expect(result.install.args).toBeUndefined();
     });
 
     test("parses --tool flag", () => {
@@ -260,6 +269,11 @@ describe("parseArgs", () => {
     test("parses --command flag", () => {
       const result = parseArgs(["install", "--command=my-cmd"]);
       expect(result.install.command).toBe("my-cmd");
+    });
+
+    test("parses --proxy flag", () => {
+      const result = parseArgs(["install", "--proxy"]);
+      expect(result.install.args).toEqual(["proxy"]);
     });
 
     test("parses --scope for install (user only)", () => {
@@ -298,8 +312,38 @@ describe("parseArgs", () => {
       expect(result.install.mode).toBe("add");
       expect(result.install.serverName).toBe("custom-name");
       expect(result.install.command).toBe("custom-cmd");
+      expect(result.install.args).toBeUndefined();
       expect(result.install.dryRun).toBe(true);
       expect(result.install.interactive).toBe(false);
+    });
+  });
+
+  describe("daemon and proxy commands", () => {
+    test("parses 'daemon' command", () => {
+      const result = parseArgs(["daemon"]);
+      expect(result.mode).toBe("daemon");
+    });
+
+    test("parses daemon socket override", () => {
+      const result = parseArgs(["daemon", "--daemon-socket=/tmp/daemon.sock"]);
+      expect(result.mode).toBe("daemon");
+      expect(result.daemon.socketPath).toBe("/tmp/daemon.sock");
+    });
+
+    test("parses 'proxy' command", () => {
+      const result = parseArgs(["proxy"]);
+      expect(result.mode).toBe("proxy");
+    });
+
+    test("parses proxy flags", () => {
+      const result = parseArgs([
+        "proxy",
+        "--daemon-socket=/tmp/daemon.sock",
+        "--no-daemon-spawn",
+      ]);
+      expect(result.mode).toBe("proxy");
+      expect(result.proxy.socketPath).toBe("/tmp/daemon.sock");
+      expect(result.proxy.noSpawn).toBe(true);
     });
   });
 

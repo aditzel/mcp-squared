@@ -6,14 +6,14 @@
       "name": "mcp-squared",
       "dependencies": {
         "@huggingface/transformers": "^3.8.1",
-        "@modelcontextprotocol/sdk": "^1.25.1",
-        "@opentui/core": "^0.1.69",
+        "@modelcontextprotocol/sdk": "^1.25.2",
+        "@opentui/core": "^0.1.72",
         "smol-toml": "^1.6.0",
         "zod": "^4.3.5",
       },
       "devDependencies": {
         "@biomejs/biome": "^1.9.4",
-        "@types/bun": "^1.3.5",
+        "@types/bun": "^1.3.6",
         "typescript": "^5.9.3",
       },
     },

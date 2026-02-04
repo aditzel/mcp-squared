@@ -61,7 +61,10 @@ bun test
 ## CLI Commands (Common)
 
 ```bash
-mcp-squared                 # Start MCP server (stdio mode)
+mcp-squared                 # Auto: daemon (TTY) or proxy (piped stdio)
+mcp-squared --stdio         # Start MCP server (stdio mode)
+mcp-squared daemon          # Start shared daemon (multi-client backend)
+mcp-squared proxy           # Start stdio proxy to the shared daemon
 mcp-squared config          # Launch configuration TUI
 mcp-squared test [upstream] # Test upstream server connections
 mcp-squared auth <upstream> # OAuth auth for SSE/HTTP upstreams
@@ -69,6 +72,24 @@ mcp-squared import          # Import MCP configs from other tools
 mcp-squared install         # Install MCP² into other MCP clients
 mcp-squared monitor         # Launch server monitor TUI
 mcp-squared --help          # Full command reference
+```
+
+## Shared Daemon Mode (Optional)
+
+Shared daemon mode keeps a single MCP² backend alive and lets multiple stdio clients connect through lightweight proxies. This reduces duplicated upstream connections and indexing work when many tools run in parallel.
+
+Auto mode chooses `daemon` when running in a TTY and `proxy` when stdin/stdout are piped (as MCP clients do).
+
+```bash
+mcp-squared daemon          # Start the shared backend
+mcp-squared proxy           # Run a stdio proxy that connects to the daemon
+```
+
+When installing into supported clients, you can register the proxy automatically:
+
+```bash
+mcp-squared install --proxy
+mcp-squared install --stdio
 ```
 
 ## Configuration

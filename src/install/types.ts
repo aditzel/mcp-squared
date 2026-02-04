@@ -36,6 +36,8 @@ export interface InstallArgs {
   serverName: string;
   /** Command to run (default: "mcp-squared") */
   command: string;
+  /** Optional command args */
+  args?: string[] | undefined;
 }
 
 /**
@@ -98,6 +100,8 @@ export interface InstallOptions {
   serverName: string;
   /** Command to run */
   command: string;
+  /** Optional command args */
+  args?: string[] | undefined;
   /** Dry run mode */
   dryRun: boolean;
 }

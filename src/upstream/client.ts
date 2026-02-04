@@ -37,6 +37,15 @@ export interface TestOptions {
   timeoutMs?: number;
   /** Enable verbose logging */
   verbose?: boolean;
+  /** Override Client construction (testing only) */
+  clientFactory?: () => Client;
+  /** Override stdio transport construction (testing only) */
+  stdioTransportFactory?: (
+    config: UpstreamStdioServerConfig,
+    log: (msg: string) => void,
+    verbose: boolean,
+    onStderr: (text: string) => void,
+  ) => Transport;
 }
 
 function resolveEnvVars(env: Record<string, string>): Record<string, string> {
@@ -205,14 +214,18 @@ export async function testUpstreamConnection(
   let authProvider: McpOAuthProvider | undefined;
 
   try {
-    client = new Client({
-      name: "mcp-squared-test",
-      version: "1.0.0",
-    });
+    client =
+      options.clientFactory?.() ??
+      new Client({
+        name: "mcp-squared-test",
+        version: "1.0.0",
+      });
 
     // Create appropriate transport based on config
     if (config.transport === "stdio") {
-      transport = createStdioTransport(
+      const transportFactory =
+        options.stdioTransportFactory ?? createStdioTransport;
+      transport = transportFactory(
         config as UpstreamStdioServerConfig,
         log,
         verbose,

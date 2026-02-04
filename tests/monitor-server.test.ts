@@ -228,6 +228,26 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         expect(response.error).toContain("Unknown command");
       });
 
+      test("handles upstreams command when unavailable", async () => {
+        await monitorServer.start();
+        socketPath = monitorServer.getSocketPath();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        const response = await sendCommand(socketPath, "upstreams");
+        expect(response.status).toBe("error");
+        expect(response.error).toContain("Upstream information not available");
+      });
+
+      test("handles clients command when unavailable", async () => {
+        await monitorServer.start();
+        socketPath = monitorServer.getSocketPath();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        const response = await sendCommand(socketPath, "clients");
+        expect(response.status).toBe("error");
+        expect(response.error).toContain("Client information not available");
+      });
+
       test("handles multiple commands from same connection", async () => {
         await monitorServer.start();
         socketPath = monitorServer.getSocketPath();

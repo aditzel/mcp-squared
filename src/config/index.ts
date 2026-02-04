@@ -28,9 +28,17 @@ export {
 
 export {
   discoverConfigPath,
+  ensureDaemonDir,
   ensureConfigDir,
+  ensureInstanceRegistryDir,
+  ensureSocketDir,
+  getDaemonDir,
+  getDaemonRegistryPath,
+  getDaemonSocketPath,
   getDefaultConfigPath,
+  getInstanceRegistryDir,
   getPidFilePath,
+  getSocketDir,
   getSocketFilePath,
   type ConfigPathResult,
   type ConfigSource,
@@ -68,3 +76,13 @@ export {
   type ValidationIssue,
   type ValidationSeverity,
 } from "./validate.js";
+
+export {
+  deleteInstanceEntry,
+  listActiveInstanceEntries,
+  listInstanceEntries,
+  readInstanceEntry,
+  writeInstanceEntry,
+  type InstanceRegistryEntry,
+  type InstanceRegistryEntryRecord,
+} from "./instance-registry.js";

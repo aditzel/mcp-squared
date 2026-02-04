@@ -17,7 +17,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { IndexRefreshManager } from "../background/index.js";
 import { SelectionTracker } from "../caching/index.js";
-import { getSocketFilePath } from "../config/index.js";
+import { ensureSocketDir, getSocketFilePath } from "../config/index.js";
 import {
   DEFAULT_CONFIG,
   type DetailLevel,
@@ -63,6 +63,8 @@ export interface McpSquaredServerOptions {
   maxLimit?: number;
   /** Whether to enable detailed tool-level stats tracking (default: false) */
   enableToolStats?: boolean;
+  /** Monitor socket path override */
+  monitorSocketPath?: string;
 }
 
 /**
@@ -96,6 +98,9 @@ export class McpSquaredServer {
   private readonly indexRefreshManager: IndexRefreshManager;
   private readonly statsCollector: StatsCollector;
   private readonly monitorServer: MonitorServer;
+  private isCoreStarted = false;
+  private readonly serverName: string;
+  private readonly serverVersion: string;
 
   /**
    * Creates a new MCP² server instance.
@@ -105,6 +110,8 @@ export class McpSquaredServer {
   constructor(options: McpSquaredServerOptions = {}) {
     const name = options.name ?? "mcp-squared";
     const version = options.version ?? VERSION;
+    this.serverName = name;
+    this.serverVersion = version;
 
     // Use provided cataloger or create a new one
     if (options.cataloger) {
@@ -127,14 +134,7 @@ export class McpSquaredServer {
       defaultMode: findToolsConfig.defaultMode,
     });
 
-    this.mcpServer = new McpServer(
-      { name, version },
-      {
-        capabilities: {
-          tools: {},
-        },
-      },
-    );
+    this.mcpServer = this.createMcpServer(name, version);
 
     this.selectionTracker = new SelectionTracker();
     this.compiledPolicy = compilePolicy(this.config);
@@ -151,9 +151,11 @@ export class McpSquaredServer {
     });
 
     // Initialize monitor server
+    const monitorSocketPath = options.monitorSocketPath ?? getSocketFilePath();
     this.monitorServer = new MonitorServer({
-      socketPath: getSocketFilePath(),
+      socketPath: monitorSocketPath,
       statsCollector: this.statsCollector,
+      cataloger: this.cataloger,
     });
 
     // Hook into index refresh events to update stats
@@ -161,7 +163,32 @@ export class McpSquaredServer {
       this.statsCollector.updateIndexRefreshTime(Date.now());
     });
 
-    this.registerMetaTools();
+    this.registerMetaTools(this.mcpServer);
+  }
+
+  /**
+   * Creates a new MCP server instance with the configured capabilities.
+   * @internal
+   */
+  private createMcpServer(name: string, version: string): McpServer {
+    return new McpServer(
+      { name, version },
+      {
+        capabilities: {
+          tools: {},
+        },
+      },
+    );
+  }
+
+  /**
+   * Creates a new MCP server session bound to this runtime.
+   * Use this for multi-client transports (daemon mode).
+   */
+  createSessionServer(): McpServer {
+    const server = this.createMcpServer(this.serverName, this.serverVersion);
+    this.registerMetaTools(server);
+    return server;
   }
 
   /**
@@ -198,8 +225,8 @@ export class McpSquaredServer {
    *
    * @internal
    */
-  private registerMetaTools(): void {
-    this.mcpServer.registerTool(
+  private registerMetaTools(server: McpServer): void {
+    server.registerTool(
       "find_tools",
       {
         description:
@@ -302,7 +329,7 @@ export class McpSquaredServer {
       },
     );
 
-    this.mcpServer.registerTool(
+    server.registerTool(
       "describe_tools",
       {
         description:
@@ -335,17 +362,24 @@ export class McpSquaredServer {
             ...(tool.requiresConfirmation && { requiresConfirmation: true }),
           }));
 
+          const toolKey = (tool: { serverKey: string; name: string }): string =>
+            `${tool.serverKey}:${tool.name}`;
+
           // Find blocked tools (requested but filtered out by policy)
-          const filteredNames = new Set(filteredTools.map((t) => t.name));
+          const filteredKeys = new Set(filteredTools.map(toolKey));
           const blocked = result.tools
-            .filter((t) => !filteredNames.has(t.name))
-            .map((t) => `${t.serverKey}:${t.name}`);
+            .filter((tool) => !filteredKeys.has(toolKey(tool)))
+            .map(toolKey);
 
           // Find names that weren't found (not in tools and not ambiguous)
-          const foundNames = new Set(result.tools.map((t) => t.name));
+          const foundQualified = new Set(result.tools.map(toolKey));
+          const foundBare = new Set(result.tools.map((t) => t.name));
           const ambiguousNames = new Set(result.ambiguous.map((a) => a.name));
           const notFound = args.tool_names.filter(
-            (name) => !foundNames.has(name) && !ambiguousNames.has(name),
+            (name) =>
+              !ambiguousNames.has(name) &&
+              !foundQualified.has(name) &&
+              !foundBare.has(name),
           );
 
           success = true;
@@ -376,7 +410,7 @@ export class McpSquaredServer {
       },
     );
 
-    this.mcpServer.registerTool(
+    server.registerTool(
       "execute",
       {
         description:
@@ -542,7 +576,7 @@ export class McpSquaredServer {
       },
     );
 
-    this.mcpServer.registerTool(
+    server.registerTool(
       "clear_selection_cache",
       {
         description:
@@ -586,7 +620,7 @@ export class McpSquaredServer {
       },
     );
 
-    this.mcpServer.registerTool(
+    server.registerTool(
       "list_namespaces",
       {
         description:
@@ -772,6 +806,15 @@ export class McpSquaredServer {
   }
 
   /**
+   * Injects a client info provider for the monitor server (daemon mode).
+   */
+  setMonitorClientProvider(
+    provider?: () => import("./monitor-server.js").MonitorClientInfo[],
+  ): void {
+    this.monitorServer.setClientInfoProvider(provider);
+  }
+
+  /**
    * Gets current server statistics.
    *
    * @returns Current server statistics
@@ -797,6 +840,28 @@ export class McpSquaredServer {
    * @returns Promise that resolves when the server is ready
    */
   async start(): Promise<void> {
+    await this.startCore();
+
+    // Start the MCP transport (stdio)
+    this.transport = new StdioServerTransport();
+    await this.mcpServer.connect(this.transport);
+
+    // Track active connection
+    this.statsCollector.incrementActiveConnections();
+  }
+
+  /**
+   * Starts the shared runtime components (upstreams, index, monitor).
+   * This should only be called once in daemon mode.
+   */
+  async startCore(): Promise<void> {
+    if (this.isCoreStarted) {
+      return;
+    }
+    this.isCoreStarted = true;
+
+    ensureSocketDir();
+
     // Connect to all enabled upstream servers in parallel
     const upstreamEntries = Object.entries(this.config.upstreams);
     const enabledUpstreams = upstreamEntries.filter(
@@ -828,13 +893,6 @@ export class McpSquaredServer {
 
     // Start the monitor server
     await this.monitorServer.start();
-
-    // Start the MCP transport
-    this.transport = new StdioServerTransport();
-    await this.mcpServer.connect(this.transport);
-
-    // Track active connection
-    this.statsCollector.incrementActiveConnections();
   }
 
   /**
@@ -844,21 +902,36 @@ export class McpSquaredServer {
    * @returns Promise that resolves when shutdown is complete
    */
   async stop(): Promise<void> {
+    await this.mcpServer.close();
+    this.transport = null;
+
+    // Decrement active connection
+    this.statsCollector.decrementActiveConnections();
+
+    await this.stopCore();
+  }
+
+  /**
+   * Stops the shared runtime components (upstreams, index, monitor).
+   *
+   * @returns Promise that resolves when shutdown is complete
+   */
+  async stopCore(): Promise<void> {
+    if (!this.isCoreStarted) {
+      return;
+    }
+    this.isCoreStarted = false;
+
     // Stop background refresh first
     this.indexRefreshManager.stop();
 
     // Stop the monitor server
     await this.monitorServer.stop();
 
-    await this.mcpServer.close();
     this.retriever.close();
     if (this.ownsCataloger) {
       await this.cataloger.disconnectAll();
     }
-    this.transport = null;
-
-    // Decrement active connection
-    this.statsCollector.decrementActiveConnections();
   }
 
   /**

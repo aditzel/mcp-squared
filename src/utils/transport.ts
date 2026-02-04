@@ -1,5 +1,4 @@
 import type { ChildProcess } from "node:child_process";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 
 /**
@@ -9,26 +8,24 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 export async function safelyCloseTransport(
   transport: Transport,
 ): Promise<void> {
-  if (transport instanceof StdioClientTransport) {
-    // biome-ignore lint/suspicious/noExplicitAny: accessing private _process property
-    const childProcess = (transport as any)._process as
-      | ChildProcess
-      | undefined;
+  // biome-ignore lint/suspicious/noExplicitAny: accessing private _process property
+  const childProcess = (transport as any)?._process as ChildProcess | undefined;
 
-    // Attempt standard close with timeout
-    try {
-      await Promise.race([
-        transport.close(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Close timeout")), 1000),
-        ),
-      ]);
-    } catch (e) {
-      // Ignore close errors or timeout
-    }
+  // Attempt standard close with timeout
+  try {
+    await Promise.race([
+      transport.close(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Close timeout")), 1000),
+      ),
+    ]);
+  } catch (e) {
+    // Ignore close errors or timeout
+  }
 
-    // Force cleanup if process still exists
-    if (childProcess && !childProcess.killed) {
+  // Force cleanup if process still exists
+  if (childProcess && typeof childProcess.kill === "function") {
+    if (!childProcess.killed) {
       try {
         // Force kill
         childProcess.kill("SIGTERM");
@@ -44,12 +41,6 @@ export async function safelyCloseTransport(
       } catch (e) {
         // ignore
       }
-    }
-  } else {
-    try {
-      await transport.close();
-    } catch {
-      // Ignore
     }
   }
 }

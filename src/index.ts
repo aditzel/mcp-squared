@@ -13,25 +13,33 @@
  * @module mcp-squared
  */
 
+import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { type MonitorArgs, parseArgs, printHelp } from "./cli/index.js";
+import type { DaemonArgs, ProxyArgs } from "./cli/index.js";
 import {
+  type InstanceRegistryEntry,
   type McpSquaredConfig,
+  deleteInstanceEntry,
+  ensureInstanceRegistryDir,
+  ensureSocketDir,
   formatValidationIssues,
+  listActiveInstanceEntries,
   loadConfig,
   validateConfig,
   validateUpstreamConfig,
+  writeInstanceEntry,
 } from "./config/index.js";
-import { getPidFilePath } from "./config/paths.js";
-import {
-  checkForRunningInstance,
-  deletePidFile,
-  writePidFile,
-} from "./config/pid.js";
+import { getSocketFilePath } from "./config/paths.js";
 import type { UpstreamSseServerConfig } from "./config/schema.js";
+import { computeConfigHash } from "./daemon/config-hash.js";
+import { type ProxyBridge, runProxy } from "./daemon/proxy.js";
+import { loadLiveDaemonRegistry } from "./daemon/registry.js";
+import { DaemonServer } from "./daemon/server.js";
 import { runImport } from "./import/runner.js";
 import { runInstall } from "./install/runner.js";
 import {
@@ -54,17 +62,11 @@ export const VERSION = "0.1.0";
  * @internal
  */
 async function startServer(): Promise<void> {
-  // Check for existing running instance
-  const pidPath = getPidFilePath();
-  const runningPid = checkForRunningInstance(pidPath);
-
-  if (runningPid !== null) {
-    console.error(`Error: Server is already running with PID ${runningPid}`);
-    process.exit(1);
-  }
-
   // Load configuration
-  const { config } = await loadConfig();
+  const { config, path: configPath } = await loadConfig();
+
+  // Prune stale instance entries from previous runs
+  await listActiveInstanceEntries({ prune: true });
 
   // Pre-flight OAuth: authenticate SSE upstreams before entering server mode
   // This allows interactive browser auth during startup, rather than failing later
@@ -86,10 +88,43 @@ async function startServer(): Promise<void> {
     // Continue anyway - the upstreams will be unavailable but others may work
   }
 
-  const server = new McpSquaredServer({ config });
+  const instanceId = randomUUID();
+  const socketPath = getSocketFilePath(instanceId);
 
-  // Create PID file
-  writePidFile(pidPath);
+  ensureInstanceRegistryDir();
+  ensureSocketDir();
+
+  const server = new McpSquaredServer({
+    config,
+    monitorSocketPath: socketPath,
+  });
+
+  let instanceEntryPath: string | null = null;
+  const instanceEntry: InstanceRegistryEntry = {
+    id: instanceId,
+    pid: process.pid,
+    socketPath,
+    startedAt: Date.now(),
+    cwd: process.cwd(),
+    configPath,
+    version: VERSION,
+    command: process.argv.join(" "),
+    role: "server",
+    launcher: resolveLauncherHint(),
+  };
+
+  const registerInstance = (): void => {
+    if (!instanceEntryPath) {
+      instanceEntryPath = writeInstanceEntry(instanceEntry);
+    }
+  };
+
+  const unregisterInstance = (): void => {
+    if (instanceEntryPath) {
+      deleteInstanceEntry(instanceEntryPath);
+      instanceEntryPath = null;
+    }
+  };
 
   // Track if shutdown is already in progress to prevent double cleanup
   let isShuttingDown = false;
@@ -107,12 +142,12 @@ async function startServer(): Promise<void> {
       forceExitTimer.unref();
 
       await server.stop();
-      deletePidFile(pidPath);
+      unregisterInstance();
       process.exit(0);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`Error during shutdown: ${message}`);
-      deletePidFile(pidPath);
+      unregisterInstance();
       process.exit(1);
     }
   };
@@ -137,7 +172,12 @@ async function startServer(): Promise<void> {
     void gracefulShutdown();
   });
 
+  process.on("exit", () => {
+    unregisterInstance();
+  });
+
   await server.start();
+  registerInstance();
 }
 
 /**
@@ -487,25 +527,93 @@ async function runAuth(targetName: string): Promise<void> {
  * @internal
  */
 async function runMonitor(options: MonitorArgs): Promise<void> {
-  // Check if server is running
-  const pidPath = getPidFilePath();
-  const runningPid = checkForRunningInstance(pidPath);
+  let socketPath = options.socketPath;
+  let instances: InstanceRegistryEntry[] = [];
 
-  if (runningPid === null) {
-    console.error("Error: MCP² server is not running.");
+  if (!socketPath) {
+    instances = await listActiveInstanceEntries({ prune: true });
+
+    const { config, path: configPath } = await loadConfig();
+    const configHash = computeConfigHash(config);
+    const daemonRegistry = await loadLiveDaemonRegistry(configHash);
+    if (daemonRegistry) {
+      const daemonId = `daemon-${configHash}`;
+      const hasDaemon = instances.some((entry) => entry.id === daemonId);
+      if (!hasDaemon) {
+        const daemonEntry: InstanceRegistryEntry = {
+          id: daemonId,
+          pid: daemonRegistry.pid,
+          socketPath: getSocketFilePath(configHash),
+          startedAt: daemonRegistry.startedAt,
+          version: daemonRegistry.version,
+          cwd: undefined,
+          configPath,
+          command: "mcp-squared daemon",
+          role: "daemon",
+        };
+        instances.push(daemonEntry);
+      }
+    }
+
+    augmentProcessInfo(instances);
+
+    if (options.instanceId) {
+      const matches = instances.filter(
+        (entry) =>
+          entry.id === options.instanceId ||
+          entry.id.startsWith(options.instanceId),
+      );
+
+      if (matches.length === 0) {
+        console.error(
+          `Error: No running MCP² instance matches '${options.instanceId}'.`,
+        );
+        if (instances.length > 0) {
+          console.error("");
+          console.error("Available instances:");
+          printInstanceList(instances);
+        }
+        process.exit(1);
+      }
+
+      if (matches.length > 1) {
+        console.error(
+          `Error: Instance ID '${options.instanceId}' is ambiguous.`,
+        );
+        console.error("");
+        console.error("Matching instances:");
+        printInstanceList(matches);
+        process.exit(1);
+      }
+
+      socketPath = matches[0]?.socketPath;
+    }
+  }
+
+  if (
+    !socketPath &&
+    instances.length > 1 &&
+    (!process.stdin.isTTY || !process.stdout.isTTY)
+  ) {
+    console.error(
+      "Error: Multiple MCP² instances are running but no TTY is available.",
+    );
+    console.error("Use --instance or --socket to select a target.");
     console.error("");
-    console.error("To start the server, run:");
-    console.error("  mcp-squared");
-    console.error("");
-    console.error("The monitor requires a running server to connect to.");
+    console.error("Available instances:");
+    printInstanceList(instances);
     process.exit(1);
   }
 
-  console.log(`Connecting to MCP² server (PID: ${runningPid})...`);
+  if (!socketPath && instances.length === 1) {
+    socketPath = instances[0]?.socketPath;
+  }
 
   try {
     // Launch the monitor TUI
     await runMonitorTui({
+      socketPath,
+      instances,
       refreshInterval: options.noAutoRefresh ? 0 : options.refreshInterval,
     });
   } catch (error) {
@@ -522,6 +630,271 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
     process.exit(1);
   }
 }
+
+function augmentProcessInfo(entries: InstanceRegistryEntry[]): void {
+  if (entries.length === 0) {
+    return;
+  }
+
+  const pids = entries.map((entry) => entry.pid).filter((pid) => pid > 0);
+  if (pids.length === 0) {
+    return;
+  }
+
+  const result = spawnSync(
+    "ps",
+    ["-p", pids.join(","), "-o", "pid=,ppid=,user=,comm=,command="],
+    { encoding: "utf8" },
+  );
+
+  if (result.status !== 0 || !result.stdout) {
+    return;
+  }
+
+  const lines = result.stdout.trim().split("\n").filter(Boolean);
+  for (const line of lines) {
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(.*)$/);
+    if (!match) {
+      continue;
+    }
+    const pid = Number.parseInt(match[1] ?? "", 10);
+    const ppid = Number.parseInt(match[2] ?? "", 10);
+    const user = match[3];
+    const comm = match[4];
+    const command = match[5];
+    const entry = entries.find((item) => item.pid === pid);
+    if (!entry) {
+      continue;
+    }
+    entry.ppid = Number.isNaN(ppid) ? undefined : ppid;
+    entry.user = user;
+    entry.processName = comm;
+    if (!entry.command) {
+      entry.command = command;
+    }
+  }
+
+  const parentPids = Array.from(
+    new Set(
+      entries
+        .map((entry) => entry.ppid)
+        .filter((ppid): ppid is number => typeof ppid === "number" && ppid > 0),
+    ),
+  );
+  if (parentPids.length === 0) {
+    return;
+  }
+
+  const parentResult = spawnSync(
+    "ps",
+    ["-p", parentPids.join(","), "-o", "pid=,comm=,command="],
+    { encoding: "utf8" },
+  );
+
+  if (parentResult.status !== 0 || !parentResult.stdout) {
+    return;
+  }
+
+  const parentMap = new Map<number, { name: string; command: string }>();
+  for (const line of parentResult.stdout.trim().split("\n").filter(Boolean)) {
+    const match = line.trim().match(/^(\d+)\s+(\S+)\s+(.*)$/);
+    if (!match) {
+      continue;
+    }
+    const pid = Number.parseInt(match[1] ?? "", 10);
+    if (Number.isNaN(pid)) {
+      continue;
+    }
+    parentMap.set(pid, { name: match[2] ?? "", command: match[3] ?? "" });
+  }
+
+  for (const entry of entries) {
+    if (!entry.ppid) {
+      continue;
+    }
+    const parent = parentMap.get(entry.ppid);
+    if (!parent) {
+      continue;
+    }
+    entry.parentProcessName = parent.name;
+    entry.parentCommand = parent.command;
+    if (!entry.launcher && parent.name) {
+      entry.launcher = parent.name;
+    }
+  }
+}
+
+function resolveLauncherHint(): string | undefined {
+  return (
+    process.env.MCP_SQUARED_LAUNCHER ??
+    process.env.MCP_CLIENT_NAME ??
+    process.env.MCP_SQUARED_AGENT ??
+    undefined
+  );
+}
+
+/**
+ * Runs the shared MCP² daemon.
+ *
+ * @param options - Daemon options from CLI
+ * @internal
+ */
+async function runDaemon(options: DaemonArgs): Promise<void> {
+  const { config, path: configPath } = await loadConfig();
+  const configHash = computeConfigHash(config);
+  const monitorSocketPath = getSocketFilePath(configHash);
+  const runtime = new McpSquaredServer({
+    config,
+    monitorSocketPath,
+  });
+  const daemon = new DaemonServer({
+    runtime,
+    socketPath: options.socketPath,
+    configHash,
+  });
+
+  ensureInstanceRegistryDir();
+  ensureSocketDir();
+
+  const instanceEntry: InstanceRegistryEntry = {
+    id: `daemon-${configHash}`,
+    pid: process.pid,
+    socketPath: monitorSocketPath,
+    startedAt: Date.now(),
+    cwd: process.cwd(),
+    configPath,
+    version: VERSION,
+    command: process.argv.join(" "),
+    role: "daemon",
+    launcher: resolveLauncherHint(),
+  };
+  let instanceEntryPath: string | null = null;
+  const registerInstance = (): void => {
+    if (!instanceEntryPath) {
+      instanceEntryPath = writeInstanceEntry(instanceEntry);
+    }
+  };
+  const unregisterInstance = (): void => {
+    if (instanceEntryPath) {
+      deleteInstanceEntry(instanceEntryPath);
+      instanceEntryPath = null;
+    }
+  };
+
+  const shutdown = async (exitCode: number): Promise<void> => {
+    try {
+      await daemon.stop();
+    } finally {
+      unregisterInstance();
+      process.exit(exitCode);
+    }
+  };
+
+  process.on("SIGINT", () => {
+    void shutdown(0);
+  });
+  process.on("SIGTERM", () => {
+    void shutdown(0);
+  });
+
+  await daemon.start();
+  registerInstance();
+}
+
+/**
+ * Runs the stdio proxy to the shared daemon.
+ *
+ * @param options - Proxy options from CLI
+ * @internal
+ */
+async function runProxyCommand(options: ProxyArgs): Promise<void> {
+  const { config, path: configPath } = await loadConfig();
+  const configHash = computeConfigHash(config);
+  const monitorSocketPath = getSocketFilePath(configHash);
+
+  ensureInstanceRegistryDir();
+  ensureSocketDir();
+
+  const instanceEntry: InstanceRegistryEntry = {
+    id: `proxy-${process.pid}`,
+    pid: process.pid,
+    socketPath: monitorSocketPath,
+    startedAt: Date.now(),
+    cwd: process.cwd(),
+    configPath,
+    version: VERSION,
+    command: process.argv.join(" "),
+    role: "proxy",
+    launcher: resolveLauncherHint(),
+  };
+  let instanceEntryPath: string | null = null;
+  let proxyHandle: ProxyBridge | null = null;
+  let isShuttingDown = false;
+  const registerInstance = (): void => {
+    if (!instanceEntryPath) {
+      instanceEntryPath = writeInstanceEntry(instanceEntry);
+    }
+  };
+  const unregisterInstance = (): void => {
+    if (instanceEntryPath) {
+      deleteInstanceEntry(instanceEntryPath);
+      instanceEntryPath = null;
+    }
+  };
+
+  const shutdown = async (exitCode: number): Promise<void> => {
+    if (isShuttingDown) {
+      return;
+    }
+    isShuttingDown = true;
+    try {
+      if (proxyHandle) {
+        await proxyHandle.stop();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Error shutting down proxy: ${message}`);
+    } finally {
+      unregisterInstance();
+      process.exit(exitCode);
+    }
+  };
+
+  process.on("exit", unregisterInstance);
+  process.on("SIGINT", () => {
+    void shutdown(0);
+  });
+  process.on("SIGTERM", () => {
+    void shutdown(0);
+  });
+  process.stdin.on("close", () => {
+    void shutdown(0);
+  });
+  process.stdin.on("end", () => {
+    void shutdown(0);
+  });
+
+  registerInstance();
+
+  proxyHandle = await runProxy({
+    endpoint: options.socketPath,
+    noSpawn: options.noSpawn,
+    configHash,
+  });
+}
+
+function printInstanceList(entries: InstanceRegistryEntry[]): void {
+  for (const [index, entry] of entries.entries()) {
+    const startedAt = new Date(entry.startedAt).toLocaleString();
+    const role = entry.role ? `[${entry.role}] ` : "";
+    const launcher = entry.launcher ? `, launcher ${entry.launcher}` : "";
+    console.error(
+      `  ${index + 1}. ${role}${entry.id} (pid ${entry.pid}, started ${startedAt}${launcher})`,
+    );
+  }
+}
+
+// selection handled inside monitor TUI
 
 /**
  * Main entry point for the MCP² CLI.
@@ -567,8 +940,22 @@ export async function main(
     case "monitor":
       await runMonitor(args.monitor);
       break;
+    case "daemon":
+      await runDaemon(args.daemon);
+      break;
+    case "proxy":
+      await runProxyCommand(args.proxy);
+      break;
     default:
-      await startServer();
+      if (args.stdio) {
+        await startServer();
+        break;
+      }
+      if (process.stdin.isTTY && process.stdout.isTTY) {
+        await runDaemon(args.daemon);
+      } else {
+        await runProxyCommand(args.proxy);
+      }
   }
 }
 

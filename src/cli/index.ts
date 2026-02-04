@@ -22,7 +22,11 @@ export interface CliArgs {
     | "import"
     | "auth"
     | "install"
-    | "monitor";
+    | "monitor"
+    | "daemon"
+    | "proxy";
+  /** Force stdio server mode */
+  stdio: boolean;
   /** Whether --help was requested */
   help: boolean;
   /** Whether --version was requested */
@@ -39,6 +43,10 @@ export interface CliArgs {
   install: InstallArgs;
   /** Monitor-specific options */
   monitor: MonitorArgs;
+  /** Daemon-specific options */
+  daemon: DaemonArgs;
+  /** Proxy-specific options */
+  proxy: ProxyArgs;
 }
 
 /**
@@ -81,6 +89,8 @@ export interface InstallArgs {
   serverName: string;
   /** Command to run (default: "mcp-squared") */
   command: string;
+  /** Optional command arguments */
+  args?: string[] | undefined;
 }
 
 /**
@@ -91,6 +101,28 @@ export interface MonitorArgs {
   refreshInterval: number;
   /** Disable auto-refresh (manual refresh only) */
   noAutoRefresh: boolean;
+  /** Target instance ID (full or prefix) */
+  instanceId?: string;
+  /** Explicit socket path or TCP endpoint */
+  socketPath?: string;
+}
+
+/**
+ * Daemon-specific command-line arguments.
+ */
+export interface DaemonArgs {
+  /** Override daemon socket path */
+  socketPath?: string;
+}
+
+/**
+ * Proxy-specific command-line arguments.
+ */
+export interface ProxyArgs {
+  /** Explicit daemon endpoint to connect to */
+  socketPath?: string;
+  /** Do not auto-spawn the daemon */
+  noSpawn: boolean;
 }
 
 /**
@@ -167,6 +199,7 @@ function isValidStrategy(value: string): value is MergeStrategy {
 export function parseArgs(args: string[]): CliArgs {
   const result: CliArgs = {
     mode: "server",
+    stdio: false,
     help: false,
     version: false,
     testTarget: undefined,
@@ -185,10 +218,15 @@ export function parseArgs(args: string[]): CliArgs {
       dryRun: false,
       serverName: "mcp-squared",
       command: "mcp-squared",
+      args: undefined,
     },
     monitor: {
       refreshInterval: 2000,
       noAutoRefresh: false,
+    },
+    daemon: {},
+    proxy: {
+      noSpawn: false,
     },
   };
 
@@ -241,6 +279,19 @@ export function parseArgs(args: string[]): CliArgs {
         result.mode = "monitor";
         break;
 
+      case "daemon":
+        result.mode = "daemon";
+        break;
+
+      case "proxy":
+        result.mode = "proxy";
+        break;
+
+      case "--stdio":
+        result.stdio = true;
+        result.install.args = ["--stdio"];
+        break;
+
       case "--tool": {
         const value = argValue ?? args[++i];
         if (value && isValidToolId(value)) {
@@ -272,6 +323,10 @@ export function parseArgs(args: string[]): CliArgs {
         }
         break;
       }
+
+      case "--proxy":
+        result.install.args = ["proxy"];
+        break;
 
       case "--list":
         result.import.list = true;
@@ -340,6 +395,35 @@ export function parseArgs(args: string[]): CliArgs {
         break;
       }
 
+      case "--instance": {
+        const value = argValue ?? args[++i];
+        if (value) {
+          result.monitor.instanceId = value;
+        }
+        break;
+      }
+
+      case "--socket": {
+        const value = argValue ?? args[++i];
+        if (value) {
+          result.monitor.socketPath = value;
+        }
+        break;
+      }
+
+      case "--daemon-socket": {
+        const value = argValue ?? args[++i];
+        if (value) {
+          result.daemon.socketPath = value;
+          result.proxy.socketPath = value;
+        }
+        break;
+      }
+
+      case "--no-daemon-spawn":
+        result.proxy.noSpawn = true;
+        break;
+
       case "--no-auto-refresh":
         result.monitor.noAutoRefresh = true;
         break;
@@ -368,13 +452,16 @@ export function printHelp(): void {
 MCP² (Mercury Control Plane) - Meta-server for Model Context Protocol
 
 Usage:
-  mcp-squared                   Start MCP server (stdio mode)
+  mcp-squared                   Auto: daemon (TTY) or proxy (piped stdio)
+  mcp-squared --stdio           Start MCP server (stdio mode)
   mcp-squared config            Launch interactive configuration TUI
   mcp-squared test [upstream]   Test connection to upstream server(s)
   mcp-squared auth <upstream>   Authenticate with an OAuth-protected upstream
   mcp-squared import [options]  Import MCP configs from other tools
   mcp-squared install [options] Install MCP² into other MCP clients
   mcp-squared monitor [options] Launch server monitor TUI
+  mcp-squared daemon [options]  Start shared MCP² daemon
+  mcp-squared proxy [options]   Start stdio proxy (connects to daemon)
   mcp-squared --help            Show this help message
   mcp-squared --version         Show version information
 
@@ -385,6 +472,9 @@ Commands:
   import                        Import MCP server configs from other tools
   install                       Install MCP² as a server in other MCP clients
   monitor                       Launch server monitor TUI
+  daemon                        Start shared daemon for multiple clients
+  proxy                         Start stdio proxy for daemon
+  --stdio                       Force stdio server mode
   --help, -h                    Show help
   --version, -v                 Show version
 
@@ -407,12 +497,23 @@ Install Options:
   --mode=<mode>                 Mode: replace (all) or add (alongside existing)
   --name=<name>                 Server name (default: mcp-squared)
   --command=<cmd>               Command to run (default: mcp-squared)
+  --proxy                       Install as shared-daemon proxy (uses 'mcp-squared proxy')
+  --stdio                       Install as standalone stdio server (uses 'mcp-squared --stdio')
   --dry-run                     Preview changes without writing
   --no-interactive              Disable interactive prompts
 
 Monitor Options:
   --refresh-interval=<ms>       Auto-refresh interval in milliseconds (default: 2000)
   --no-auto-refresh             Disable auto-refresh (manual refresh only)
+  --instance=<id>               Attach to a specific server instance (full or prefix)
+  --socket=<path>               Connect to a specific monitor socket or tcp://host:port
+
+Daemon Options:
+  --daemon-socket=<path>        Override daemon socket path
+
+Proxy Options:
+  --daemon-socket=<path>        Connect to a specific daemon socket
+  --no-daemon-spawn             Do not auto-spawn daemon if missing
 
 Supported Tools:
   ${VALID_TOOL_IDS.join(", ")}
@@ -427,9 +528,14 @@ Examples:
   mcp-squared import --source=cursor --no-interactive --strategy=rename
   mcp-squared install           Install MCP² interactively
   mcp-squared install --tool=cursor --scope=user --mode=add
+  mcp-squared install --proxy   Install MCP² in shared-daemon proxy mode
   mcp-squared install --dry-run Preview installation changes
   mcp-squared monitor           Launch server monitor with default settings
   mcp-squared monitor --refresh-interval=5000  Refresh every 5 seconds
   mcp-squared monitor --no-auto-refresh  Manual refresh only
+  mcp-squared monitor --instance=abcd1234  Monitor a specific instance
+  mcp-squared monitor --socket=/tmp/mcp-squared.sock  Monitor a specific socket
+  mcp-squared daemon            Start shared daemon
+  mcp-squared proxy             Run stdio proxy (auto-spawn daemon)
 `);
 }

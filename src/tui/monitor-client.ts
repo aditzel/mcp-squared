@@ -39,7 +39,12 @@ function parseTcpEndpoint(endpoint: string): { host: string; port: number } {
 /**
  * Supported commands for the monitor client.
  */
-export type MonitorCommand = "stats" | "tools" | "ping";
+export type MonitorCommand =
+  | "stats"
+  | "tools"
+  | "upstreams"
+  | "clients"
+  | "ping";
 
 /**
  * Response status for monitor commands.
@@ -58,6 +63,28 @@ export interface MonitorResponse<T = unknown> {
   error?: string;
   /** Unix timestamp of the response */
   timestamp: number;
+}
+
+/**
+ * Upstream status info.
+ */
+export interface UpstreamInfo {
+  key: string;
+  status: string;
+  error?: string;
+  serverName?: string;
+  serverVersion?: string;
+  toolCount?: number;
+  transport?: string;
+  authPending?: boolean;
+}
+
+export interface ClientInfo {
+  sessionId: string;
+  clientId?: string;
+  connectedAt: number;
+  lastSeen: number;
+  isOwner: boolean;
 }
 
 /**
@@ -282,6 +309,35 @@ export class MonitorClient {
     }
 
     return response.data as ToolStats[];
+  }
+
+  /**
+   * Gets upstream connection status.
+   *
+   * @returns Promise that resolves with upstream info
+   * @throws Error if command fails
+   */
+  async getUpstreams(): Promise<UpstreamInfo[]> {
+    const response = await this.sendCommand<UpstreamInfo[]>("upstreams");
+
+    if (response.status === "error") {
+      throw new Error(response.error ?? "Unknown error");
+    }
+
+    return (response.data as UpstreamInfo[]) ?? [];
+  }
+
+  /**
+   * Gets connected client sessions (daemon mode).
+   */
+  async getClients(): Promise<ClientInfo[]> {
+    const response = await this.sendCommand<ClientInfo[]>("clients");
+
+    if (response.status === "error") {
+      throw new Error(response.error ?? "Unknown error");
+    }
+
+    return (response.data as ClientInfo[]) ?? [];
   }
 
   /**
