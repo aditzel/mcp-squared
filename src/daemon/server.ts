@@ -6,7 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, unlinkSync } from "node:fs";
-import { type Server, type Socket, createServer } from "node:net";
+import { type Server, type Socket, connect, createServer } from "node:net";
 import { dirname } from "node:path";
 import { ensureDaemonDir, getDaemonSocketPath } from "../config/paths.js";
 import { VERSION } from "../index.js";
@@ -14,6 +14,59 @@ import type { McpSquaredServer } from "../server/index.js";
 import type { MonitorClientInfo } from "../server/monitor-server.js";
 import { deleteDaemonRegistry, writeDaemonRegistry } from "./registry.js";
 import { SocketServerTransport } from "./transport.js";
+
+const DEFAULT_CONNECT_TIMEOUT_MS = 300;
+
+function isTcpEndpoint(endpoint: string): boolean {
+  return endpoint.startsWith("tcp://");
+}
+
+function parseTcpEndpoint(endpoint: string): { host: string; port: number } {
+  const url = new URL(endpoint);
+  if (url.protocol !== "tcp:") {
+    throw new Error(`Invalid TCP endpoint protocol: ${url.protocol}`);
+  }
+  const host = url.hostname;
+  const port = Number.parseInt(url.port, 10);
+  if (!host || Number.isNaN(port)) {
+    throw new Error(`Invalid TCP endpoint: ${endpoint}`);
+  }
+  return { host, port };
+}
+
+async function canConnect(
+  endpoint: string,
+  timeoutMs: number = DEFAULT_CONNECT_TIMEOUT_MS,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let socket: Socket | null = null;
+    try {
+      socket = isTcpEndpoint(endpoint)
+        ? connect(parseTcpEndpoint(endpoint))
+        : connect(endpoint);
+    } catch {
+      resolve(false);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      socket?.destroy();
+      resolve(false);
+    }, timeoutMs);
+
+    socket.once("connect", () => {
+      clearTimeout(timeoutId);
+      socket.destroy();
+      resolve(true);
+    });
+
+    socket.once("error", () => {
+      clearTimeout(timeoutId);
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
 
 interface DaemonSession {
   id: string;
@@ -30,6 +83,7 @@ export interface DaemonServerOptions {
   idleTimeoutMs?: number;
   heartbeatTimeoutMs?: number;
   configHash?: string;
+  onIdleShutdown?: () => void | Promise<void>;
 }
 
 export class DaemonServer {
@@ -39,6 +93,7 @@ export class DaemonServer {
   private readonly idleTimeoutMs: number;
   private readonly heartbeatTimeoutMs: number;
   private readonly configHash: string | undefined;
+  private readonly onIdleShutdown?: () => void | Promise<void>;
   private server: Server | null = null;
   private sessions = new Map<string, DaemonSession>();
   private ownerSessionId: string | null = null;
@@ -52,6 +107,9 @@ export class DaemonServer {
       options.socketPath ?? getDaemonSocketPath(this.configHash);
     this.idleTimeoutMs = options.idleTimeoutMs ?? 5000;
     this.heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? 15000;
+    if (options.onIdleShutdown) {
+      this.onIdleShutdown = options.onIdleShutdown;
+    }
   }
 
   async start(): Promise<void> {
@@ -60,11 +118,23 @@ export class DaemonServer {
     }
 
     ensureDaemonDir(this.configHash);
-    const tcp = this.socketPath.startsWith("tcp://");
+    const tcp = isTcpEndpoint(this.socketPath);
     if (!tcp) {
       mkdirSync(dirname(this.socketPath), { recursive: true });
     }
-    if (!this.socketPath.startsWith("tcp://") && existsSync(this.socketPath)) {
+    if (tcp) {
+      const port = parseTcpEndpoint(this.socketPath).port;
+      if (port > 0 && (await canConnect(this.socketPath))) {
+        throw new Error(
+          `Daemon already running at ${this.socketPath}. Refusing to start another.`,
+        );
+      }
+    } else if (existsSync(this.socketPath)) {
+      if (await canConnect(this.socketPath)) {
+        throw new Error(
+          `Daemon already running at ${this.socketPath}. Refusing to start another.`,
+        );
+      }
       try {
         unlinkSync(this.socketPath);
       } catch {
@@ -283,8 +353,24 @@ export class DaemonServer {
       clearTimeout(this.idleTimer);
     }
     this.idleTimer = setTimeout(() => {
-      void this.stop();
+      void this.handleIdleTimeout();
     }, this.idleTimeoutMs);
+  }
+
+  private async handleIdleTimeout(): Promise<void> {
+    if (this.sessions.size > 0 || !this.server) {
+      return;
+    }
+    try {
+      await this.stop();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Idle shutdown failed: ${message}`);
+    } finally {
+      if (this.onIdleShutdown) {
+        await this.onIdleShutdown();
+      }
+    }
   }
 
   private clearIdleTimer(): void {

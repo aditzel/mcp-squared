@@ -19,12 +19,17 @@ if (!SOCKET_LISTEN_SUPPORTED) {
   describe("daemon transport", () => {
     let server: ReturnType<typeof createServer> | null = null;
     let endpoint: string;
+    let client: SocketClientTransport | null = null;
 
     beforeEach(() => {
       endpoint = "";
     });
 
     afterEach(async () => {
+      if (client) {
+        await client.close();
+        client = null;
+      }
       if (server) {
         await new Promise<void>((resolve) => server?.close(() => resolve()));
         server = null;
@@ -44,7 +49,9 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         transport.onmessage = (msg) => {
           serverMessage = msg;
         };
-        void transport.start();
+        transport.start().catch((err) => {
+          console.error("Server transport start failed:", err);
+        });
         setTimeout(() => {
           void transport.sendControl({
             type: "helloAck",
@@ -68,7 +75,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       }
       endpoint = `tcp://${address.address}:${address.port}`;
 
-      const client = new SocketClientTransport({ endpoint });
+      client = new SocketClientTransport({ endpoint });
       let clientControl: { type?: string } | null = null;
       let clientMessage: unknown = null;
       client.oncontrol = (msg) => {
@@ -97,6 +104,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       });
 
       await client.close();
+      client = null;
     });
   });
 }

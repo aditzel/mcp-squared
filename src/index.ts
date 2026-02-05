@@ -643,6 +643,9 @@ function augmentProcessInfo(entries: InstanceRegistryEntry[]): void {
   if (entries.length === 0) {
     return;
   }
+  if (process.platform === "win32") {
+    return;
+  }
 
   const pids = entries.map((entry) => entry.pid).filter((pid) => pid > 0);
   if (pids.length === 0) {
@@ -765,9 +768,13 @@ async function runDaemon(options: DaemonArgs): Promise<void> {
     runtime: McpSquaredServer;
     configHash: string;
     socketPath?: string;
+    onIdleShutdown?: () => void;
   } = {
     runtime,
     configHash,
+    onIdleShutdown: () => {
+      process.exit(0);
+    },
   };
   if (options.socketPath) {
     daemonOptions.socketPath = options.socketPath;
