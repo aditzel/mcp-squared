@@ -134,6 +134,33 @@ if (!SOCKET_LISTEN_SUPPORTED) {
               data: statsCollector.getToolStats(limit),
               timestamp: Date.now(),
             });
+          } else if (command.startsWith("upstreams")) {
+            response = JSON.stringify({
+              status: "success",
+              data: [
+                {
+                  key: "example",
+                  status: "connected",
+                  toolCount: 2,
+                  transport: "stdio",
+                },
+              ],
+              timestamp: Date.now(),
+            });
+          } else if (command.startsWith("clients")) {
+            response = JSON.stringify({
+              status: "success",
+              data: [
+                {
+                  sessionId: "s-1",
+                  clientId: "proxy-codex",
+                  connectedAt: Date.now(),
+                  lastSeen: Date.now(),
+                  isOwner: true,
+                },
+              ],
+              timestamp: Date.now(),
+            });
           } else {
             response = JSON.stringify({
               status: "error",
@@ -291,6 +318,40 @@ if (!SOCKET_LISTEN_SUPPORTED) {
 
       test("throws error when not connected", async () => {
         await expect(monitorClient.getTools()).rejects.toThrow(
+          "Not connected to monitor server",
+        );
+      });
+    });
+
+    describe("getUpstreams", () => {
+      test("retrieves upstream info", async () => {
+        await createMockServer();
+        await monitorClient.connect();
+
+        const upstreams = await monitorClient.getUpstreams();
+        expect(Array.isArray(upstreams)).toBe(true);
+        expect(upstreams[0]?.key).toBe("example");
+      });
+
+      test("throws error when not connected", async () => {
+        await expect(monitorClient.getUpstreams()).rejects.toThrow(
+          "Not connected to monitor server",
+        );
+      });
+    });
+
+    describe("getClients", () => {
+      test("retrieves client sessions", async () => {
+        await createMockServer();
+        await monitorClient.connect();
+
+        const clients = await monitorClient.getClients();
+        expect(Array.isArray(clients)).toBe(true);
+        expect(clients[0]?.sessionId).toBe("s-1");
+      });
+
+      test("throws error when not connected", async () => {
+        await expect(monitorClient.getClients()).rejects.toThrow(
           "Not connected to monitor server",
         );
       });

@@ -8,6 +8,7 @@
  * @module tui/monitor
  */
 
+import { basename } from "node:path";
 import {
   ASCIIFontRenderable,
   BoxRenderable,
@@ -17,9 +18,14 @@ import {
   TextRenderable,
   createCliRenderer,
 } from "@opentui/core";
+import type { InstanceRegistryEntry } from "../config/index.js";
 import { getSocketFilePath } from "../config/paths.js";
 import type { ServerStats, ToolStats } from "../server/stats.js";
-import { MonitorClient } from "./monitor-client.js";
+import {
+  type ClientInfo,
+  MonitorClient,
+  type UpstreamInfo,
+} from "./monitor-client.js";
 
 /**
  * Options for running the monitor TUI.
@@ -29,6 +35,8 @@ export interface MonitorTuiOptions {
   socketPath?: string;
   /** Auto-refresh interval in milliseconds (default: 2000) */
   refreshInterval?: number;
+  /** Available instances to select from */
+  instances?: InstanceRegistryEntry[];
 }
 
 /**
@@ -40,7 +48,9 @@ export interface MonitorTuiOptions {
 export async function runMonitorTui(
   options: MonitorTuiOptions = {},
 ): Promise<void> {
-  const socketPath = options.socketPath ?? getSocketFilePath();
+  const hasInstances = options.instances !== undefined;
+  const socketPath =
+    options.socketPath ?? (hasInstances ? undefined : getSocketFilePath());
   const refreshInterval = options.refreshInterval ?? 2000;
 
   const renderer = await createCliRenderer({
@@ -50,7 +60,18 @@ export async function runMonitorTui(
 
   renderer.setBackgroundColor("#0f172a");
 
-  const app = new MonitorTuiApp(renderer, socketPath, refreshInterval);
+  const appOptions = {
+    refreshInterval,
+    instances: options.instances ?? [],
+  } as {
+    socketPath?: string;
+    refreshInterval: number;
+    instances: InstanceRegistryEntry[];
+  };
+  if (socketPath) {
+    appOptions.socketPath = socketPath;
+  }
+  const app = new MonitorTuiApp(renderer, appOptions);
   await app.start();
 }
 
@@ -60,12 +81,18 @@ export async function runMonitorTui(
 class MonitorTuiApp {
   private readonly renderer: CliRenderer;
   private readonly refreshInterval: number;
-  private readonly client: MonitorClient;
+  private readonly instances: InstanceRegistryEntry[];
+  private client: MonitorClient | null = null;
+  private socketPath: string | null;
+  private selectionMode = false;
+  private selectedIndex = 0;
   private container: BoxRenderable | null = null;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private isRunning = false;
   private currentStats: ServerStats | null = null;
   private currentTools: ToolStats[] = [];
+  private currentUpstreams: UpstreamInfo[] = [];
+  private currentClients: ClientInfo[] = [];
   private lastError: string | null = null;
   private lastUpdateTime = 0;
 
@@ -73,10 +100,33 @@ class MonitorTuiApp {
   private serverStatusPanel: BoxRenderable | null = null;
   private requestStatsPanel: BoxRenderable | null = null;
   private memoryStatsPanel: BoxRenderable | null = null;
+  private upstreamStatusPanel: BoxRenderable | null = null;
+  private clientStatusPanel: BoxRenderable | null = null;
   private indexStatsPanel: BoxRenderable | null = null;
   private cacheStatsPanel: BoxRenderable | null = null;
   private toolStatsPanel: BoxRenderable | null = null;
   private statusText: TextRenderable | null = null;
+  private selectionPanel: BoxRenderable | null = null;
+  private selectionItems: TextRenderable[] = [];
+  private selectionDetails: {
+    id: TextRenderable | null;
+    pid: TextRenderable | null;
+    started: TextRenderable | null;
+    launcher: TextRenderable | null;
+    parent: TextRenderable | null;
+    command: TextRenderable | null;
+    cwd: TextRenderable | null;
+    configPath: TextRenderable | null;
+  } = {
+    id: null,
+    pid: null,
+    started: null,
+    launcher: null,
+    parent: null,
+    command: null,
+    cwd: null,
+    configPath: null,
+  };
 
   // Text element references for updates
   private serverStatusElements: {
@@ -100,6 +150,9 @@ class MonitorTuiApp {
     external: TextRenderable | null;
   } = { heapUsed: null, heapTotal: null, rss: null, external: null };
 
+  private upstreamStatusElements: TextRenderable[] = [];
+  private clientStatusElements: TextRenderable[] = [];
+
   private indexStatsElements: {
     tools: TextRenderable | null;
     embeddings: TextRenderable | null;
@@ -121,12 +174,16 @@ class MonitorTuiApp {
 
   constructor(
     renderer: CliRenderer,
-    socketPath: string,
-    refreshInterval: number,
+    options: {
+      socketPath?: string;
+      refreshInterval: number;
+      instances: InstanceRegistryEntry[];
+    },
   ) {
     this.renderer = renderer;
-    this.refreshInterval = refreshInterval;
-    this.client = new MonitorClient({ socketPath });
+    this.refreshInterval = options.refreshInterval;
+    this.socketPath = options.socketPath ?? null;
+    this.instances = options.instances;
   }
 
   /**
@@ -134,20 +191,23 @@ class MonitorTuiApp {
    */
   async start(): Promise<void> {
     this.isRunning = true;
-    this.setupLayout();
     this.setupKeyboardHandlers();
 
-    // Initial data fetch
-    await this.refreshData();
+    if (this.socketPath) {
+      await this.enterMonitorMode(this.socketPath);
+      return;
+    }
 
-    // Start auto-refresh
-    this.refreshTimer = setInterval(() => {
-      this.refreshData().catch((error) => {
-        console.error("Failed to refresh data:", error);
-      });
-    }, this.refreshInterval);
+    if (this.instances.length === 1) {
+      const entry = this.instances[0];
+      if (entry) {
+        await this.enterMonitorMode(entry.socketPath);
+        return;
+      }
+    }
 
-    this.updateDisplay();
+    this.selectionMode = true;
+    this.setupSelectionLayout();
   }
 
   /**
@@ -161,14 +221,18 @@ class MonitorTuiApp {
       this.refreshTimer = null;
     }
 
-    this.client.disconnect();
+    this.client?.disconnect();
+    this.client = null;
     this.renderer.destroy();
   }
 
   /**
-   * Sets up the TUI layout.
+   * Clears and recreates the base container.
    */
-  private setupLayout(): void {
+  private clearScreen(): void {
+    if (this.container) {
+      this.renderer.root.remove(this.container.id);
+    }
     this.container = new BoxRenderable(this.renderer, {
       id: "monitor-container",
       flexDirection: "column",
@@ -177,6 +241,16 @@ class MonitorTuiApp {
       padding: 1,
     });
     this.renderer.root.add(this.container);
+  }
+
+  /**
+   * Sets up the TUI layout for monitoring.
+   */
+  private setupMonitorLayout(): void {
+    this.clearScreen();
+    if (!this.container) {
+      return;
+    }
 
     // Header
     this.addHeader();
@@ -229,6 +303,15 @@ class MonitorTuiApp {
     );
     this.createRequestStatsElements();
 
+    // Upstream status panel
+    this.upstreamStatusPanel = this.createPanel(
+      leftColumn,
+      "Upstream Status",
+      "#38bdf8",
+      8,
+    );
+    this.createUpstreamStatusElements();
+
     // Memory usage panel
     this.memoryStatsPanel = this.createPanel(
       leftColumn,
@@ -256,12 +339,21 @@ class MonitorTuiApp {
     );
     this.createCacheStatsElements();
 
+    // Client sessions panel
+    this.clientStatusPanel = this.createPanel(
+      rightColumn,
+      "Active Clients",
+      "#38bdf8",
+      6,
+    );
+    this.createClientStatusElements();
+
     // Tool statistics panel
     this.toolStatsPanel = this.createPanel(
       rightColumn,
       "Top Tools by Usage",
       "#22d3ee",
-      12,
+      8,
     );
     this.createToolStatsElements();
 
@@ -434,6 +526,42 @@ class MonitorTuiApp {
   }
 
   /**
+   * Creates upstream status panel elements.
+   */
+  private createUpstreamStatusElements(): void {
+    if (!this.upstreamStatusPanel) return;
+
+    this.upstreamStatusElements = [];
+    for (let i = 0; i < 6; i++) {
+      const line = new TextRenderable(this.renderer, {
+        id: `upstream-status-line-${i}`,
+        content: "—",
+        fg: "#e2e8f0",
+      });
+      this.upstreamStatusPanel.add(line);
+      this.upstreamStatusElements.push(line);
+    }
+  }
+
+  /**
+   * Creates client status panel elements.
+   */
+  private createClientStatusElements(): void {
+    if (!this.clientStatusPanel) return;
+
+    this.clientStatusElements = [];
+    for (let i = 0; i < 5; i++) {
+      const line = new TextRenderable(this.renderer, {
+        id: `client-status-line-${i}`,
+        content: "—",
+        fg: "#e2e8f0",
+      });
+      this.clientStatusPanel.add(line);
+      this.clientStatusElements.push(line);
+    }
+  }
+
+  /**
    * Creates memory statistics panel elements.
    */
   private createMemoryStatsElements(): void {
@@ -569,14 +697,34 @@ class MonitorTuiApp {
    */
   private setupKeyboardHandlers(): void {
     this.renderer.keyInput.on("keypress", (key: KeyEvent) => {
-      if (key.name === "q") {
+      const keyName = (key.name || key.sequence || "").toLowerCase();
+      if (keyName === "q") {
         this.stop();
         process.exit(0);
-      } else if (key.name === "r") {
+      } else if (this.selectionMode) {
+        if (this.instances.length === 0) {
+          return;
+        }
+        if (keyName === "up" || keyName === "k") {
+          this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+          this.updateSelectionDisplay();
+        } else if (keyName === "down" || keyName === "j") {
+          this.selectedIndex = Math.min(
+            this.instances.length - 1,
+            this.selectedIndex + 1,
+          );
+          this.updateSelectionDisplay();
+        } else if (keyName === "return" || keyName === "enter") {
+          const entry = this.instances[this.selectedIndex];
+          if (entry) {
+            void this.enterMonitorMode(entry.socketPath);
+          }
+        }
+      } else if (keyName === "r") {
         this.refreshData().catch((error) => {
           console.error("Failed to refresh data:", error);
         });
-      } else if (key.name === "c" && key.ctrl) {
+      } else if (keyName === "c" && key.ctrl) {
         this.stop();
         process.exit(0);
       }
@@ -588,6 +736,10 @@ class MonitorTuiApp {
    */
   private async refreshData(): Promise<void> {
     try {
+      if (!this.client) {
+        return;
+      }
+
       if (!this.client.isClientConnected()) {
         await this.client.connect();
       }
@@ -597,6 +749,18 @@ class MonitorTuiApp {
 
       // Fetch tools
       this.currentTools = await this.client.getTools(10);
+
+      try {
+        this.currentUpstreams = await this.client.getUpstreams();
+      } catch {
+        this.currentUpstreams = [];
+      }
+
+      try {
+        this.currentClients = await this.client.getClients();
+      } catch {
+        this.currentClients = [];
+      }
 
       this.lastError = null;
       this.lastUpdateTime = Date.now();
@@ -609,10 +773,226 @@ class MonitorTuiApp {
   }
 
   /**
+   * Sets up the TUI layout for instance selection.
+   */
+  private setupSelectionLayout(): void {
+    this.clearScreen();
+    this.addHeader();
+
+    if (!this.container) {
+      return;
+    }
+
+    const selectionWrapper = new BoxRenderable(this.renderer, {
+      id: "monitor-selection-wrapper",
+      flexDirection: "column",
+      width: "100%",
+      height: "100%",
+      padding: 1,
+      gap: 1,
+    });
+    this.container.add(selectionWrapper);
+
+    const title = new TextRenderable(this.renderer, {
+      id: "monitor-selection-title",
+      content:
+        this.instances.length === 0
+          ? "No running MCP² instances found."
+          : "Select an MCP² instance to monitor",
+      fg: "#e2e8f0",
+    });
+    selectionWrapper.add(title);
+
+    this.selectionPanel = new BoxRenderable(this.renderer, {
+      id: "monitor-selection-list",
+      flexDirection: "column",
+      width: "100%",
+      gap: 0,
+    });
+    selectionWrapper.add(this.selectionPanel);
+
+    this.selectionItems = [];
+    for (const entry of this.instances) {
+      const item = new TextRenderable(this.renderer, {
+        id: `monitor-selection-item-${entry.id}`,
+        content: "",
+        fg: "#e2e8f0",
+      });
+      this.selectionPanel.add(item);
+      this.selectionItems.push(item);
+    }
+
+    const detailPanel = new BoxRenderable(this.renderer, {
+      id: "monitor-selection-details",
+      flexDirection: "column",
+      width: "100%",
+      gap: 0,
+      padding: 1,
+    });
+    selectionWrapper.add(detailPanel);
+
+    this.selectionDetails.id = new TextRenderable(this.renderer, {
+      id: "monitor-selection-detail-id",
+      content: "",
+      fg: "#94a3b8",
+    });
+    this.selectionDetails.pid = new TextRenderable(this.renderer, {
+      id: "monitor-selection-detail-pid",
+      content: "",
+      fg: "#94a3b8",
+    });
+    this.selectionDetails.started = new TextRenderable(this.renderer, {
+      id: "monitor-selection-detail-started",
+      content: "",
+      fg: "#94a3b8",
+    });
+    this.selectionDetails.launcher = new TextRenderable(this.renderer, {
+      id: "monitor-selection-detail-launcher",
+      content: "",
+      fg: "#94a3b8",
+    });
+    this.selectionDetails.parent = new TextRenderable(this.renderer, {
+      id: "monitor-selection-detail-parent",
+      content: "",
+      fg: "#94a3b8",
+    });
+    this.selectionDetails.command = new TextRenderable(this.renderer, {
+      id: "monitor-selection-detail-command",
+      content: "",
+      fg: "#94a3b8",
+    });
+    this.selectionDetails.cwd = new TextRenderable(this.renderer, {
+      id: "monitor-selection-detail-cwd",
+      content: "",
+      fg: "#94a3b8",
+    });
+    this.selectionDetails.configPath = new TextRenderable(this.renderer, {
+      id: "monitor-selection-detail-config",
+      content: "",
+      fg: "#94a3b8",
+    });
+
+    detailPanel.add(this.selectionDetails.id);
+    detailPanel.add(this.selectionDetails.pid);
+    detailPanel.add(this.selectionDetails.started);
+    detailPanel.add(this.selectionDetails.launcher);
+    detailPanel.add(this.selectionDetails.parent);
+    detailPanel.add(this.selectionDetails.command);
+    detailPanel.add(this.selectionDetails.cwd);
+    detailPanel.add(this.selectionDetails.configPath);
+
+    const footer = new TextRenderable(this.renderer, {
+      id: "monitor-selection-footer",
+      content:
+        this.instances.length === 0
+          ? "Press q to quit."
+          : "Use ↑/↓ to select, Enter to connect, q to quit.",
+      fg: "#94a3b8",
+    });
+    selectionWrapper.add(footer);
+
+    this.updateSelectionDisplay();
+  }
+
+  private formatInstanceLine(entry: InstanceRegistryEntry): string {
+    const startedAt = new Date(entry.startedAt).toLocaleString();
+    const command = entry.command ?? "mcp-squared";
+    const executable = basename(command.split(" ")[0] ?? command);
+    const processName = entry.processName ?? executable;
+    const user = entry.user ?? "unknown";
+    const role = entry.role ? `${entry.role} ` : "";
+    const launcher = entry.launcher ? ` via ${entry.launcher}` : "";
+    return `${role}${entry.id}  pid ${entry.pid}  ${processName}  ${user}  ${startedAt}${launcher}`;
+  }
+
+  private updateSelectionDisplay(): void {
+    if (this.instances.length === 0) {
+      return;
+    }
+
+    const maxIndex = this.instances.length - 1;
+    if (this.selectedIndex < 0) {
+      this.selectedIndex = 0;
+    } else if (this.selectedIndex > maxIndex) {
+      this.selectedIndex = maxIndex;
+    }
+
+    this.selectionItems.forEach((item, index) => {
+      const entry = this.instances[index];
+      if (!entry) {
+        item.content = "";
+        return;
+      }
+      const isSelected = index === this.selectedIndex;
+      item.content = `${isSelected ? "›" : " "} ${this.formatInstanceLine(entry)}`;
+      item.fg = isSelected ? "#38bdf8" : "#e2e8f0";
+    });
+
+    const selected = this.instances[this.selectedIndex];
+    if (!selected) {
+      return;
+    }
+
+    const command = selected.command ?? "unknown";
+    const executable = basename(command.split(" ")[0] ?? command);
+    const processName = selected.processName ?? executable;
+    const user = selected.user ?? "unknown";
+    const ppid =
+      selected.ppid !== undefined ? selected.ppid.toString() : "unknown";
+    const launcher =
+      selected.launcher ?? selected.parentProcessName ?? "unknown";
+    const parentName = selected.parentProcessName ?? "unknown";
+    const parentCommand = selected.parentCommand ?? "unknown";
+    const roleLabel = selected.role ? ` (${selected.role})` : "";
+    const details = this.selectionDetails;
+    if (
+      !details.id ||
+      !details.pid ||
+      !details.started ||
+      !details.launcher ||
+      !details.parent ||
+      !details.command ||
+      !details.cwd ||
+      !details.configPath
+    ) {
+      return;
+    }
+
+    details.id.content = `ID: ${selected.id}${roleLabel}`;
+    details.pid.content = `PID: ${selected.pid} (ppid: ${ppid}, user: ${user}, exe: ${processName})`;
+    details.started.content = `Started: ${new Date(selected.startedAt).toLocaleString()}`;
+    details.launcher.content = `Launcher: ${launcher}`;
+    details.parent.content = `Parent: ${parentName} (${parentCommand})`;
+    details.command.content = `Command: ${command}`;
+    details.cwd.content = `CWD: ${selected.cwd ?? "unknown"}`;
+    details.configPath.content = `Config: ${selected.configPath ?? "unknown"}`;
+  }
+
+  private async enterMonitorMode(socketPath: string): Promise<void> {
+    this.selectionMode = false;
+    this.socketPath = socketPath;
+    this.client = new MonitorClient({ socketPath });
+    this.setupMonitorLayout();
+
+    await this.refreshData();
+
+    if (this.refreshInterval > 0) {
+      this.refreshTimer = setInterval(() => {
+        this.refreshData().catch((error) => {
+          console.error("Failed to refresh data:", error);
+        });
+      }, this.refreshInterval);
+    }
+
+    this.updateDisplay();
+  }
+
+  /**
    * Updates the display with current data.
    */
   private updateDisplay(): void {
     if (!this.isRunning) return;
+    if (this.selectionMode) return;
 
     // Update status text
     if (this.statusText) {
@@ -632,6 +1012,8 @@ class MonitorTuiApp {
     // Update panels
     this.updateServerStatusPanel();
     this.updateRequestStatsPanel();
+    this.updateUpstreamStatusPanel();
+    this.updateClientStatusPanel();
     this.updateMemoryStatsPanel();
     this.updateIndexStatsPanel();
     this.updateCacheStatsPanel();
@@ -696,6 +1078,76 @@ class MonitorTuiApp {
 
     if (this.requestStatsElements.avgTime) {
       this.requestStatsElements.avgTime.content = `Avg Response: ${avgResponseTime}ms`;
+    }
+  }
+
+  /**
+   * Updates the upstream status panel.
+   */
+  private updateUpstreamStatusPanel(): void {
+    if (!this.upstreamStatusPanel) return;
+
+    const upstreams = this.currentUpstreams;
+    const maxRows = this.upstreamStatusElements.length;
+
+    for (let i = 0; i < maxRows; i++) {
+      const line = this.upstreamStatusElements[i];
+      if (!line) continue;
+      const upstream = upstreams[i];
+      if (!upstream) {
+        line.content = "";
+        continue;
+      }
+
+      const toolCount = upstream.toolCount ?? 0;
+      const toolNames = upstream.toolNames ?? [];
+      const name = upstream.serverName ?? upstream.key;
+      const version = upstream.serverVersion
+        ? `@${upstream.serverVersion}`
+        : "";
+      const status = upstream.authPending ? "auth" : upstream.status;
+      let toolSummary = "no tools";
+      if (toolNames.length > 0) {
+        toolSummary = toolNames.join(", ");
+        if (toolCount > toolNames.length) {
+          toolSummary += ` +${toolCount - toolNames.length} more`;
+        }
+      }
+      const lineContent = `${upstream.key}: ${name}${version} (${status}, ${toolCount}) ${toolSummary}`;
+      line.content = this.truncateText(lineContent, 120);
+      if (status === "connected") {
+        line.fg = "#4ade80";
+      } else if (status === "auth") {
+        line.fg = "#fbbf24";
+      } else if (status === "error") {
+        line.fg = "#f87171";
+      } else {
+        line.fg = "#94a3b8";
+      }
+    }
+  }
+
+  /**
+   * Updates the active client sessions panel.
+   */
+  private updateClientStatusPanel(): void {
+    if (!this.clientStatusPanel) return;
+
+    const clients = this.currentClients;
+    const maxRows = this.clientStatusElements.length;
+
+    for (let i = 0; i < maxRows; i++) {
+      const line = this.clientStatusElements[i];
+      if (!line) continue;
+      const client = clients[i];
+      if (!client) {
+        line.content = "";
+        continue;
+      }
+      const label = client.clientId ?? client.sessionId;
+      const ownerMark = client.isOwner ? "*" : " ";
+      line.content = `${ownerMark} ${label}`;
+      line.fg = client.isOwner ? "#fbbf24" : "#e2e8f0";
     }
   }
 
@@ -870,5 +1322,15 @@ class MonitorTuiApp {
       return `${minutes}m ago`;
     }
     return `${seconds}s ago`;
+  }
+
+  /**
+   * Truncates a string with an ellipsis if it exceeds max length.
+   */
+  private truncateText(text: string, maxLength: number): string {
+    if (text.length <= maxLength) {
+      return text;
+    }
+    return `${text.slice(0, Math.max(0, maxLength - 1))}…`;
   }
 }

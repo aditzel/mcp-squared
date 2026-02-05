@@ -10,6 +10,7 @@
 
 import { existsSync, unlinkSync } from "node:fs";
 import { type Server, type Socket, createServer } from "node:net";
+import type { Cataloger } from "../upstream/cataloger.js";
 import type { StatsCollector } from "./stats.js";
 
 function isTcpEndpoint(endpoint: string): boolean {
@@ -41,7 +42,12 @@ function parseTcpEndpoint(endpoint: string): { host: string; port: number } {
 /**
  * Supported commands for the monitor server.
  */
-export type MonitorCommand = "stats" | "tools" | "ping";
+export type MonitorCommand =
+  | "stats"
+  | "tools"
+  | "upstreams"
+  | "clients"
+  | "ping";
 
 /**
  * Response status for monitor commands.
@@ -62,6 +68,8 @@ export interface MonitorResponse {
   timestamp: number;
 }
 
+const UPSTREAM_TOOL_SAMPLE_LIMIT = 5;
+
 /**
  * Options for creating a MonitorServer.
  */
@@ -70,6 +78,18 @@ export interface MonitorServerOptions {
   socketPath: string;
   /** Stats collector instance for retrieving statistics */
   statsCollector: StatsCollector;
+  /** Cataloger for upstream status (optional) */
+  cataloger?: Cataloger;
+  /** Provider for connected client sessions (optional) */
+  clientInfoProvider?: () => MonitorClientInfo[];
+}
+
+export interface MonitorClientInfo {
+  sessionId: string;
+  clientId?: string;
+  connectedAt: number;
+  lastSeen: number;
+  isOwner: boolean;
 }
 
 /**
@@ -94,6 +114,8 @@ export interface MonitorServerOptions {
 export class MonitorServer {
   private socketPath: string;
   private readonly statsCollector: StatsCollector;
+  private readonly cataloger: Cataloger | undefined;
+  private clientInfoProvider: (() => MonitorClientInfo[]) | undefined;
   private server: Server | null = null;
   private isRunning = false;
   private activeSockets: Set<Socket> = new Set();
@@ -106,6 +128,12 @@ export class MonitorServer {
   constructor(options: MonitorServerOptions) {
     this.socketPath = options.socketPath;
     this.statsCollector = options.statsCollector;
+    this.cataloger = options.cataloger;
+    this.clientInfoProvider = options.clientInfoProvider;
+  }
+
+  setClientInfoProvider(provider?: () => MonitorClientInfo[]): void {
+    this.clientInfoProvider = provider;
   }
 
   /**
@@ -301,13 +329,19 @@ export class MonitorServer {
       case "tools":
         return this.handleToolsCommand(parts[1]);
 
+      case "upstreams":
+        return this.handleUpstreamsCommand();
+
+      case "clients":
+        return this.handleClientsCommand();
+
       case "ping":
         return this.handlePingCommand();
 
       default:
         return {
           status: "error",
-          error: `Unknown command: ${cmd}. Supported commands: stats, tools, ping`,
+          error: `Unknown command: ${cmd}. Supported commands: stats, tools, upstreams, clients, ping`,
           timestamp: Date.now(),
         };
     }
@@ -345,6 +379,70 @@ export class MonitorServer {
     return {
       status: "success",
       data: toolStats,
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Handles the 'upstreams' command.
+   * Returns upstream connection details.
+   *
+   * @returns Response with upstream info
+   * @internal
+   */
+  private handleUpstreamsCommand(): MonitorResponse {
+    if (!this.cataloger) {
+      return {
+        status: "error",
+        error: "Upstream information not available.",
+        timestamp: Date.now(),
+      };
+    }
+
+    const statusMap = this.cataloger.getStatus();
+    const upstreams = Array.from(statusMap.entries()).map(
+      ([key, statusInfo]) => {
+        const connection = this.cataloger?.getConnection(key);
+        const tools = this.cataloger?.getToolsForServer(key) ?? [];
+        return {
+          key,
+          status: statusInfo.status,
+          error: statusInfo.error,
+          serverName: connection?.serverName,
+          serverVersion: connection?.serverVersion,
+          toolCount: tools.length,
+          toolNames: tools
+            .slice(0, UPSTREAM_TOOL_SAMPLE_LIMIT)
+            .map((tool) => tool.name),
+          transport: connection?.config.transport,
+          authPending: connection?.authPending ?? false,
+        };
+      },
+    );
+
+    return {
+      status: "success",
+      data: upstreams,
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Handles the 'clients' command.
+   * Returns connected client sessions (daemon mode).
+   */
+  private handleClientsCommand(): MonitorResponse {
+    if (!this.clientInfoProvider) {
+      return {
+        status: "error",
+        error: "Client information not available.",
+        timestamp: Date.now(),
+      };
+    }
+
+    return {
+      status: "success",
+      data: this.clientInfoProvider(),
       timestamp: Date.now(),
     };
   }

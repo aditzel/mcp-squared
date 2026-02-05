@@ -350,6 +350,30 @@ describe("performInstallation", () => {
     });
   });
 
+  test("writes args when provided", () => {
+    const configPath = join(tempDir, "mcp.json");
+
+    const result = performInstallation({
+      tool: "cursor",
+      path: configPath,
+      scope: "user",
+      mode: "add",
+      serverName: "mcp-squared",
+      command: "mcp-squared",
+      args: ["proxy"],
+      dryRun: false,
+    });
+
+    expect(result.success).toBe(true);
+
+    const content = JSON.parse(readFileSync(configPath, "utf-8"));
+    expect(content).toEqual({
+      mcpServers: {
+        "mcp-squared": { command: "mcp-squared", args: ["proxy"] },
+      },
+    });
+  });
+
   test("modifies existing config file in add mode", () => {
     const configPath = join(tempDir, "mcp.json");
     writeFileSync(
@@ -494,6 +518,38 @@ describe("performInstallation", () => {
     expect(result.error).toContain("already exists");
   });
 
+  test("treats different args as different config", () => {
+    const configPath = join(tempDir, "mcp.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        mcpServers: {
+          "mcp-squared": { command: "mcp-squared" },
+        },
+      }),
+    );
+
+    const result = performInstallation({
+      tool: "cursor",
+      path: configPath,
+      scope: "user",
+      mode: "add",
+      serverName: "mcp-squared",
+      command: "mcp-squared",
+      args: ["proxy"],
+      dryRun: false,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+
+    const content = JSON.parse(readFileSync(configPath, "utf-8"));
+    expect(content.mcpServers["mcp-squared"]).toEqual({
+      command: "mcp-squared",
+      args: ["proxy"],
+    });
+  });
+
   test("works with VS Code format", () => {
     const configPath = join(tempDir, "mcp.json");
 
@@ -572,6 +628,12 @@ describe("CLI argument parsing for install", () => {
     expect(result.install.command).toBe("/usr/local/bin/mcp-squared");
   });
 
+  test("parses install with --proxy option", () => {
+    const result = parseArgs(["install", "--proxy"]);
+    expect(result.mode).toBe("install");
+    expect(result.install.args).toEqual(["proxy"]);
+  });
+
   test("parses install with --dry-run option", () => {
     const result = parseArgs(["install", "--dry-run"]);
     expect(result.mode).toBe("install");
@@ -609,6 +671,7 @@ describe("CLI argument parsing for install", () => {
     expect(result.install.dryRun).toBe(false);
     expect(result.install.serverName).toBe("mcp-squared");
     expect(result.install.command).toBe("mcp-squared");
+    expect(result.install.args).toBeUndefined();
     expect(result.install.tool).toBeUndefined();
     expect(result.install.scope).toBeUndefined();
     expect(result.install.mode).toBeUndefined();

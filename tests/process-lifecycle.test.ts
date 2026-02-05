@@ -68,9 +68,9 @@ args = ["run", "${echoServerPath}", "${testId}"]
 
     // Spawn mcp-squared with this config
     childProcess = spawn({
-      cmd: ["bun", "run", ENTRY_POINT],
+      cmd: ["bun", "run", ENTRY_POINT, "--stdio"],
       cwd: PROJECT_ROOT,
-      env: { ...process.env, MCP_CONFIG_PATH: configPath },
+      env: { ...process.env, MCP_SQUARED_CONFIG: configPath },
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
