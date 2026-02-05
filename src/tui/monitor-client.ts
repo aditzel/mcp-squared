@@ -75,6 +75,7 @@ export interface UpstreamInfo {
   serverName?: string;
   serverVersion?: string;
   toolCount?: number;
+  toolNames?: string[];
   transport?: string;
   authPending?: boolean;
 }

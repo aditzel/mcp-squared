@@ -68,6 +68,8 @@ export interface MonitorResponse {
   timestamp: number;
 }
 
+const UPSTREAM_TOOL_SAMPLE_LIMIT = 5;
+
 /**
  * Options for creating a MonitorServer.
  */
@@ -401,13 +403,17 @@ export class MonitorServer {
     const upstreams = Array.from(statusMap.entries()).map(
       ([key, statusInfo]) => {
         const connection = this.cataloger?.getConnection(key);
+        const tools = this.cataloger?.getToolsForServer(key) ?? [];
         return {
           key,
           status: statusInfo.status,
           error: statusInfo.error,
           serverName: connection?.serverName,
           serverVersion: connection?.serverVersion,
-          toolCount: connection?.tools.length ?? 0,
+          toolCount: tools.length,
+          toolNames: tools
+            .slice(0, UPSTREAM_TOOL_SAMPLE_LIMIT)
+            .map((tool) => tool.name),
           transport: connection?.config.transport,
           authPending: connection?.authPending ?? false,
         };

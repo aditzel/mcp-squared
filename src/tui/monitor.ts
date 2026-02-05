@@ -697,33 +697,34 @@ class MonitorTuiApp {
    */
   private setupKeyboardHandlers(): void {
     this.renderer.keyInput.on("keypress", (key: KeyEvent) => {
-      if (key.name === "q") {
+      const keyName = (key.name || key.sequence || "").toLowerCase();
+      if (keyName === "q") {
         this.stop();
         process.exit(0);
       } else if (this.selectionMode) {
         if (this.instances.length === 0) {
           return;
         }
-        if (key.name === "up" || key.name === "k") {
+        if (keyName === "up" || keyName === "k") {
           this.selectedIndex = Math.max(0, this.selectedIndex - 1);
           this.updateSelectionDisplay();
-        } else if (key.name === "down" || key.name === "j") {
+        } else if (keyName === "down" || keyName === "j") {
           this.selectedIndex = Math.min(
             this.instances.length - 1,
             this.selectedIndex + 1,
           );
           this.updateSelectionDisplay();
-        } else if (key.name === "return" || key.name === "enter") {
+        } else if (keyName === "return" || keyName === "enter") {
           const entry = this.instances[this.selectedIndex];
           if (entry) {
             void this.enterMonitorMode(entry.socketPath);
           }
         }
-      } else if (key.name === "r") {
+      } else if (keyName === "r") {
         this.refreshData().catch((error) => {
           console.error("Failed to refresh data:", error);
         });
-      } else if (key.name === "c" && key.ctrl) {
+      } else if (keyName === "c" && key.ctrl) {
         this.stop();
         process.exit(0);
       }
@@ -1099,12 +1100,21 @@ class MonitorTuiApp {
       }
 
       const toolCount = upstream.toolCount ?? 0;
+      const toolNames = upstream.toolNames ?? [];
       const name = upstream.serverName ?? upstream.key;
       const version = upstream.serverVersion
         ? `@${upstream.serverVersion}`
         : "";
       const status = upstream.authPending ? "auth" : upstream.status;
-      line.content = `${upstream.key}: ${name}${version} (${status}, ${toolCount})`;
+      let toolSummary = "no tools";
+      if (toolNames.length > 0) {
+        toolSummary = toolNames.join(", ");
+        if (toolCount > toolNames.length) {
+          toolSummary += ` +${toolCount - toolNames.length} more`;
+        }
+      }
+      const lineContent = `${upstream.key}: ${name}${version} (${status}, ${toolCount}) ${toolSummary}`;
+      line.content = this.truncateText(lineContent, 120);
       if (status === "connected") {
         line.fg = "#4ade80";
       } else if (status === "auth") {
@@ -1312,5 +1322,15 @@ class MonitorTuiApp {
       return `${minutes}m ago`;
     }
     return `${seconds}s ago`;
+  }
+
+  /**
+   * Truncates a string with an ellipsis if it exceeds max length.
+   */
+  private truncateText(text: string, maxLength: number): string {
+    if (text.length <= maxLength) {
+      return text;
+    }
+    return `${text.slice(0, Math.max(0, maxLength - 1))}…`;
   }
 }
