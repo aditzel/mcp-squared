@@ -3,7 +3,7 @@ import { createServer } from "node:net";
 import {
   SocketClientTransport,
   SocketServerTransport,
-} from "@/daemon/transport";
+} from "@/daemon/transport.js";
 
 const SOCKET_LISTEN_SUPPORTED = await new Promise<boolean>((resolve) => {
   const server = createServer();

@@ -825,6 +825,13 @@ async function runDaemon(options: DaemonArgs): Promise<void> {
   process.on("SIGTERM", () => {
     void shutdown(0);
   });
+  process.on("exit", () => {
+    try {
+      unregisterInstance();
+    } catch {
+      // best-effort cleanup
+    }
+  });
 
   await daemon.start();
   registerInstance();
