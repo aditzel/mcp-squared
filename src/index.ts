@@ -904,8 +904,6 @@ async function runProxyCommand(options: ProxyArgs): Promise<void> {
     void shutdown(0);
   });
 
-  registerInstance();
-
   const proxyOptions: {
     endpoint?: string;
     noSpawn: boolean;
@@ -917,7 +915,13 @@ async function runProxyCommand(options: ProxyArgs): Promise<void> {
   if (options.socketPath) {
     proxyOptions.endpoint = options.socketPath;
   }
-  proxyHandle = await runProxy(proxyOptions);
+  try {
+    proxyHandle = await runProxy(proxyOptions);
+  } catch (error) {
+    unregisterInstance();
+    throw error;
+  }
+  registerInstance();
 }
 
 function printInstanceList(entries: InstanceRegistryEntry[]): void {
