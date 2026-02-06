@@ -15,6 +15,8 @@
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun --packages=external",
+    "build:compile": "bun build src/index.ts --compile --outfile dist/mcp-squared",
+    "build:compile:matrix": "bash scripts/compile-matrix.sh",
     "prepack": "bun run build",
     "test": "bun test",
     "test:fast": "SKIP_SLOW_TESTS=true bun test",

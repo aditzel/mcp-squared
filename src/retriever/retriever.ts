@@ -9,7 +9,7 @@
  */
 
 import type { SearchMode } from "../config/schema.js";
-import { EmbeddingGenerator } from "../embeddings/index.js";
+import type { EmbeddingGenerator } from "../embeddings/index.js";
 import { IndexStore } from "../index/index.js";
 import type { CatalogedTool, Cataloger } from "../upstream/index.js";
 
@@ -93,6 +93,33 @@ export interface RetrieverOptions {
   defaultMode?: SearchMode;
 }
 
+type EmbeddingModule = typeof import("../embeddings/index.js");
+type EmbeddingGeneratorClass = EmbeddingModule["EmbeddingGenerator"];
+
+function cosineSimilarity(a: Float32Array, b: Float32Array): number {
+  if (a.length !== b.length) {
+    throw new Error(
+      `Embedding dimensions must match: ${a.length} vs ${b.length}`,
+    );
+  }
+
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (let i = 0; i < a.length; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
+    const aVal = a[i]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounds checked by loop condition
+    const bVal = b[i]!;
+    dotProduct += aVal * bVal;
+    normA += aVal * aVal;
+    normB += bVal * bVal;
+  }
+
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
 /**
  * Retriever provides full-text search over tools from upstream MCP servers.
  *
@@ -116,6 +143,8 @@ export class Retriever {
   private readonly maxLimit: number;
   private readonly defaultMode: SearchMode;
   private embeddingGenerator: EmbeddingGenerator | null = null;
+  private embeddingGeneratorClassPromise: Promise<EmbeddingGeneratorClass> | null =
+    null;
 
   /**
    * Creates a new Retriever instance.
@@ -300,10 +329,7 @@ export class Retriever {
     for (const ftsResult of ftsResults) {
       const tool = this.indexStore.getTool(ftsResult.name, ftsResult.serverKey);
       if (tool?.embedding) {
-        const similarity = EmbeddingGenerator.cosineSimilarity(
-          queryEmbedding,
-          tool.embedding,
-        );
+        const similarity = cosineSimilarity(queryEmbedding, tool.embedding);
         // Combine FTS score (normalized) with similarity
         // FTS scores vary widely, so we normalize roughly
         const normalizedFtsScore = Math.min(ftsResult.score / 10, 1);
@@ -421,8 +447,19 @@ export class Retriever {
       return;
     }
 
-    this.embeddingGenerator = new EmbeddingGenerator();
+    const EmbeddingGeneratorClass = await this.getEmbeddingGeneratorClass();
+    this.embeddingGenerator = new EmbeddingGeneratorClass();
     await this.embeddingGenerator.initialize();
+  }
+
+  private async getEmbeddingGeneratorClass(): Promise<EmbeddingGeneratorClass> {
+    if (!this.embeddingGeneratorClassPromise) {
+      this.embeddingGeneratorClassPromise = import(
+        "../embeddings/index.js"
+      ).then((module) => module.EmbeddingGenerator);
+    }
+
+    return this.embeddingGeneratorClassPromise;
   }
 
   /**

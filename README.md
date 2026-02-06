@@ -58,6 +58,22 @@ bun run build
 bun test
 ```
 
+### Standalone Executable (Experimental)
+
+Build a single-file executable with Bun:
+
+```bash
+bun run build:compile
+```
+
+Run the compile validation matrix (target support, size check, standalone smoke test, embeddings probe):
+
+```bash
+bun run build:compile:matrix
+```
+
+Current findings and known blockers are tracked in `docs/STANDALONE-COMPILE.md`.
+
 ## CLI Commands (Common)
 
 ```bash
