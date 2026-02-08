@@ -311,7 +311,7 @@ class MonitorTuiApp {
     // Upstream status panel
     this.upstreamStatusPanel = this.createPanel(
       leftColumn,
-      "Upstream Status",
+      "Upstream Health",
       "#38bdf8",
       8,
     );
@@ -1118,10 +1118,11 @@ class MonitorTuiApp {
     if (!this.upstreamStatusPanel) return;
 
     const upstreams = this.currentUpstreams;
-    const maxRows = this.upstreamStatusElements.length;
+    const rows = this.upstreamStatusElements;
+    const maxRows = rows.length;
 
     if (upstreams.length === 0) {
-      const firstLine = this.upstreamStatusElements[0];
+      const firstLine = rows[0];
       if (firstLine) {
         if (this.lastUpstreamsWarning) {
           firstLine.content = this.truncateText(
@@ -1135,48 +1136,91 @@ class MonitorTuiApp {
         }
       }
 
+      const secondLine = rows[1];
+      if (secondLine) {
+        secondLine.content = "";
+      }
+
       for (let i = 1; i < maxRows; i++) {
-        const line = this.upstreamStatusElements[i];
+        const line = rows[i];
         if (!line) continue;
+        if (i === 1) continue;
         line.content = "";
       }
       return;
     }
 
-    for (let i = 0; i < maxRows; i++) {
-      const line = this.upstreamStatusElements[i];
+    const connectedCount = upstreams.filter(
+      (u) => u.status === "connected",
+    ).length;
+    const authCount = upstreams.filter((u) => u.authPending).length;
+    const errorCount = upstreams.filter((u) => u.status === "error").length;
+
+    const summaryLine = rows[0];
+    if (summaryLine) {
+      summaryLine.content = `Connected ${connectedCount}/${upstreams.length} | Auth ${authCount} | Errors ${errorCount}`;
+      summaryLine.fg =
+        errorCount > 0 ? "#f87171" : authCount > 0 ? "#fbbf24" : "#4ade80";
+    }
+
+    const headerLine = rows[1];
+    if (headerLine) {
+      headerLine.content = "St  Key            Trns  Tools";
+      headerLine.fg = "#94a3b8";
+    }
+
+    const rowStart = 2;
+    const availableRows = Math.max(0, maxRows - rowStart);
+    const overflowCount = Math.max(0, upstreams.length - availableRows);
+    const displayCount =
+      overflowCount > 0 ? Math.max(0, availableRows - 1) : availableRows;
+
+    const getStatusColor = (status: string): string => {
+      if (status === "connected") return "#4ade80";
+      if (status === "auth") return "#fbbf24";
+      if (status === "error") return "#f87171";
+      return "#94a3b8";
+    };
+
+    const getStatusToken = (status: string): string => {
+      if (status === "connected") return "OK";
+      if (status === "auth") return "AU";
+      if (status === "error") return "ER";
+      return "--";
+    };
+
+    for (let rowIndex = 0; rowIndex < availableRows; rowIndex++) {
+      const line = rows[rowStart + rowIndex];
       if (!line) continue;
-      const upstream = upstreams[i];
-      if (!upstream) {
-        line.content = "";
+
+      if (rowIndex < displayCount) {
+        const upstream = upstreams[rowIndex];
+        if (!upstream) {
+          line.content = "";
+          line.fg = "#94a3b8";
+          continue;
+        }
+        const status = upstream.authPending ? "auth" : upstream.status;
+        const statusToken = getStatusToken(status).padEnd(2, " ");
+        const key = this.truncateText(upstream.key, 14).padEnd(14, " ");
+        const transport = (upstream.transport ?? "-")
+          .toUpperCase()
+          .slice(0, 4)
+          .padEnd(4, " ");
+        const tools = `${upstream.toolCount ?? 0}`.padStart(5, " ");
+        line.content = `${statusToken} ${key} ${transport} ${tools}`;
+        line.fg = getStatusColor(status);
         continue;
       }
 
-      const toolCount = upstream.toolCount ?? 0;
-      const toolNames = upstream.toolNames ?? [];
-      const name = upstream.serverName ?? upstream.key;
-      const version = upstream.serverVersion
-        ? `@${upstream.serverVersion}`
-        : "";
-      const status = upstream.authPending ? "auth" : upstream.status;
-      let toolSummary = "no tools";
-      if (toolNames.length > 0) {
-        toolSummary = toolNames.join(", ");
-        if (toolCount > toolNames.length) {
-          toolSummary += ` +${toolCount - toolNames.length} more`;
-        }
-      }
-      const lineContent = `${upstream.key}: ${name}${version} (${status}, ${toolCount}) ${toolSummary}`;
-      line.content = this.truncateText(lineContent, 120);
-      if (status === "connected") {
-        line.fg = "#4ade80";
-      } else if (status === "auth") {
-        line.fg = "#fbbf24";
-      } else if (status === "error") {
-        line.fg = "#f87171";
-      } else {
+      if (overflowCount > 0 && rowIndex === availableRows - 1) {
+        line.content = `+${overflowCount} more upstream${overflowCount === 1 ? "" : "s"}`;
         line.fg = "#94a3b8";
+        continue;
       }
+
+      line.content = "";
+      line.fg = "#94a3b8";
     }
   }
 
