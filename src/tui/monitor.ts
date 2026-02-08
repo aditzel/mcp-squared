@@ -39,6 +39,37 @@ export interface MonitorTuiOptions {
   instances?: InstanceRegistryEntry[];
 }
 
+type DashboardCardId =
+  | "server"
+  | "requests"
+  | "upstreams"
+  | "memory"
+  | "index"
+  | "cache"
+  | "clients"
+  | "tools";
+
+type UpstreamStatusKind = "connected" | "auth" | "error" | "other";
+
+interface DashboardCard {
+  id: DashboardCardId;
+  title: string;
+  borderColor: string;
+  panel: BoxRenderable;
+}
+
+interface DetailLine {
+  content: string;
+  fg?: string;
+}
+
+interface DetailModalSpec {
+  title: string;
+  subtitle: string;
+  accentColor: string;
+  lines: DetailLine[];
+}
+
 /**
  * Runs the monitor TUI.
  *
@@ -110,6 +141,7 @@ class MonitorTuiApp {
   private cacheStatsPanel: BoxRenderable | null = null;
   private toolStatsPanel: BoxRenderable | null = null;
   private statusText: TextRenderable | null = null;
+  private instructionsText: TextRenderable | null = null;
   private selectionPanel: BoxRenderable | null = null;
   private selectionItems: TextRenderable[] = [];
   private selectionDetails: {
@@ -175,6 +207,10 @@ class MonitorTuiApp {
     name: TextRenderable | null;
     stats: TextRenderable | null;
   }> = [];
+  private dashboardCards: DashboardCard[] = [];
+  private focusedCardIndex = 0;
+  private detailCardId: DashboardCardId | null = null;
+  private detailOverlay: BoxRenderable | null = null;
 
   constructor(
     renderer: CliRenderer,
@@ -235,6 +271,7 @@ class MonitorTuiApp {
    */
   private clearScreen(): void {
     this.hideHelpOverlay();
+    this.hideDetailOverlay();
     if (this.container) {
       this.renderer.root.remove(this.container.id);
     }
@@ -362,6 +399,9 @@ class MonitorTuiApp {
     );
     this.createToolStatsElements();
 
+    this.registerDashboardCards();
+    this.applyDashboardFocusStyles();
+
     // Status bar
     this.addStatusBar();
   }
@@ -425,13 +465,14 @@ class MonitorTuiApp {
     });
     statusBar.add(this.statusText);
 
-    const instructions = new TextRenderable(this.renderer, {
+    this.instructionsText = new TextRenderable(this.renderer, {
       id: "monitor-instructions",
-      content: "q: Quit | r: Refresh | ?: Help",
+      content: "",
       fg: "#64748b",
       marginLeft: "auto",
     });
-    statusBar.add(instructions);
+    statusBar.add(this.instructionsText);
+    this.updateInstructionsText();
   }
 
   /**
@@ -697,6 +738,162 @@ class MonitorTuiApp {
     }
   }
 
+  private registerDashboardCards(): void {
+    const cards: Array<{
+      id: DashboardCardId;
+      title: string;
+      borderColor: string;
+      panel: BoxRenderable | null;
+    }> = [
+      {
+        id: "server",
+        title: "Server Status",
+        borderColor: "#38bdf8",
+        panel: this.serverStatusPanel,
+      },
+      {
+        id: "index",
+        title: "Index Statistics",
+        borderColor: "#a78bfa",
+        panel: this.indexStatsPanel,
+      },
+      {
+        id: "requests",
+        title: "Request Statistics",
+        borderColor: "#4ade80",
+        panel: this.requestStatsPanel,
+      },
+      {
+        id: "cache",
+        title: "Cache Statistics",
+        borderColor: "#f472b6",
+        panel: this.cacheStatsPanel,
+      },
+      {
+        id: "upstreams",
+        title: "Upstream Health",
+        borderColor: "#38bdf8",
+        panel: this.upstreamStatusPanel,
+      },
+      {
+        id: "clients",
+        title: "Active Clients",
+        borderColor: "#38bdf8",
+        panel: this.clientStatusPanel,
+      },
+      {
+        id: "memory",
+        title: "Memory Usage",
+        borderColor: "#fbbf24",
+        panel: this.memoryStatsPanel,
+      },
+      {
+        id: "tools",
+        title: "Top Tools by Usage",
+        borderColor: "#22d3ee",
+        panel: this.toolStatsPanel,
+      },
+    ];
+
+    this.dashboardCards = cards
+      .filter((card): card is DashboardCard => card.panel !== null)
+      .map((card) => ({
+        id: card.id,
+        title: card.title,
+        borderColor: card.borderColor,
+        panel: card.panel,
+      }));
+
+    if (this.dashboardCards.length === 0) {
+      this.focusedCardIndex = 0;
+      return;
+    }
+
+    if (this.focusedCardIndex < 0) {
+      this.focusedCardIndex = 0;
+      return;
+    }
+
+    if (this.focusedCardIndex >= this.dashboardCards.length) {
+      this.focusedCardIndex = this.dashboardCards.length - 1;
+    }
+  }
+
+  private updateInstructionsText(): void {
+    if (!this.instructionsText) {
+      return;
+    }
+
+    if (this.detailCardId) {
+      this.instructionsText.content =
+        "Esc/Enter: Close detail | Tab/Shift+Tab: Next card | r: Refresh | ?: Help | q: Quit";
+      return;
+    }
+
+    this.instructionsText.content =
+      "Tab/Shift+Tab: Focus cards | Enter: Details | r: Refresh | ?: Help | q: Quit";
+  }
+
+  private applyDashboardFocusStyles(): void {
+    if (this.dashboardCards.length === 0) {
+      return;
+    }
+
+    if (this.focusedCardIndex < 0) {
+      this.focusedCardIndex = 0;
+    } else if (this.focusedCardIndex >= this.dashboardCards.length) {
+      this.focusedCardIndex = this.dashboardCards.length - 1;
+    }
+
+    for (let index = 0; index < this.dashboardCards.length; index++) {
+      const card = this.dashboardCards[index];
+      if (!card) {
+        continue;
+      }
+      const isFocused = index === this.focusedCardIndex;
+      const isActiveDetail = this.detailCardId === card.id;
+      const titlePrefix = isActiveDetail ? "[*] " : isFocused ? "[>] " : "";
+      const borderColor = isActiveDetail
+        ? "#fbbf24"
+        : isFocused
+          ? "#e2e8f0"
+          : card.borderColor;
+
+      card.panel.title = `${titlePrefix}${card.title}`;
+      card.panel.borderColor = borderColor;
+    }
+  }
+
+  private moveCardFocus(delta: number): void {
+    if (this.dashboardCards.length === 0) {
+      return;
+    }
+
+    const count = this.dashboardCards.length;
+    this.focusedCardIndex = (this.focusedCardIndex + delta + count) % count;
+    const focusedCard = this.dashboardCards[this.focusedCardIndex];
+
+    if (this.detailCardId && focusedCard) {
+      this.detailCardId = focusedCard.id;
+      this.renderDetailOverlay();
+    }
+
+    this.applyDashboardFocusStyles();
+    this.updateInstructionsText();
+  }
+
+  private openFocusedCardDetail(): void {
+    const focusedCard = this.dashboardCards[this.focusedCardIndex];
+    if (!focusedCard) {
+      return;
+    }
+
+    this.detailCardId = focusedCard.id;
+    this.applyDashboardFocusStyles();
+    this.renderDetailOverlay();
+    this.updateInstructionsText();
+  }
+
   /**
    * Sets up keyboard handlers.
    */
@@ -737,6 +934,34 @@ class MonitorTuiApp {
             void this.enterMonitorMode(entry.socketPath);
           }
         }
+      } else if (this.detailCardId) {
+        if (
+          keyName === "escape" ||
+          keyName === "esc" ||
+          keyName === "return" ||
+          keyName === "enter" ||
+          keyName === "backspace"
+        ) {
+          this.hideDetailOverlay();
+        } else if (keyName === "tab" && key.shift) {
+          this.moveCardFocus(-1);
+        } else if (keyName === "tab") {
+          this.moveCardFocus(1);
+        } else if (keyName === "r") {
+          this.refreshData().catch((error) => {
+            console.error("Failed to refresh data:", error);
+          });
+        }
+      } else if (keyName === "tab" && key.shift) {
+        this.moveCardFocus(-1);
+      } else if (keyName === "tab") {
+        this.moveCardFocus(1);
+      } else if (
+        keyName === "return" ||
+        keyName === "enter" ||
+        keyName === "space"
+      ) {
+        this.openFocusedCardDetail();
       } else if (keyName === "r") {
         this.refreshData().catch((error) => {
           console.error("Failed to refresh data:", error);
@@ -992,6 +1217,9 @@ class MonitorTuiApp {
     this.selectionMode = false;
     this.socketPath = socketPath;
     this.client = new MonitorClient({ socketPath });
+    this.detailCardId = null;
+    this.detailOverlay = null;
+    this.focusedCardIndex = 0;
     this.setupMonitorLayout();
 
     await this.refreshData();
@@ -1048,6 +1276,11 @@ class MonitorTuiApp {
     this.updateIndexStatsPanel();
     this.updateCacheStatsPanel();
     this.updateToolStatsPanel();
+    this.applyDashboardFocusStyles();
+
+    if (this.detailCardId) {
+      this.renderDetailOverlay();
+    }
   }
 
   /**
@@ -1117,7 +1350,15 @@ class MonitorTuiApp {
   private updateUpstreamStatusPanel(): void {
     if (!this.upstreamStatusPanel) return;
 
-    const upstreams = this.currentUpstreams;
+    const upstreams = [...this.currentUpstreams].sort((a, b) => {
+      const statusDiff =
+        this.getUpstreamSortRank(this.getUpstreamStatus(a)) -
+        this.getUpstreamSortRank(this.getUpstreamStatus(b));
+      if (statusDiff !== 0) {
+        return statusDiff;
+      }
+      return a.key.localeCompare(b.key);
+    });
     const rows = this.upstreamStatusElements;
     const maxRows = rows.length;
 
@@ -1151,10 +1392,14 @@ class MonitorTuiApp {
     }
 
     const connectedCount = upstreams.filter(
-      (u) => u.status === "connected",
+      (u) => this.getUpstreamStatus(u) === "connected",
     ).length;
-    const authCount = upstreams.filter((u) => u.authPending).length;
-    const errorCount = upstreams.filter((u) => u.status === "error").length;
+    const authCount = upstreams.filter(
+      (u) => this.getUpstreamStatus(u) === "auth",
+    ).length;
+    const errorCount = upstreams.filter(
+      (u) => this.getUpstreamStatus(u) === "error",
+    ).length;
 
     const summaryLine = rows[0];
     if (summaryLine) {
@@ -1175,20 +1420,6 @@ class MonitorTuiApp {
     const displayCount =
       overflowCount > 0 ? Math.max(0, availableRows - 1) : availableRows;
 
-    const getStatusColor = (status: string): string => {
-      if (status === "connected") return "#4ade80";
-      if (status === "auth") return "#fbbf24";
-      if (status === "error") return "#f87171";
-      return "#94a3b8";
-    };
-
-    const getStatusToken = (status: string): string => {
-      if (status === "connected") return "OK";
-      if (status === "auth") return "AU";
-      if (status === "error") return "ER";
-      return "--";
-    };
-
     for (let rowIndex = 0; rowIndex < availableRows; rowIndex++) {
       const line = rows[rowStart + rowIndex];
       if (!line) continue;
@@ -1200,8 +1431,10 @@ class MonitorTuiApp {
           line.fg = "#94a3b8";
           continue;
         }
-        const status = upstream.authPending ? "auth" : upstream.status;
-        const statusToken = getStatusToken(status).padEnd(2, " ");
+        const status = this.getUpstreamStatus(upstream);
+        const statusToken = this.getUpstreamStatusToken(status)
+          .slice(0, 2)
+          .padEnd(2, " ");
         const key = this.truncateText(upstream.key, 14).padEnd(14, " ");
         const transport = (upstream.transport ?? "-")
           .toUpperCase()
@@ -1209,7 +1442,7 @@ class MonitorTuiApp {
           .padEnd(4, " ");
         const tools = `${upstream.toolCount ?? 0}`.padStart(5, " ");
         line.content = `${statusToken} ${key} ${transport} ${tools}`;
-        line.fg = getStatusColor(status);
+        line.fg = this.getUpstreamStatusColor(status);
         continue;
       }
 
@@ -1299,8 +1532,8 @@ class MonitorTuiApp {
 
     const panel = new BoxRenderable(this.renderer, {
       id: "monitor-help-panel",
-      width: 76,
-      height: 11,
+      width: 84,
+      height: 14,
       border: true,
       borderStyle: "single",
       borderColor: "#38bdf8",
@@ -1313,10 +1546,14 @@ class MonitorTuiApp {
     });
 
     const lines = [
-      "q            Quit monitor",
+      "Tab          Next card",
+      "Shift+Tab    Previous card",
+      "Enter        Open/close card details",
+      "Space        Open card details",
+      "Esc          Close help or details",
       "r            Refresh immediately",
       "?            Toggle this help",
-      "Esc          Close help",
+      "q            Quit monitor",
       "Ctrl+C       Quit monitor",
       "",
       "Press ? or Esc to close",
@@ -1352,6 +1589,7 @@ class MonitorTuiApp {
     this.renderer.root.remove(this.helpOverlay.id);
     this.helpOverlay = null;
     this.helpVisible = false;
+    this.updateInstructionsText();
   }
 
   /**
@@ -1467,6 +1705,696 @@ class MonitorTuiApp {
     }
   }
 
+  private renderDetailOverlay(): void {
+    if (!this.detailCardId || this.selectionMode || !this.isRunning) {
+      return;
+    }
+
+    if (this.detailOverlay) {
+      this.renderer.root.remove(this.detailOverlay.id);
+      this.detailOverlay = null;
+    }
+
+    const spec = this.buildDetailModalSpec(this.detailCardId);
+    const overlay = new BoxRenderable(this.renderer, {
+      id: "monitor-detail-overlay",
+      width: "100%",
+      height: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "column",
+    });
+
+    const panel = new BoxRenderable(this.renderer, {
+      id: "monitor-detail-panel",
+      width: "92%",
+      height: "88%",
+      border: true,
+      borderStyle: "single",
+      borderColor: spec.accentColor,
+      title: `${spec.title} Detail`,
+      titleAlignment: "left",
+      backgroundColor: "#020617",
+      flexDirection: "column",
+      padding: 1,
+      gap: 0,
+    });
+    overlay.add(panel);
+
+    panel.add(
+      new TextRenderable(this.renderer, {
+        id: "monitor-detail-subtitle",
+        content: spec.subtitle,
+        fg: "#94a3b8",
+      }),
+    );
+    panel.add(
+      new TextRenderable(this.renderer, {
+        id: "monitor-detail-divider",
+        content: "",
+        fg: "#020617",
+      }),
+    );
+
+    const maxLines = 26;
+    const visibleLines = spec.lines.slice(0, maxLines);
+    for (const [index, line] of visibleLines.entries()) {
+      panel.add(
+        new TextRenderable(this.renderer, {
+          id: `monitor-detail-line-${index}`,
+          content: this.truncateText(line.content, 180),
+          fg: line.fg ?? "#e2e8f0",
+        }),
+      );
+    }
+
+    const hiddenLineCount = Math.max(
+      0,
+      spec.lines.length - visibleLines.length,
+    );
+    if (hiddenLineCount > 0) {
+      panel.add(
+        new TextRenderable(this.renderer, {
+          id: "monitor-detail-overflow",
+          content: `… ${hiddenLineCount} more line${hiddenLineCount === 1 ? "" : "s"}`,
+          fg: "#64748b",
+        }),
+      );
+    }
+
+    panel.add(
+      new TextRenderable(this.renderer, {
+        id: "monitor-detail-footer-gap",
+        content: "",
+        fg: "#020617",
+      }),
+    );
+    panel.add(
+      new TextRenderable(this.renderer, {
+        id: "monitor-detail-footer",
+        content:
+          "Esc/Enter: close detail | Tab/Shift+Tab: switch card | r: refresh",
+        fg: "#94a3b8",
+      }),
+    );
+
+    this.renderer.root.add(overlay);
+    this.detailOverlay = overlay;
+  }
+
+  private hideDetailOverlay(): void {
+    if (this.detailOverlay) {
+      this.renderer.root.remove(this.detailOverlay.id);
+      this.detailOverlay = null;
+    }
+    this.detailCardId = null;
+    this.applyDashboardFocusStyles();
+    this.updateInstructionsText();
+  }
+
+  private buildDetailModalSpec(cardId: DashboardCardId): DetailModalSpec {
+    switch (cardId) {
+      case "server":
+        return this.buildServerDetailSpec();
+      case "requests":
+        return this.buildRequestDetailSpec();
+      case "upstreams":
+        return this.buildUpstreamDetailSpec();
+      case "memory":
+        return this.buildMemoryDetailSpec();
+      case "index":
+        return this.buildIndexDetailSpec();
+      case "cache":
+        return this.buildCacheDetailSpec();
+      case "clients":
+        return this.buildClientDetailSpec();
+      case "tools":
+        return this.buildToolDetailSpec();
+      default:
+        return {
+          title: "Card Details",
+          subtitle: "No detail renderer available for this card.",
+          accentColor: "#94a3b8",
+          lines: [{ content: "No detail data available.", fg: "#94a3b8" }],
+        };
+    }
+  }
+
+  private buildServerDetailSpec(): DetailModalSpec {
+    const lines: DetailLine[] = [
+      {
+        content: `Socket: ${this.socketPath ?? "unknown"}`,
+        fg: "#94a3b8",
+      },
+    ];
+
+    if (!this.currentStats) {
+      lines.push({
+        content: "Waiting for server statistics from monitor daemon...",
+        fg: "#fbbf24",
+      });
+
+      if (this.lastError) {
+        lines.push({ content: `Last error: ${this.lastError}`, fg: "#f87171" });
+      }
+
+      return {
+        title: "Server Status",
+        subtitle: "Runtime health, connectivity, and collection status.",
+        accentColor: "#38bdf8",
+        lines,
+      };
+    }
+
+    const stats = this.currentStats;
+    const health = stats.activeConnections > 0 ? "Healthy" : "Idle";
+    const healthColor = health === "Healthy" ? "#4ade80" : "#fbbf24";
+
+    lines.push({
+      content: `Collected: ${new Date(stats.timestamp).toLocaleString()}`,
+      fg: "#94a3b8",
+    });
+    lines.push({ content: "" });
+    lines.push({ content: `Health: ${health}`, fg: healthColor });
+    lines.push({
+      content: `Uptime: ${this.formatUptime(stats.uptime)}`,
+      fg: "#e2e8f0",
+    });
+    lines.push({
+      content: `Monitor connections: ${this.formatNumber(stats.activeConnections)}`,
+      fg: "#e2e8f0",
+    });
+
+    if (this.lastError) {
+      lines.push({ content: `Last error: ${this.lastError}`, fg: "#f87171" });
+    }
+    if (this.lastUpstreamsWarning) {
+      lines.push({
+        content: `Upstream warning: ${this.lastUpstreamsWarning}`,
+        fg: "#fbbf24",
+      });
+    }
+    if (this.lastClientsWarning) {
+      lines.push({
+        content: `Client warning: ${this.lastClientsWarning}`,
+        fg: "#fbbf24",
+      });
+    }
+
+    return {
+      title: "Server Status",
+      subtitle: "Runtime health, connectivity, and collection status.",
+      accentColor: "#38bdf8",
+      lines,
+    };
+  }
+
+  private buildRequestDetailSpec(): DetailModalSpec {
+    if (!this.currentStats) {
+      return {
+        title: "Request Statistics",
+        subtitle: "Request volume, latency, and reliability trends.",
+        accentColor: "#4ade80",
+        lines: [
+          {
+            content: "Waiting for request metrics from monitor daemon...",
+            fg: "#fbbf24",
+          },
+        ],
+      };
+    }
+
+    const { requests, uptime } = this.currentStats;
+    const successRate =
+      requests.total > 0 ? (requests.successful / requests.total) * 100 : 0;
+    const failureRate =
+      requests.total > 0 ? (requests.failed / requests.total) * 100 : 0;
+    const avgResponseTime =
+      requests.total > 0 ? requests.totalResponseTime / requests.total : 0;
+    const requestsPerSecond = uptime > 0 ? requests.total / (uptime / 1000) : 0;
+    const responseBandColor =
+      successRate >= 99 ? "#4ade80" : successRate >= 95 ? "#fbbf24" : "#f87171";
+
+    return {
+      title: "Request Statistics",
+      subtitle: "Request volume, latency, and reliability trends.",
+      accentColor: "#4ade80",
+      lines: [
+        {
+          content: `Total requests: ${this.formatNumber(requests.total)}`,
+          fg: "#e2e8f0",
+        },
+        {
+          content: `Successful: ${this.formatNumber(requests.successful)} (${successRate.toFixed(1)}%)`,
+          fg: responseBandColor,
+        },
+        {
+          content: `Failed: ${this.formatNumber(requests.failed)} (${failureRate.toFixed(1)}%)`,
+          fg: requests.failed > 0 ? "#f87171" : "#e2e8f0",
+        },
+        { content: "" },
+        {
+          content: `Avg response time: ${avgResponseTime.toFixed(2)}ms`,
+          fg: "#e2e8f0",
+        },
+        {
+          content: `Min response time: ${requests.total > 0 ? `${requests.minResponseTime.toFixed(2)}ms` : "--"}`,
+          fg: "#e2e8f0",
+        },
+        {
+          content: `Max response time: ${requests.total > 0 ? `${requests.maxResponseTime.toFixed(2)}ms` : "--"}`,
+          fg: "#e2e8f0",
+        },
+        {
+          content: `Throughput: ${requestsPerSecond.toFixed(2)} req/s`,
+          fg: "#94a3b8",
+        },
+      ],
+    };
+  }
+
+  private buildUpstreamDetailSpec(): DetailModalSpec {
+    const lines: DetailLine[] = [];
+    const upstreams = [...this.currentUpstreams];
+
+    if (upstreams.length === 0) {
+      lines.push({
+        content: this.lastUpstreamsWarning
+          ? `Upstream data unavailable: ${this.lastUpstreamsWarning}`
+          : "No upstream connections reported by daemon.",
+        fg: this.lastUpstreamsWarning ? "#fbbf24" : "#94a3b8",
+      });
+      lines.push({
+        content:
+          "Check daemon logs or run `mcp-squared monitor --socket=<path|tcp://host:port>` for a direct endpoint.",
+        fg: "#64748b",
+      });
+
+      return {
+        title: "Upstream Health",
+        subtitle: "Connection-level status, auth state, transport, and errors.",
+        accentColor: "#38bdf8",
+        lines,
+      };
+    }
+
+    upstreams.sort((a, b) => {
+      const statusDiff =
+        this.getUpstreamSortRank(this.getUpstreamStatus(a)) -
+        this.getUpstreamSortRank(this.getUpstreamStatus(b));
+      if (statusDiff !== 0) {
+        return statusDiff;
+      }
+      return a.key.localeCompare(b.key);
+    });
+
+    const connected = upstreams.filter(
+      (u) => this.getUpstreamStatus(u) === "connected",
+    ).length;
+    const authPending = upstreams.filter(
+      (u) => this.getUpstreamStatus(u) === "auth",
+    ).length;
+    const errored = upstreams.filter(
+      (u) => this.getUpstreamStatus(u) === "error",
+    ).length;
+    const other = upstreams.length - connected - authPending - errored;
+
+    lines.push({
+      content: `Total: ${upstreams.length} | Connected: ${connected} | Auth pending: ${authPending} | Errors: ${errored} | Other: ${other}`,
+      fg: errored > 0 ? "#f87171" : authPending > 0 ? "#fbbf24" : "#4ade80",
+    });
+
+    const transportCounts = new Map<string, number>();
+    for (const upstream of upstreams) {
+      const transport = (upstream.transport ?? "unknown").toUpperCase();
+      transportCounts.set(transport, (transportCounts.get(transport) ?? 0) + 1);
+    }
+    const transportSummary = Array.from(transportCounts.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([transport, count]) => `${transport}:${count}`)
+      .join(" | ");
+    if (transportSummary) {
+      lines.push({ content: `Transports: ${transportSummary}`, fg: "#94a3b8" });
+    }
+
+    lines.push({ content: "" });
+    lines.push({
+      content: "St   Key                 Trnsp  Tools  Server",
+      fg: "#94a3b8",
+    });
+
+    for (const upstream of upstreams) {
+      const status = this.getUpstreamStatus(upstream);
+      const statusToken = this.getUpstreamStatusToken(status).padEnd(4, " ");
+      const key = this.truncateText(upstream.key, 19).padEnd(19, " ");
+      const transport = this.truncateText(
+        (upstream.transport ?? "-").toUpperCase(),
+        5,
+      ).padEnd(5, " ");
+      const tools = `${upstream.toolCount ?? 0}`.padStart(5, " ");
+      const server = upstream.serverName
+        ? `${upstream.serverName}${upstream.serverVersion ? `@${upstream.serverVersion}` : ""}`
+        : "-";
+      lines.push({
+        content: `${statusToken}${key} ${transport} ${tools}  ${this.truncateText(server, 58)}`,
+        fg: this.getUpstreamStatusColor(status),
+      });
+
+      if (upstream.authPending) {
+        lines.push({
+          content: `     auth required for "${upstream.key}"`,
+          fg: "#fbbf24",
+        });
+      }
+
+      if (upstream.error) {
+        lines.push({
+          content: `     error: ${this.truncateText(upstream.error, 148)}`,
+          fg: "#f87171",
+        });
+      }
+
+      if (upstream.toolNames && upstream.toolNames.length > 0) {
+        lines.push({
+          content: `     tools: ${this.truncateText(upstream.toolNames.join(", "), 148)}`,
+          fg: "#64748b",
+        });
+      }
+    }
+
+    return {
+      title: "Upstream Health",
+      subtitle: "Connection-level status, auth state, transport, and errors.",
+      accentColor: "#38bdf8",
+      lines,
+    };
+  }
+
+  private buildMemoryDetailSpec(): DetailModalSpec {
+    if (!this.currentStats) {
+      return {
+        title: "Memory Usage",
+        subtitle: "Heap, RSS, and external memory footprint.",
+        accentColor: "#fbbf24",
+        lines: [
+          {
+            content: "Waiting for memory metrics from monitor daemon...",
+            fg: "#fbbf24",
+          },
+        ],
+      };
+    }
+
+    const { memory } = this.currentStats;
+    const heapUsagePercent =
+      memory.heapTotal > 0 ? (memory.heapUsed / memory.heapTotal) * 100 : 0;
+    const heapColor =
+      heapUsagePercent >= 85
+        ? "#f87171"
+        : heapUsagePercent >= 70
+          ? "#fbbf24"
+          : "#4ade80";
+
+    return {
+      title: "Memory Usage",
+      subtitle: "Heap, RSS, and external memory footprint.",
+      accentColor: "#fbbf24",
+      lines: [
+        {
+          content: `Heap used: ${this.formatBytes(memory.heapUsed)} (${heapUsagePercent.toFixed(1)}%)`,
+          fg: heapColor,
+        },
+        {
+          content: `Heap total: ${this.formatBytes(memory.heapTotal)}`,
+          fg: "#e2e8f0",
+        },
+        {
+          content: `RSS: ${this.formatBytes(memory.rss)}`,
+          fg: "#e2e8f0",
+        },
+        {
+          content: `External: ${this.formatBytes(memory.external)}`,
+          fg: "#e2e8f0",
+        },
+        {
+          content: `Array buffers: ${this.formatBytes(memory.arrayBuffers)}`,
+          fg: "#e2e8f0",
+        },
+      ],
+    };
+  }
+
+  private buildIndexDetailSpec(): DetailModalSpec {
+    if (!this.currentStats) {
+      return {
+        title: "Index Statistics",
+        subtitle: "Tool index coverage and refresh freshness.",
+        accentColor: "#a78bfa",
+        lines: [
+          {
+            content: "Waiting for index metrics from monitor daemon...",
+            fg: "#fbbf24",
+          },
+        ],
+      };
+    }
+
+    const { index } = this.currentStats;
+    const embeddingCoverage =
+      index.toolCount > 0 ? (index.embeddingCount / index.toolCount) * 100 : 0;
+
+    return {
+      title: "Index Statistics",
+      subtitle: "Tool index coverage and refresh freshness.",
+      accentColor: "#a78bfa",
+      lines: [
+        { content: `Indexed tools: ${this.formatNumber(index.toolCount)}` },
+        {
+          content: `Embeddings: ${this.formatNumber(index.embeddingCount)} (${embeddingCoverage.toFixed(1)}%)`,
+          fg: "#e2e8f0",
+        },
+        {
+          content: `Co-occurrence pairs: ${this.formatNumber(index.cooccurrenceCount)}`,
+          fg: "#e2e8f0",
+        },
+        {
+          content: `Last refresh: ${index.lastRefreshTime ? new Date(index.lastRefreshTime).toLocaleString() : "Never"}`,
+          fg: "#94a3b8",
+        },
+        {
+          content: `Age: ${index.lastRefreshTime ? this.formatTimeAgo(index.lastRefreshTime) : "n/a"}`,
+          fg: "#94a3b8",
+        },
+      ],
+    };
+  }
+
+  private buildCacheDetailSpec(): DetailModalSpec {
+    if (!this.currentStats) {
+      return {
+        title: "Cache Statistics",
+        subtitle: "Cache efficiency and occupancy.",
+        accentColor: "#f472b6",
+        lines: [
+          {
+            content: "Waiting for cache metrics from monitor daemon...",
+            fg: "#fbbf24",
+          },
+        ],
+      };
+    }
+
+    const { cache } = this.currentStats;
+    const total = cache.hits + cache.misses;
+    const hitRate = total > 0 ? (cache.hits / total) * 100 : 0;
+    const hitRateColor =
+      hitRate >= 90 ? "#4ade80" : hitRate >= 70 ? "#fbbf24" : "#f87171";
+
+    return {
+      title: "Cache Statistics",
+      subtitle: "Cache efficiency and occupancy.",
+      accentColor: "#f472b6",
+      lines: [
+        { content: `Entries: ${this.formatNumber(cache.size)}`, fg: "#e2e8f0" },
+        {
+          content: `Hits: ${this.formatNumber(cache.hits)}`,
+          fg: "#4ade80",
+        },
+        {
+          content: `Misses: ${this.formatNumber(cache.misses)}`,
+          fg: cache.misses > 0 ? "#f87171" : "#e2e8f0",
+        },
+        {
+          content: `Hit rate: ${hitRate.toFixed(1)}%`,
+          fg: hitRateColor,
+        },
+        {
+          content: `Lookups: ${this.formatNumber(total)}`,
+          fg: "#94a3b8",
+        },
+      ],
+    };
+  }
+
+  private buildClientDetailSpec(): DetailModalSpec {
+    const lines: DetailLine[] = [];
+    const clients = [...this.currentClients];
+
+    if (clients.length === 0) {
+      lines.push({
+        content: this.lastClientsWarning
+          ? `Client data unavailable: ${this.lastClientsWarning}`
+          : "No active clients connected to daemon.",
+        fg: this.lastClientsWarning ? "#fbbf24" : "#94a3b8",
+      });
+
+      return {
+        title: "Active Clients",
+        subtitle:
+          "Connected monitor clients, owner role, and session activity.",
+        accentColor: "#38bdf8",
+        lines,
+      };
+    }
+
+    clients.sort((a, b) => {
+      if (a.isOwner !== b.isOwner) {
+        return a.isOwner ? -1 : 1;
+      }
+      return b.lastSeen - a.lastSeen;
+    });
+
+    const ownerCount = clients.filter((client) => client.isOwner).length;
+    lines.push({
+      content: `Active sessions: ${clients.length} | Owners: ${ownerCount} | Non-owners: ${clients.length - ownerCount}`,
+      fg: "#e2e8f0",
+    });
+    lines.push({
+      content:
+        "Role Session / Client                             Last seen   Connected",
+      fg: "#94a3b8",
+    });
+
+    for (const client of clients) {
+      const role = client.isOwner ? "OWN " : "CLI ";
+      const label = client.clientId
+        ? `${client.clientId} (${client.sessionId})`
+        : client.sessionId;
+      const lastSeen = this.formatTimeAgo(client.lastSeen).padEnd(10, " ");
+      const connected = this.formatTimeAgo(client.connectedAt);
+      lines.push({
+        content: `${role}${this.truncateText(label, 42).padEnd(42, " ")} ${lastSeen}  ${connected}`,
+        fg: client.isOwner ? "#fbbf24" : "#e2e8f0",
+      });
+    }
+
+    return {
+      title: "Active Clients",
+      subtitle: "Connected monitor clients, owner role, and session activity.",
+      accentColor: "#38bdf8",
+      lines,
+    };
+  }
+
+  private buildToolDetailSpec(): DetailModalSpec {
+    const lines: DetailLine[] = [];
+    const tools = [...this.currentTools];
+
+    if (tools.length === 0) {
+      lines.push({
+        content: "No tool invocation telemetry is available yet.",
+        fg: "#94a3b8",
+      });
+
+      return {
+        title: "Top Tools by Usage",
+        subtitle: "Per-tool usage, success rate, and latency.",
+        accentColor: "#22d3ee",
+        lines,
+      };
+    }
+
+    tools.sort((a, b) => b.callCount - a.callCount);
+    const totalCalls = tools.reduce((sum, tool) => sum + tool.callCount, 0);
+
+    lines.push({
+      content: `Tracked tools: ${tools.length} | Total calls: ${this.formatNumber(totalCalls)}`,
+      fg: "#e2e8f0",
+    });
+    lines.push({
+      content:
+        " #  Tool (server/name)                          Calls  Success   Avg ms  Last call",
+      fg: "#94a3b8",
+    });
+
+    for (const [index, tool] of tools.entries()) {
+      const successRate =
+        tool.callCount > 0 ? (tool.successCount / tool.callCount) * 100 : 0;
+      const successColor =
+        successRate >= 95
+          ? "#4ade80"
+          : successRate >= 80
+            ? "#fbbf24"
+            : "#f87171";
+      const toolName = `${tool.serverKey}/${tool.name}`;
+      const lastCall = tool.lastCallTime
+        ? this.formatTimeAgo(tool.lastCallTime)
+        : "never";
+      lines.push({
+        content: `${`${index + 1}`.padStart(2, " ")} ${this.truncateText(toolName, 42).padEnd(42, " ")} ${this.formatNumber(tool.callCount).padStart(6, " ")}  ${successRate.toFixed(1).padStart(7, " ")}% ${tool.avgResponseTime.toFixed(2).padStart(8, " ")}  ${lastCall}`,
+        fg: successColor,
+      });
+
+      if (tool.failureCount > 0) {
+        lines.push({
+          content: `    failures: ${this.formatNumber(tool.failureCount)}`,
+          fg: "#f87171",
+        });
+      }
+    }
+
+    return {
+      title: "Top Tools by Usage",
+      subtitle: "Per-tool usage, success rate, and latency.",
+      accentColor: "#22d3ee",
+      lines,
+    };
+  }
+
+  private getUpstreamStatus(upstream: UpstreamInfo): UpstreamStatusKind {
+    if (upstream.authPending) {
+      return "auth";
+    }
+    if (upstream.status === "connected") {
+      return "connected";
+    }
+    if (upstream.status === "error") {
+      return "error";
+    }
+    return "other";
+  }
+
+  private getUpstreamStatusToken(status: UpstreamStatusKind): string {
+    if (status === "connected") return "OK";
+    if (status === "auth") return "AUTH";
+    if (status === "error") return "ERR";
+    return "DOWN";
+  }
+
+  private getUpstreamStatusColor(status: UpstreamStatusKind): string {
+    if (status === "connected") return "#4ade80";
+    if (status === "auth") return "#fbbf24";
+    if (status === "error") return "#f87171";
+    return "#94a3b8";
+  }
+
+  private getUpstreamSortRank(status: UpstreamStatusKind): number {
+    if (status === "error") return 0;
+    if (status === "auth") return 1;
+    if (status === "other") return 2;
+    return 3;
+  }
+
   /**
    * Formats uptime in a human-readable format.
    */
@@ -1502,6 +2430,10 @@ class MonitorTuiApp {
     }
 
     return `${size.toFixed(2)} ${units[unitIndex]}`;
+  }
+
+  private formatNumber(value: number): string {
+    return new Intl.NumberFormat().format(value);
   }
 
   /**
