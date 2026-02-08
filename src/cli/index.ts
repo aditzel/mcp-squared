@@ -503,9 +503,9 @@ Install Options:
   --no-interactive              Disable interactive prompts
 
 Monitor Options:
+  (daemon-first; attaches to shared daemon monitor by default)
   --refresh-interval=<ms>       Auto-refresh interval in milliseconds (default: 2000)
   --no-auto-refresh             Disable auto-refresh (manual refresh only)
-  --instance=<id>               Attach to a specific server instance (full or prefix)
   --socket=<path>               Connect to a specific monitor socket or tcp://host:port
 
 Daemon Options:
@@ -533,7 +533,6 @@ Examples:
   mcp-squared monitor           Launch server monitor with default settings
   mcp-squared monitor --refresh-interval=5000  Refresh every 5 seconds
   mcp-squared monitor --no-auto-refresh  Manual refresh only
-  mcp-squared monitor --instance=abcd1234  Monitor a specific instance
   mcp-squared monitor --socket=/tmp/mcp-squared.sock  Monitor a specific socket
   mcp-squared daemon            Start shared daemon
   mcp-squared proxy             Run stdio proxy (auto-spawn daemon)

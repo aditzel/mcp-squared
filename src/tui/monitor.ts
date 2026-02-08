@@ -94,7 +94,11 @@ class MonitorTuiApp {
   private currentUpstreams: UpstreamInfo[] = [];
   private currentClients: ClientInfo[] = [];
   private lastError: string | null = null;
+  private lastUpstreamsWarning: string | null = null;
+  private lastClientsWarning: string | null = null;
   private lastUpdateTime = 0;
+  private helpVisible = false;
+  private helpOverlay: BoxRenderable | null = null;
 
   // Panel references
   private serverStatusPanel: BoxRenderable | null = null;
@@ -230,6 +234,7 @@ class MonitorTuiApp {
    * Clears and recreates the base container.
    */
   private clearScreen(): void {
+    this.hideHelpOverlay();
     if (this.container) {
       this.renderer.root.remove(this.container.id);
     }
@@ -422,7 +427,7 @@ class MonitorTuiApp {
 
     const instructions = new TextRenderable(this.renderer, {
       id: "monitor-instructions",
-      content: "q: Quit | r: Refresh",
+      content: "q: Quit | r: Refresh | ?: Help",
       fg: "#64748b",
       marginLeft: "auto",
     });
@@ -698,9 +703,21 @@ class MonitorTuiApp {
   private setupKeyboardHandlers(): void {
     this.renderer.keyInput.on("keypress", (key: KeyEvent) => {
       const keyName = (key.name || key.sequence || "").toLowerCase();
+      const isHelpToggle = keyName === "?" || key.sequence === "?";
+
       if (keyName === "q") {
         this.stop();
         process.exit(0);
+      } else if (keyName === "c" && key.ctrl) {
+        this.stop();
+        process.exit(0);
+      } else if (!this.selectionMode && isHelpToggle) {
+        this.toggleHelpOverlay();
+      } else if (this.helpVisible) {
+        if (keyName === "escape" || keyName === "esc" || isHelpToggle) {
+          this.hideHelpOverlay();
+        }
+        return;
       } else if (this.selectionMode) {
         if (this.instances.length === 0) {
           return;
@@ -724,9 +741,6 @@ class MonitorTuiApp {
         this.refreshData().catch((error) => {
           console.error("Failed to refresh data:", error);
         });
-      } else if (keyName === "c" && key.ctrl) {
-        this.stop();
-        process.exit(0);
       }
     });
   }
@@ -752,14 +766,20 @@ class MonitorTuiApp {
 
       try {
         this.currentUpstreams = await this.client.getUpstreams();
-      } catch {
+        this.lastUpstreamsWarning = null;
+      } catch (error) {
+        const err = error as Error;
         this.currentUpstreams = [];
+        this.lastUpstreamsWarning = `Upstream data unavailable (${err.message})`;
       }
 
       try {
         this.currentClients = await this.client.getClients();
-      } catch {
+        this.lastClientsWarning = null;
+      } catch (error) {
+        const err = error as Error;
         this.currentClients = [];
+        this.lastClientsWarning = `Client data unavailable (${err.message})`;
       }
 
       this.lastError = null;
@@ -999,6 +1019,16 @@ class MonitorTuiApp {
       if (this.lastError) {
         this.statusText.content = `Error: ${this.lastError}`;
         this.statusText.fg = "#f87171";
+      } else if (this.lastUpstreamsWarning || this.lastClientsWarning) {
+        const warnings = [
+          this.lastUpstreamsWarning,
+          this.lastClientsWarning,
+        ].filter((warning): warning is string => Boolean(warning));
+        this.statusText.content = this.truncateText(
+          `Warning: ${warnings.join(" | ")}`,
+          180,
+        );
+        this.statusText.fg = "#fbbf24";
       } else if (this.currentStats) {
         const timeSinceUpdate = Date.now() - this.lastUpdateTime;
         this.statusText.content = `Last update: ${timeSinceUpdate}ms ago`;
@@ -1090,6 +1120,29 @@ class MonitorTuiApp {
     const upstreams = this.currentUpstreams;
     const maxRows = this.upstreamStatusElements.length;
 
+    if (upstreams.length === 0) {
+      const firstLine = this.upstreamStatusElements[0];
+      if (firstLine) {
+        if (this.lastUpstreamsWarning) {
+          firstLine.content = this.truncateText(
+            `! ${this.lastUpstreamsWarning}`,
+            120,
+          );
+          firstLine.fg = "#fbbf24";
+        } else {
+          firstLine.content = "No upstream data reported.";
+          firstLine.fg = "#94a3b8";
+        }
+      }
+
+      for (let i = 1; i < maxRows; i++) {
+        const line = this.upstreamStatusElements[i];
+        if (!line) continue;
+        line.content = "";
+      }
+      return;
+    }
+
     for (let i = 0; i < maxRows; i++) {
       const line = this.upstreamStatusElements[i];
       if (!line) continue;
@@ -1136,6 +1189,29 @@ class MonitorTuiApp {
     const clients = this.currentClients;
     const maxRows = this.clientStatusElements.length;
 
+    if (clients.length === 0) {
+      const firstLine = this.clientStatusElements[0];
+      if (firstLine) {
+        if (this.lastClientsWarning) {
+          firstLine.content = this.truncateText(
+            `! ${this.lastClientsWarning}`,
+            120,
+          );
+          firstLine.fg = "#fbbf24";
+        } else {
+          firstLine.content = "No active clients.";
+          firstLine.fg = "#94a3b8";
+        }
+      }
+
+      for (let i = 1; i < maxRows; i++) {
+        const line = this.clientStatusElements[i];
+        if (!line) continue;
+        line.content = "";
+      }
+      return;
+    }
+
     for (let i = 0; i < maxRows; i++) {
       const line = this.clientStatusElements[i];
       if (!line) continue;
@@ -1146,9 +1222,92 @@ class MonitorTuiApp {
       }
       const label = client.clientId ?? client.sessionId;
       const ownerMark = client.isOwner ? "*" : " ";
-      line.content = `${ownerMark} ${label}`;
+      const lastSeen = this.formatTimeAgo(client.lastSeen);
+      line.content = this.truncateText(
+        `${ownerMark} ${label} (${lastSeen})`,
+        120,
+      );
       line.fg = client.isOwner ? "#fbbf24" : "#e2e8f0";
     }
+  }
+
+  private toggleHelpOverlay(): void {
+    if (this.helpVisible) {
+      this.hideHelpOverlay();
+      return;
+    }
+    this.showHelpOverlay();
+  }
+
+  private showHelpOverlay(): void {
+    if (this.helpVisible || !this.isRunning || this.selectionMode) {
+      return;
+    }
+
+    const overlay = new BoxRenderable(this.renderer, {
+      id: "monitor-help-overlay",
+      width: "100%",
+      height: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "column",
+    });
+
+    const panel = new BoxRenderable(this.renderer, {
+      id: "monitor-help-panel",
+      width: 76,
+      height: 11,
+      border: true,
+      borderStyle: "single",
+      borderColor: "#38bdf8",
+      title: "Keyboard Shortcuts",
+      titleAlignment: "left",
+      backgroundColor: "#0f172a",
+      flexDirection: "column",
+      padding: 1,
+      gap: 0,
+    });
+
+    const lines = [
+      "q            Quit monitor",
+      "r            Refresh immediately",
+      "?            Toggle this help",
+      "Esc          Close help",
+      "Ctrl+C       Quit monitor",
+      "",
+      "Press ? or Esc to close",
+    ];
+
+    for (const [index, content] of lines.entries()) {
+      panel.add(
+        new TextRenderable(this.renderer, {
+          id: `monitor-help-line-${index}`,
+          content,
+          fg:
+            content === ""
+              ? "#0f172a"
+              : content.startsWith("Press ")
+                ? "#94a3b8"
+                : "#e2e8f0",
+        }),
+      );
+    }
+
+    overlay.add(panel);
+    this.renderer.root.add(overlay);
+    this.helpOverlay = overlay;
+    this.helpVisible = true;
+  }
+
+  private hideHelpOverlay(): void {
+    if (!this.helpOverlay) {
+      this.helpVisible = false;
+      return;
+    }
+
+    this.renderer.root.remove(this.helpOverlay.id);
+    this.helpOverlay = null;
+    this.helpVisible = false;
   }
 
   /**

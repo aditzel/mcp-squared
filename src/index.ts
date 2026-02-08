@@ -522,107 +522,72 @@ async function runAuth(targetName: string): Promise<void> {
 
 /**
  * Runs the server monitor TUI.
- * Checks if the MCP server is running and launches the monitor interface.
+ * Resolves the shared daemon monitor socket and launches the monitor interface.
  *
  * @param options - Monitor options from CLI
  * @internal
  */
 async function runMonitor(options: MonitorArgs): Promise<void> {
   let socketPath = options.socketPath;
-  let instances: InstanceRegistryEntry[] = [];
+  const instances: InstanceRegistryEntry[] = [];
 
   if (!socketPath) {
-    instances = await listActiveInstanceEntries({ prune: true });
-
     const { config, path: configPath } = await loadConfig();
     const configHash = computeConfigHash(config);
     const daemonRegistry = await loadLiveDaemonRegistry(configHash);
-    if (daemonRegistry) {
-      const daemonId = `daemon-${configHash}`;
-      const hasDaemon = instances.some((entry) => entry.id === daemonId);
-      if (!hasDaemon) {
-        const daemonEntry: InstanceRegistryEntry = {
-          id: daemonId,
-          pid: daemonRegistry.pid,
-          socketPath: getSocketFilePath(configHash),
-          startedAt: daemonRegistry.startedAt,
-          configPath,
-          command: "mcp-squared daemon",
-          role: "daemon",
-          ...(daemonRegistry.version
-            ? { version: daemonRegistry.version }
-            : {}),
-        };
-        instances.push(daemonEntry);
-      }
+    if (!daemonRegistry) {
+      console.error(
+        "Error: No running shared MCP² daemon found for the active configuration.",
+      );
+      console.error("Start the daemon first:");
+      console.error("  mcp-squared daemon");
+      console.error("");
+      console.error(
+        "Or connect directly with: mcp-squared monitor --socket=<path|tcp://host:port>",
+      );
+      process.exit(1);
     }
+
+    const daemonEntry: InstanceRegistryEntry = {
+      id: `daemon-${configHash}`,
+      pid: daemonRegistry.pid,
+      socketPath: getSocketFilePath(configHash),
+      startedAt: daemonRegistry.startedAt,
+      configPath,
+      command: "mcp-squared daemon",
+      role: "daemon",
+      ...(daemonRegistry.version ? { version: daemonRegistry.version } : {}),
+    };
+    instances.push(daemonEntry);
 
     augmentProcessInfo(instances);
 
     const instanceId = options.instanceId;
-    if (instanceId) {
-      const matches = instances.filter(
-        (entry) => entry.id === instanceId || entry.id.startsWith(instanceId),
+    if (
+      instanceId &&
+      daemonEntry.id !== instanceId &&
+      !daemonEntry.id.startsWith(instanceId)
+    ) {
+      console.error(
+        `Error: Monitor is daemon-only. No daemon instance matches '${instanceId}'.`,
       );
-
-      if (matches.length === 0) {
-        console.error(
-          `Error: No running MCP² instance matches '${options.instanceId}'.`,
-        );
-        if (instances.length > 0) {
-          console.error("");
-          console.error("Available instances:");
-          printInstanceList(instances);
-        }
-        process.exit(1);
-      }
-
-      if (matches.length > 1) {
-        console.error(
-          `Error: Instance ID '${options.instanceId}' is ambiguous.`,
-        );
-        console.error("");
-        console.error("Matching instances:");
-        printInstanceList(matches);
-        process.exit(1);
-      }
-
-      socketPath = matches[0]?.socketPath;
+      console.error(`Running daemon instance: ${daemonEntry.id}`);
+      process.exit(1);
     }
-  }
 
-  if (
-    !socketPath &&
-    instances.length > 1 &&
-    (!process.stdin.isTTY || !process.stdout.isTTY)
-  ) {
-    console.error(
-      "Error: Multiple MCP² instances are running but no TTY is available.",
-    );
-    console.error("Use --instance or --socket to select a target.");
-    console.error("");
-    console.error("Available instances:");
-    printInstanceList(instances);
-    process.exit(1);
-  }
-
-  if (!socketPath && instances.length === 1) {
-    socketPath = instances[0]?.socketPath;
+    socketPath = daemonEntry.socketPath;
   }
 
   try {
-    // Launch the monitor TUI
-    const monitorOptions = {
-      instances,
-      refreshInterval: options.noAutoRefresh ? 0 : options.refreshInterval,
-    } as {
-      socketPath?: string;
+    const monitorOptions: {
+      socketPath: string;
       instances: InstanceRegistryEntry[];
       refreshInterval: number;
+    } = {
+      socketPath,
+      instances,
+      refreshInterval: options.noAutoRefresh ? 0 : options.refreshInterval,
     };
-    if (socketPath) {
-      monitorOptions.socketPath = socketPath;
-    }
     await runMonitorTui(monitorOptions);
   } catch (error) {
     const err = error as Error;
@@ -930,19 +895,6 @@ async function runProxyCommand(options: ProxyArgs): Promise<void> {
   }
   registerInstance();
 }
-
-function printInstanceList(entries: InstanceRegistryEntry[]): void {
-  for (const [index, entry] of entries.entries()) {
-    const startedAt = new Date(entry.startedAt).toLocaleString();
-    const role = entry.role ? `[${entry.role}] ` : "";
-    const launcher = entry.launcher ? `, launcher ${entry.launcher}` : "";
-    console.error(
-      `  ${index + 1}. ${role}${entry.id} (pid ${entry.pid}, started ${startedAt}${launcher})`,
-    );
-  }
-}
-
-// selection handled inside monitor TUI
 
 /**
  * Main entry point for the MCP² CLI.
