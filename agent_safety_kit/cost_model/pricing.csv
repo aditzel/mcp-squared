@@ -1,0 +1,5 @@
+model,input_per_1k,output_per_1k,currency
+gpt-4o-mini,0.00015,0.0006,USD
+gpt-4.1-mini,0.0004,0.0016,USD
+claude-3-5-sonnet,0.003,0.015,USD
+*,0.001,0.002,USD
