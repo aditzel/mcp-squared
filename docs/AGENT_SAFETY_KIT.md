@@ -22,7 +22,7 @@ The Agent Safety Kit adds policy gates, observability, and offline cost simulati
 
 ## What Was Integrated
 
-`/Users/allan/projects/personal/mcp-squared/src/server/index.ts` now:
+`src/server/index.ts` now:
 
 - builds sink with `build_sink()`
 - loads policy with `load_policy()` when enabled
@@ -37,7 +37,7 @@ When `AGENT_SAFETY_ENABLED=0`, guard and tracing become no-op and behavior remai
 
 Default policy:
 
-- `/Users/allan/projects/personal/mcp-squared/agent_safety_kit/policy/policy.yaml`
+- `agent_safety_kit/policy/policy.yaml`
 
 Policy supports matching by `agent`, `tool`, `action`, with optional constraints:
 
@@ -72,8 +72,8 @@ Metrics emitted:
 
 Input files:
 
-- pricing: `/Users/allan/projects/personal/mcp-squared/agent_safety_kit/cost_model/pricing.csv`
-- tasks sample: `/Users/allan/projects/personal/mcp-squared/agent_safety_kit/cost_model/tasks.csv`
+- pricing: `agent_safety_kit/cost_model/pricing.csv`
+- tasks sample: `agent_safety_kit/cost_model/tasks.csv`
 
 Run:
 
@@ -99,8 +99,8 @@ The simulator writes:
 
 Added tests:
 
-- `/Users/allan/projects/personal/mcp-squared/tests/agent_safety_kit/policy-matching.test.ts`
-- `/Users/allan/projects/personal/mcp-squared/tests/agent_safety_kit/ratelimit.test.ts`
-- `/Users/allan/projects/personal/mcp-squared/tests/agent_safety_kit/guard.test.ts`
+- `tests/agent_safety_kit/policy-matching.test.ts`
+- `tests/agent_safety_kit/ratelimit.test.ts`
+- `tests/agent_safety_kit/guard.test.ts`
 
 These cover matcher behavior, secret redaction, and sliding-window rate limiting.
