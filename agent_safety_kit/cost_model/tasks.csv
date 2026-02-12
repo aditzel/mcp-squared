@@ -1,0 +1,4 @@
+task_id,model,prompt,response
+task-001,gpt-4o-mini,"Summarize deployment logs for safety alerts.","No critical alerts detected."
+task-002,gpt-4.1-mini,"Review a patch and suggest minimal changes.","Patched guard initialization and added tests."
+task-003,claude-3-5-sonnet,"List tool invocations and classify risk.","Three file-write operations require confirmation in prod."

@@ -1,0 +1,28 @@
+version: 1
+playbooks:
+  dev:
+    defaults:
+      deny_by_default: true
+      report_only: true
+    rules:
+      - agent: "*"
+        tool: "*"
+        action: "*"
+        rate_limit_per_min: 600
+        max_patch_size_bytes: 1048576
+        denylist_cmd_regex:
+          - '(?i)\\brm\\s+-rf\\s+/\\b'
+          - '(?i)\\bmkfs\\b'
+  prod:
+    defaults:
+      deny_by_default: true
+      report_only: false
+    rules:
+      - agent: "mcp-squared"
+        tool: "*"
+        action: "call"
+        rate_limit_per_min: 240
+        max_patch_size_bytes: 262144
+        denylist_cmd_regex:
+          - '(?i)\\brm\\s+-rf\\s+/\\b'
+          - '(?i)\\bmkfs\\b'
