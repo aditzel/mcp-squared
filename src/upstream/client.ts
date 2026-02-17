@@ -193,8 +193,8 @@ async function handleOAuthCallback(
       throw new Error("No authorization code received");
     }
 
-    // Verify state if present
-    if (result.state && !provider.verifyState(result.state)) {
+    // Verify state (required for CSRF protection)
+    if (!result.state || !provider.verifyState(result.state)) {
       throw new Error("OAuth state mismatch - possible CSRF attack");
     }
 

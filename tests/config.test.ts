@@ -530,6 +530,66 @@ describe("validateConfig", () => {
     const issues = validateConfig(config);
     expect(issues.length).toBe(0);
   });
+
+  test("warns on remote SSE upstreams using plain HTTP", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        insecureRemote: {
+          transport: "sse",
+          enabled: true,
+          env: {},
+          sse: { url: "http://example.com/mcp", headers: {} },
+        },
+      },
+    };
+
+    const issues = validateConfig(config);
+    expect(issues.length).toBe(1);
+    expect(issues[0]?.severity).toBe("warning");
+    expect(issues[0]?.message).toContain("unencrypted HTTP URL");
+  });
+
+  test("allows localhost SSE upstream over HTTP", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        localRemote: {
+          transport: "sse",
+          enabled: true,
+          env: {},
+          sse: { url: "http://127.0.0.1:8080/mcp", headers: {} },
+        },
+      },
+    };
+
+    const issues = validateConfig(config);
+    expect(issues.length).toBe(0);
+  });
+
+  test("warns on literal bearer tokens in SSE headers", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        remote: {
+          transport: "sse",
+          enabled: true,
+          env: {},
+          sse: {
+            url: "https://example.com/mcp",
+            headers: {
+              Authorization: "Bearer super-secret-token",
+            },
+          },
+        },
+      },
+    };
+
+    const issues = validateConfig(config);
+    expect(issues.length).toBe(1);
+    expect(issues[0]?.severity).toBe("warning");
+    expect(issues[0]?.message).toContain("literal bearer token");
+  });
 });
 
 describe("formatValidationIssues", () => {

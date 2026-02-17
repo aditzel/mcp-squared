@@ -10,6 +10,7 @@
 import type {
   McpSquaredConfig,
   UpstreamServerConfig,
+  UpstreamSseServerConfig,
   UpstreamStdioServerConfig,
 } from "./schema.js";
 
@@ -100,6 +101,55 @@ export function validateStdioUpstream(
   return issues;
 }
 
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1"]);
+
+/**
+ * Validates a single SSE upstream configuration for common security pitfalls.
+ */
+export function validateSseUpstream(
+  name: string,
+  config: UpstreamSseServerConfig,
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+
+  try {
+    const parsedUrl = new URL(config.sse.url);
+    const hostname = parsedUrl.hostname.toLowerCase();
+    const isLocal = LOCAL_HOSTNAMES.has(hostname);
+
+    if (parsedUrl.protocol === "http:" && !isLocal) {
+      issues.push({
+        severity: "warning",
+        upstream: name,
+        message: `SSE upstream uses unencrypted HTTP URL: ${config.sse.url}`,
+        suggestion:
+          "Use HTTPS for remote upstreams to prevent token/header exposure in transit",
+      });
+    }
+  } catch {
+    // URL format is already validated by schema; keep validator resilient.
+  }
+
+  for (const [headerName, headerValue] of Object.entries(config.sse.headers)) {
+    const isAuthorization = headerName.toLowerCase() === "authorization";
+    const isBearer = /^Bearer\s+/i.test(headerValue);
+    const usesEnvPlaceholder = /^Bearer\s+\$/i.test(headerValue.trim());
+
+    if (isAuthorization && isBearer && !usesEnvPlaceholder) {
+      issues.push({
+        severity: "warning",
+        upstream: name,
+        message:
+          "Authorization header appears to contain a literal bearer token",
+        suggestion:
+          'Use an environment placeholder, e.g., Authorization = "Bearer $API_TOKEN"',
+      });
+    }
+  }
+
+  return issues;
+}
+
 /**
  * Validates a single upstream configuration.
  *
@@ -114,8 +164,7 @@ export function validateUpstreamConfig(
   if (config.transport === "stdio") {
     return validateStdioUpstream(name, config);
   }
-  // SSE upstreams don't have these issues
-  return [];
+  return validateSseUpstream(name, config);
 }
 
 /**

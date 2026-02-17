@@ -8,6 +8,7 @@
  */
 
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -87,6 +88,13 @@ export class TokenStorage {
     if (!existsSync(this.baseDir)) {
       mkdirSync(this.baseDir, { recursive: true, mode: 0o700 });
     }
+
+    // Enforce secure permissions even when the directory already existed.
+    try {
+      chmodSync(this.baseDir, 0o700);
+    } catch {
+      // Best effort only; don't block auth flow on chmod failures.
+    }
   }
 
   /**
@@ -138,6 +146,13 @@ export class TokenStorage {
     writeFileSync(filePath, JSON.stringify(dataWithTimestamp, null, 2), {
       mode: 0o600,
     });
+
+    // writeFileSync mode is only guaranteed on create; enforce on existing files too.
+    try {
+      chmodSync(filePath, 0o600);
+    } catch {
+      // Best effort only; file may live on a filesystem that ignores mode bits.
+    }
   }
 
   /**

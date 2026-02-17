@@ -154,6 +154,17 @@ describe("Cataloger", () => {
       expect(connection).toBeDefined();
       expect(connection?.status).toBe("error");
       expect(connection?.error).toBeDefined();
+
+      // Verify the error message indicates the actual problem
+      // Should mention one of: exit code, spawn error, ENOENT, or not found
+      const errorMessage = connection?.error?.toLowerCase() ?? "";
+      const indicatesInvalidCommand =
+        errorMessage.includes("exit") ||
+        errorMessage.includes("spawn") ||
+        errorMessage.includes("enoent") ||
+        errorMessage.includes("not found") ||
+        errorMessage.includes("no such file");
+      expect(indicatesInvalidCommand).toBe(true);
     });
 
     test("sets connecting status during connection attempt", async () => {

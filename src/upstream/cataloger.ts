@@ -8,6 +8,7 @@
  * @module upstream/cataloger
  */
 
+import type { ChildProcess } from "node:child_process";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -224,8 +225,9 @@ export class Cataloger {
       });
 
       let transport: Transport;
+      const isStdio = config.transport === "stdio";
 
-      if (config.transport === "stdio") {
+      if (isStdio) {
         transport = this.createStdioTransport(config);
       } else {
         const { transport: httpTransport, authProvider } =
@@ -250,6 +252,23 @@ export class Cataloger {
 
       try {
         await Promise.race([connectPromise, timeoutPromise]);
+
+        // For stdio transports, verify process didn't die during initialization.
+        // This catches the POSIX fork/exec race condition where:
+        // 1. fork() succeeds, triggering 'spawn' event
+        // 2. exec() fails (e.g., ENOENT), causing process to exit with code 127
+        // 3. transport.start() resolved on 'spawn', but process is already dead
+        if (isStdio && transport instanceof StdioClientTransport) {
+          // biome-ignore lint/suspicious/noExplicitAny: accessing private _process property
+          const childProcess = (transport as any)._process as
+            | ChildProcess
+            | undefined;
+          if (childProcess && childProcess.exitCode !== null) {
+            throw new Error(
+              `Process exited during initialization with code ${childProcess.exitCode}`,
+            );
+          }
+        }
       } catch (err) {
         // Handle OAuth authorization required
         if (err instanceof UnauthorizedError && connection.authProvider) {
