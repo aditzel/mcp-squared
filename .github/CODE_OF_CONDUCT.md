@@ -30,7 +30,7 @@ Community leaders are responsible for clarifying and enforcing our standards of 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at allan@allanditzel.com. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported by opening a GitHub issue and requesting maintainer follow-up. Please avoid posting sensitive personal details publicly. All complaints will be reviewed and investigated promptly and fairly.
 
 ## Attribution
 
