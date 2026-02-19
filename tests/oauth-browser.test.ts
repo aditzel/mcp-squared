@@ -28,6 +28,8 @@ mock.module("node:child_process", () => ({
 
 import { openBrowser } from "../src/oauth/browser.js";
 
+let restorePlatform = () => {};
+
 function setPlatformForTest(platform: NodeJS.Platform): () => void {
   const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
 
@@ -45,11 +47,13 @@ function setPlatformForTest(platform: NodeJS.Platform): () => void {
 
 describe("openBrowser", () => {
   afterEach(() => {
+    restorePlatform();
+    restorePlatform = () => {};
     spawnMock.mockClear();
   });
 
   test("uses open on macOS", async () => {
-    const restorePlatform = setPlatformForTest("darwin");
+    restorePlatform = setPlatformForTest("darwin");
 
     const url = "https://example.com/oauth?state=abc";
     const result = await openBrowser(url);
@@ -59,12 +63,10 @@ describe("openBrowser", () => {
       detached: true,
       stdio: "ignore",
     });
-
-    restorePlatform();
   });
 
   test("uses xdg-open on Linux", async () => {
-    const restorePlatform = setPlatformForTest("linux");
+    restorePlatform = setPlatformForTest("linux");
 
     const url = "https://example.com/oauth?state=linux";
     const result = await openBrowser(url);
@@ -74,12 +76,10 @@ describe("openBrowser", () => {
       detached: true,
       stdio: "ignore",
     });
-
-    restorePlatform();
   });
 
   test("uses PowerShell Start-Process on Windows instead of cmd.exe", async () => {
-    const restorePlatform = setPlatformForTest("win32");
+    restorePlatform = setPlatformForTest("win32");
 
     const url = "https://example.com/oauth?state=windows";
     const result = await openBrowser(url);
@@ -91,7 +91,7 @@ describe("openBrowser", () => {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        `Start-Process ${JSON.stringify(url)}`,
+        `Start-Process '${url.replace(/'/g, "''")}'`,
       ],
       {
         detached: true,
@@ -101,12 +101,10 @@ describe("openBrowser", () => {
 
     const [command] = spawnMock.mock.calls[0] ?? [];
     expect(command).not.toBe("cmd");
-
-    restorePlatform();
   });
 
   test("preserves special URL characters in argument array", async () => {
-    const restorePlatform = setPlatformForTest("win32");
+    restorePlatform = setPlatformForTest("win32");
 
     const url = "https://example.com/cb?x=1&y=2#frag";
     const result = await openBrowser(url);
@@ -121,9 +119,7 @@ describe("openBrowser", () => {
       "-NoProfile",
       "-NonInteractive",
       "-Command",
-      `Start-Process ${JSON.stringify(url)}`,
+      `Start-Process '${url.replace(/'/g, "''")}'`,
     ]);
-
-    restorePlatform();
   });
 });

@@ -32,13 +32,13 @@ export async function openBrowser(url: string): Promise<boolean> {
       args = [url];
       break;
     case "win32":
-      // Use PowerShell Start-Process to avoid cmd.exe command parsing risks.
+      // Use PowerShell single-quoted string literal to avoid $variable and $() expansion.
       command = "powershell";
       args = [
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        `Start-Process ${JSON.stringify(url)}`,
+        `Start-Process '${url.replace(/'/g, "''")}'`,
       ];
       break;
     default:
