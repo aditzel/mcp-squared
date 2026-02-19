@@ -95,6 +95,8 @@ export interface RetrieverOptions {
 
 type EmbeddingModule = typeof import("../embeddings/index.js");
 type EmbeddingGeneratorClass = EmbeddingModule["EmbeddingGenerator"];
+type EmbeddingRuntimeDependencyErrorClass =
+  EmbeddingModule["EmbeddingRuntimeDependencyError"];
 
 function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   if (a.length !== b.length) {
@@ -143,7 +145,10 @@ export class Retriever {
   private readonly maxLimit: number;
   private readonly defaultMode: SearchMode;
   private embeddingGenerator: EmbeddingGenerator | null = null;
+  private embeddingsAvailable = true;
   private embeddingGeneratorClassPromise: Promise<EmbeddingGeneratorClass> | null =
+    null;
+  private embeddingRuntimeDependencyErrorClassPromise: Promise<EmbeddingRuntimeDependencyErrorClass> | null =
     null;
 
   /**
@@ -443,13 +448,32 @@ export class Retriever {
    * @returns Promise that resolves when model is loaded
    */
   async initializeEmbeddings(): Promise<void> {
+    if (!this.embeddingsAvailable) {
+      return;
+    }
+
     if (this.embeddingGenerator) {
       return;
     }
 
-    const EmbeddingGeneratorClass = await this.getEmbeddingGeneratorClass();
-    this.embeddingGenerator = new EmbeddingGeneratorClass();
-    await this.embeddingGenerator.initialize();
+    try {
+      const EmbeddingGeneratorClass = await this.getEmbeddingGeneratorClass();
+      const embeddingGenerator = new EmbeddingGeneratorClass();
+      await embeddingGenerator.initialize();
+      this.embeddingGenerator = embeddingGenerator;
+    } catch (error) {
+      this.embeddingGenerator = null;
+
+      if (await this.isEmbeddingRuntimeDependencyError(error)) {
+        this.embeddingsAvailable = false;
+        console.warn(
+          "Embeddings unavailable in compiled binary (onnxruntime requires external shared libs). Falling back to fast search mode.",
+        );
+        return;
+      }
+
+      throw error;
+    }
   }
 
   private async getEmbeddingGeneratorClass(): Promise<EmbeddingGeneratorClass> {
@@ -462,6 +486,33 @@ export class Retriever {
     return this.embeddingGeneratorClassPromise;
   }
 
+  private async getEmbeddingRuntimeDependencyErrorClass(): Promise<EmbeddingRuntimeDependencyErrorClass> {
+    if (!this.embeddingRuntimeDependencyErrorClassPromise) {
+      this.embeddingRuntimeDependencyErrorClassPromise = import(
+        "../embeddings/index.js"
+      ).then((module) => module.EmbeddingRuntimeDependencyError);
+    }
+
+    return this.embeddingRuntimeDependencyErrorClassPromise;
+  }
+
+  private async isEmbeddingRuntimeDependencyError(
+    error: unknown,
+  ): Promise<boolean> {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("onnxruntime requires external shared libs")) {
+      return true;
+    }
+
+    try {
+      const EmbeddingRuntimeDependencyErrorClass =
+        await this.getEmbeddingRuntimeDependencyErrorClass();
+      return error instanceof EmbeddingRuntimeDependencyErrorClass;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Generates embeddings for all indexed tools that don't have them.
    * Call this after syncing tools and initializing embeddings.
@@ -469,8 +520,16 @@ export class Retriever {
    * @returns Number of tools that had embeddings generated
    */
   async generateToolEmbeddings(): Promise<number> {
+    if (!this.embeddingsAvailable) {
+      return 0;
+    }
+
     if (!this.embeddingGenerator) {
       await this.initializeEmbeddings();
+    }
+
+    if (!this.embeddingsAvailable || !this.embeddingGenerator) {
+      return 0;
     }
 
     const toolsWithoutEmbeddings = this.indexStore.getToolsWithoutEmbeddings();
@@ -485,11 +544,7 @@ export class Retriever {
     });
 
     // Generate embeddings in batch (not as queries, so no "query: " prefix)
-    const result = await this.embeddingGenerator?.embedBatch(texts, false);
-
-    if (!result) {
-      throw new Error("Embedding generator not initialized");
-    }
+    const result = await this.embeddingGenerator.embedBatch(texts, false);
 
     // Update embeddings in the store
     const embeddings = toolsWithoutEmbeddings.map((tool, i) => ({

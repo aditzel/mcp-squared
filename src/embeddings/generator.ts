@@ -73,6 +73,25 @@ export interface BatchEmbeddingResult {
 const DEFAULT_MODEL = "Xenova/bge-small-en-v1.5";
 const DEFAULT_DTYPE = "q8";
 
+export class EmbeddingRuntimeDependencyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmbeddingRuntimeDependencyError";
+  }
+}
+
+function isMissingOnnxSharedLibraryError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    (message.includes("onnxruntime") &&
+      (message.includes("libonnxruntime.so") ||
+        message.includes("libonnxruntime.dylib") ||
+        message.includes("cannot open shared object file") ||
+        message.includes("dlopen"))) ||
+    message.includes("onnxruntime requires external shared libs")
+  );
+}
+
 /**
  * EmbeddingGenerator provides local embedding generation using Transformers.js.
  *
@@ -165,11 +184,20 @@ export class EmbeddingGenerator {
     }
 
     // Create feature extraction pipeline with specified model and dtype
-    this.pipeline = await pipeline(
-      "feature-extraction",
-      this.modelId,
-      pipelineOptions,
-    );
+    try {
+      this.pipeline = await pipeline(
+        "feature-extraction",
+        this.modelId,
+        pipelineOptions,
+      );
+    } catch (error) {
+      if (isMissingOnnxSharedLibraryError(error)) {
+        throw new EmbeddingRuntimeDependencyError(
+          "onnxruntime shared library is unavailable. Embeddings are unavailable in compiled binary mode because onnxruntime requires external shared libs.",
+        );
+      }
+      throw error;
+    }
 
     this.modelLoadTimeMs = performance.now() - startTime;
   }
