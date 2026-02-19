@@ -15,7 +15,7 @@ import { spawn } from "node:child_process";
  * Platform-specific commands:
  * - macOS: `open "url"`
  * - Linux: `xdg-open "url"`
- * - Windows: `start "" "url"`
+ * - Windows: `powershell -NoProfile -NonInteractive -Command 'Start-Process ''<url>'''`
  *
  * @param url - URL to open in the browser
  * @returns Promise that resolves to true if browser opened, false otherwise
@@ -32,9 +32,14 @@ export async function openBrowser(url: string): Promise<boolean> {
       args = [url];
       break;
     case "win32":
-      // Quote URL to prevent cmd.exe from splitting on special characters
-      command = "cmd";
-      args = ["/c", "start", "", `"${url}"`];
+      // Use PowerShell single-quoted string literal to avoid $variable and $() expansion.
+      command = "powershell";
+      args = [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `Start-Process '${url.replace(/'/g, "''")}'`,
+      ];
       break;
     default:
       // Linux and other Unix-like systems

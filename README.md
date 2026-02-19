@@ -151,6 +151,8 @@ MCP² exposes these tools to MCP clients:
 - `semantic`: Embedding similarity search (falls back to `fast` if embeddings are missing)
 - `hybrid`: FTS5 + embedding rerank (falls back to `fast` if embeddings are missing)
 
+> **Note:** Semantic and hybrid modes load a local embedding model (BGE-small via Transformers.js/WASM). First load downloads ~33MB and adds ~294MB RSS. These modes are optional - `fast` mode (default) has no such overhead.
+
 Embeddings are generated locally using Transformers.js (BGE-small). They are optional and can be generated programmatically via the retriever API.
 
 ## Supported MCP Clients (Import/Install)
