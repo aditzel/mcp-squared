@@ -15,7 +15,7 @@ import { spawn } from "node:child_process";
  * Platform-specific commands:
  * - macOS: `open "url"`
  * - Linux: `xdg-open "url"`
- * - Windows: `powershell -NoProfile -NonInteractive -Command "Start-Process <url>"`
+ * - Windows: `powershell -NoProfile -NonInteractive -Command 'Start-Process ''<url>'''`
  *
  * @param url - URL to open in the browser
  * @returns Promise that resolves to true if browser opened, false otherwise
