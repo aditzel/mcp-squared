@@ -312,7 +312,7 @@ export class Cataloger {
       // Clean up on error - handle any cleanup errors to ensure the connection stays in error state
       try {
         await this.cleanupConnection(connection);
-      } catch (cleanupErr) {
+      } catch (_cleanupErr) {
         // Ignore cleanup errors
       }
     }

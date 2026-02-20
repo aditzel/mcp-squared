@@ -480,7 +480,7 @@ if (!UDS_SUPPORTED) {
           await monitorServer.stop();
           // If we reach here, no error was thrown
           expect(true).toBe(true);
-        } catch (error) {
+        } catch (_error) {
           // If an error was thrown, fail the test
           expect(false).toBe(true);
         }

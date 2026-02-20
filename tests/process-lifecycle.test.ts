@@ -83,9 +83,9 @@ args = ["run", "${echoServerPath}", "${testId}"]
 
     // Pipe stderr to console so we can see what's happening
     if (childProcess.stderr) {
-      // @ts-ignore
+      // @ts-expect-error
       async function readStderr() {
-        // @ts-ignore
+        // @ts-expect-error
         const reader = childProcess.stderr.getReader();
         try {
           while (true) {
