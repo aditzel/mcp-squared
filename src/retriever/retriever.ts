@@ -467,7 +467,7 @@ export class Retriever {
       if (await this.isEmbeddingRuntimeDependencyError(error)) {
         this.embeddingsAvailable = false;
         console.warn(
-          "Embeddings unavailable in compiled binary (onnxruntime requires external shared libs). Falling back to fast search mode.",
+          "Embeddings unavailable: onnxruntime shared library could not be loaded. Falling back to fast search mode.",
         );
         return;
       }
@@ -500,10 +500,32 @@ export class Retriever {
     error: unknown,
   ): Promise<boolean> {
     const message = error instanceof Error ? error.message : String(error);
+
+    // Check message-based signatures first, before attempting any module
+    // import.  This catches two cases:
+    //   1. The wrapped sentinel set by EmbeddingRuntimeDependencyError itself.
+    //   2. Raw OS loader failures that happen while loading the embeddings
+    //      module (e.g. dlopen of libonnxruntime.so.1 failing at module-load
+    //      time, before our class-level catch in generator.ts fires).  In that
+    //      scenario re-importing the module would fail again and fall through
+    //      to `false`, causing the error to be rethrown instead of degrading.
     if (message.includes("onnxruntime requires external shared libs")) {
       return true;
     }
+    const hasOnnxLibName =
+      message.includes("libonnxruntime.so") ||
+      message.includes("libonnxruntime.dylib") ||
+      message.includes("onnxruntime.dll");
+    const hasDlopenSignature =
+      message.includes("cannot open shared object file") ||
+      message.includes("No such file or directory") ||
+      message.includes("image not found") ||
+      message.includes("dlopen");
+    if (hasOnnxLibName && hasDlopenSignature) {
+      return true;
+    }
 
+    // For errors that originated inside the module (post-load), use instanceof.
     try {
       const EmbeddingRuntimeDependencyErrorClass =
         await this.getEmbeddingRuntimeDependencyErrorClass();

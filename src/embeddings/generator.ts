@@ -74,22 +74,32 @@ const DEFAULT_MODEL = "Xenova/bge-small-en-v1.5";
 const DEFAULT_DTYPE = "q8";
 
 export class EmbeddingRuntimeDependencyError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
     this.name = "EmbeddingRuntimeDependencyError";
   }
 }
 
 function isMissingOnnxSharedLibraryError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return (
-    (message.includes("onnxruntime") &&
-      (message.includes("libonnxruntime.so") ||
-        message.includes("libonnxruntime.dylib") ||
-        message.includes("cannot open shared object file") ||
-        message.includes("dlopen"))) ||
-    message.includes("onnxruntime requires external shared libs")
-  );
+  // Explicit sentinel set by EmbeddingRuntimeDependencyError itself
+  if (message.includes("onnxruntime requires external shared libs")) {
+    return true;
+  }
+  // Raw loader errors: require the onnxruntime lib filename to be present so
+  // we don't misclassify ABI/symbol-incompatibility dlopen failures as a
+  // simple missing-library case (they share the same substrings but need
+  // different remediation).
+  const hasOnnxLibName =
+    message.includes("libonnxruntime.so") ||
+    message.includes("libonnxruntime.dylib") ||
+    message.includes("onnxruntime.dll");
+  const hasDlopenSignature =
+    message.includes("cannot open shared object file") ||
+    message.includes("No such file or directory") ||
+    message.includes("image not found") || // macOS dlopen / dyld
+    message.includes("dlopen");
+  return hasOnnxLibName && hasDlopenSignature;
 }
 
 /**
@@ -193,7 +203,8 @@ export class EmbeddingGenerator {
     } catch (error) {
       if (isMissingOnnxSharedLibraryError(error)) {
         throw new EmbeddingRuntimeDependencyError(
-          "onnxruntime shared library is unavailable. Embeddings are unavailable in compiled binary mode because onnxruntime requires external shared libs.",
+          "onnxruntime shared library is unavailable. Embeddings require an external shared lib (libonnxruntime) that could not be loaded.",
+          { cause: error },
         );
       }
       throw error;
