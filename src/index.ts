@@ -586,9 +586,13 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
       instances,
       refreshInterval: options.noAutoRefresh ? 0 : options.refreshInterval,
     };
-    const { runMonitorTui } = await import("./tui/monitor.js");
+    const { runMonitorTui } = await import("./tui/monitor-loader.js");
     await runMonitorTui(monitorOptions);
   } catch (error) {
+    if (isTuiModuleNotFoundError(error)) {
+      printTuiUnavailableError("monitor");
+      process.exit(1);
+    }
     const err = error as Error;
     console.error(`Error launching monitor: ${err.message}`);
     console.error("");
@@ -601,6 +605,36 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
     console.error("  mcp-squared");
     process.exit(1);
   }
+}
+
+/**
+ * Returns true if the error indicates a missing TUI runtime dependency
+ * (@opentui/core or its platform-specific native packages).
+ *
+ * In compiled standalone binaries the TUI packages are marked --external and
+ * resolved at runtime.  When they are absent (no bun install context), the
+ * dynamic import of the TUI module itself throws a "Cannot find module" error
+ * with the opentui package name in the message.
+ */
+function isTuiModuleNotFoundError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Cannot find module") && message.includes("@opentui");
+}
+
+/**
+ * Prints a user-friendly error when TUI commands are invoked in an environment
+ * where @opentui/core is not available (e.g. standalone compiled binary).
+ */
+function printTuiUnavailableError(command: string): void {
+  console.error(
+    `Error: The '${command}' command requires the TUI runtime (@opentui/core),`,
+  );
+  console.error("which is not available in this environment.");
+  console.error("");
+  console.error("To use TUI commands, run mcp-squared via bun:");
+  console.error(`  bunx mcp-squared ${command}`);
+  console.error("  # or");
+  console.error(`  bun run src/index.ts ${command}`);
 }
 
 function augmentProcessInfo(entries: InstanceRegistryEntry[]): void {
@@ -917,8 +951,16 @@ export async function main(
 
   switch (args.mode) {
     case "config": {
-      const { runConfigTui } = await import("./tui/config.js");
-      await runConfigTui();
+      try {
+        const { runConfigTui } = await import("./tui/config-loader.js");
+        await runConfigTui();
+      } catch (error) {
+        if (isTuiModuleNotFoundError(error)) {
+          printTuiUnavailableError("config");
+          process.exit(1);
+        }
+        throw error;
+      }
       break;
     }
     case "test":

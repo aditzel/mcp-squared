@@ -18,7 +18,7 @@
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun --packages=external",
-    "build:compile": "bun build src/index.ts --compile --outfile dist/mcp-squared",
+    "build:compile": "bun build src/index.ts --compile --outfile dist/mcp-squared --external @opentui/core --external @opentui/core-darwin-arm64 --external @opentui/core-darwin-x64 --external @opentui/core-linux-arm64 --external @opentui/core-linux-x64 --external @opentui/core-win32-arm64 --external @opentui/core-win32-x64",
     "build:compile:matrix": "bash scripts/compile-matrix.sh",
     "prepack": "bun run build",
     "test": "bun test",
