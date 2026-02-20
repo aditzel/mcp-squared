@@ -7,4 +7,8 @@
  * @module embeddings
  */
 
-export { EmbeddingGenerator, type EmbeddingOptions } from "./generator.js";
+export {
+  EmbeddingGenerator,
+  EmbeddingRuntimeDependencyError,
+  type EmbeddingOptions,
+} from "./generator.js";

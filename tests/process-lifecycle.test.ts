@@ -3,6 +3,11 @@ import crypto from "node:crypto";
 import { resolve } from "node:path";
 import { type Subprocess, spawn } from "bun";
 
+// Use the running bun binary directly so tests work regardless of whether
+// "bun" is on $PATH (e.g. CI environments where bun is installed to a
+// non-standard location).
+const BUN_EXEC = process.execPath;
+
 const PROJECT_ROOT = resolve(import.meta.dir, "..");
 const ENTRY_POINT = resolve(PROJECT_ROOT, "src/index.ts");
 
@@ -59,7 +64,7 @@ schemaVersion = 1
 transport = "stdio"
 enabled = true
 [upstreams.test-echo.stdio]
-command = "bun"
+command = "${BUN_EXEC}"
 args = ["run", "${echoServerPath}", "${testId}"]
 [upstreams.test-echo.env]
 `;
@@ -68,7 +73,7 @@ args = ["run", "${echoServerPath}", "${testId}"]
 
     // Spawn mcp-squared with this config
     childProcess = spawn({
-      cmd: ["bun", "run", ENTRY_POINT, "--stdio"],
+      cmd: [BUN_EXEC, "run", ENTRY_POINT, "--stdio"],
       cwd: PROJECT_ROOT,
       env: { ...process.env, MCP_SQUARED_CONFIG: configPath },
       stdin: "pipe",
@@ -77,20 +82,18 @@ args = ["run", "${echoServerPath}", "${testId}"]
     });
 
     // Pipe stderr to console so we can see what's happening
-    if (childProcess.stderr) {
-      // @ts-ignore
-      async function readStderr() {
-        // @ts-ignore
-        const reader = childProcess.stderr.getReader();
+    const stderrStream = childProcess.stderr;
+    if (stderrStream && typeof stderrStream !== "number") {
+      const reader = stderrStream.getReader();
+      (async () => {
         try {
           while (true) {
-            const { done, value: _value } = await reader.read();
+            const { done } = await reader.read();
             if (done) break;
             // process.stderr.write(value); // Commented out to reduce noise
           }
         } catch {}
-      }
-      readStderr();
+      })();
     }
 
     const pid = childProcess.pid;

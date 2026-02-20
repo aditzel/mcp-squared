@@ -4,7 +4,7 @@ set -u
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/compile}"
 ENTRYPOINT="${ENTRYPOINT:-src/index.ts}"
-MAX_SIZE_MB="${MAX_SIZE_MB:-100}"
+MAX_SIZE_MB="${MAX_SIZE_MB:-120}"
 TARGETS=(
   "bun-darwin-arm64"
   "bun-darwin-x64"

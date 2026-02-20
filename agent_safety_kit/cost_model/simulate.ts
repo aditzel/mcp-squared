@@ -267,7 +267,7 @@ function toPricingRecords(
 
   if (invalid) {
     throw new Error(
-      `Invalid pricing row for model \"${invalid.model}\". Required columns: model,input_per_1k,output_per_1k`,
+      `Invalid pricing row for model "${invalid.model}". Required columns: model,input_per_1k,output_per_1k`,
     );
   }
 

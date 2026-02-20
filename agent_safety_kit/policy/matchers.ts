@@ -24,7 +24,7 @@ export function matchesAnyGlob(patterns: string[], value: string): boolean {
 }
 
 export function patternSpecificity(pattern: string): number {
-  return pattern.replace(/[\*\?]/g, "").length;
+  return pattern.replace(/[*?]/g, "").length;
 }
 
 export function pickMostSpecificRule(

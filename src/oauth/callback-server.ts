@@ -164,7 +164,6 @@ export class OAuthCallbackServer {
    */
   async waitForCallback(): Promise<CallbackResult> {
     return new Promise((resolve, reject) => {
-      // biome-ignore lint/style/useConst: timeoutId must be declared before use in cleanup closure
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
       let resolved = false;
 

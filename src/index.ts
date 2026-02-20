@@ -49,8 +49,6 @@ import {
   performPreflightAuth,
 } from "./oauth/index.js";
 import { McpSquaredServer } from "./server/index.js";
-import { runConfigTui } from "./tui/config.js";
-import { runMonitorTui } from "./tui/monitor.js";
 import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
 
 /** Current version of MCP² */
@@ -588,6 +586,7 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
       instances,
       refreshInterval: options.noAutoRefresh ? 0 : options.refreshInterval,
     };
+    const { runMonitorTui } = await import("./tui/monitor.js");
     await runMonitorTui(monitorOptions);
   } catch (error) {
     const err = error as Error;
@@ -917,9 +916,11 @@ export async function main(
   }
 
   switch (args.mode) {
-    case "config":
+    case "config": {
+      const { runConfigTui } = await import("./tui/config.js");
       await runConfigTui();
       break;
+    }
     case "test":
       await runTest(args.testTarget, args.testVerbose);
       break;

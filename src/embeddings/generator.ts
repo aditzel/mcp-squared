@@ -73,6 +73,35 @@ export interface BatchEmbeddingResult {
 const DEFAULT_MODEL = "Xenova/bge-small-en-v1.5";
 const DEFAULT_DTYPE = "q8";
 
+export class EmbeddingRuntimeDependencyError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "EmbeddingRuntimeDependencyError";
+  }
+}
+
+function isMissingOnnxSharedLibraryError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  // Explicit sentinel set by EmbeddingRuntimeDependencyError itself
+  if (message.includes("onnxruntime requires external shared libs")) {
+    return true;
+  }
+  // Raw loader errors: require the onnxruntime lib filename to be present so
+  // we don't misclassify ABI/symbol-incompatibility dlopen failures as a
+  // simple missing-library case (they share the same substrings but need
+  // different remediation).
+  const hasOnnxLibName =
+    message.includes("libonnxruntime.so") ||
+    message.includes("libonnxruntime.dylib") ||
+    message.includes("onnxruntime.dll");
+  const hasDlopenSignature =
+    message.includes("cannot open shared object file") ||
+    message.includes("No such file or directory") ||
+    message.includes("image not found") || // macOS dlopen / dyld
+    message.includes("dlopen");
+  return hasOnnxLibName && hasDlopenSignature;
+}
+
 /**
  * EmbeddingGenerator provides local embedding generation using Transformers.js.
  *
@@ -165,11 +194,21 @@ export class EmbeddingGenerator {
     }
 
     // Create feature extraction pipeline with specified model and dtype
-    this.pipeline = await pipeline(
-      "feature-extraction",
-      this.modelId,
-      pipelineOptions,
-    );
+    try {
+      this.pipeline = await pipeline(
+        "feature-extraction",
+        this.modelId,
+        pipelineOptions,
+      );
+    } catch (error) {
+      if (isMissingOnnxSharedLibraryError(error)) {
+        throw new EmbeddingRuntimeDependencyError(
+          "onnxruntime shared library is unavailable. Embeddings require an external shared lib (libonnxruntime) that could not be loaded.",
+          { cause: error },
+        );
+      }
+      throw error;
+    }
 
     this.modelLoadTimeMs = performance.now() - startTime;
   }

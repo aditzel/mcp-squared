@@ -86,7 +86,7 @@ export function load_policy(options: LoadPolicyOptions = {}): LoadedPolicy {
   const playbook = policy.playbooks[playbookName];
   if (!playbook) {
     throw new Error(
-      `Agent safety playbook \"${playbookName}\" not found in ${sourcePath}`,
+      `Agent safety playbook "${playbookName}" not found in ${sourcePath}`,
     );
   }
 
