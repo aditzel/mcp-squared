@@ -82,20 +82,18 @@ args = ["run", "${echoServerPath}", "${testId}"]
     });
 
     // Pipe stderr to console so we can see what's happening
-    if (childProcess.stderr) {
-      // @ts-expect-error
-      async function readStderr() {
-        // @ts-expect-error
-        const reader = childProcess.stderr.getReader();
+    const stderrStream = childProcess.stderr;
+    if (stderrStream && typeof stderrStream !== "number") {
+      const reader = stderrStream.getReader();
+      (async () => {
         try {
           while (true) {
-            const { done, value: _value } = await reader.read();
+            const { done } = await reader.read();
             if (done) break;
             // process.stderr.write(value); // Commented out to reduce noise
           }
         } catch {}
-      }
-      readStderr();
+      })();
     }
 
     const pid = childProcess.pid;
