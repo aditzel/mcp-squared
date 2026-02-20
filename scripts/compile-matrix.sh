@@ -5,6 +5,22 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/dist/compile}"
 ENTRYPOINT="${ENTRYPOINT:-src/index.ts}"
 MAX_SIZE_MB="${MAX_SIZE_MB:-120}"
+
+# @opentui/core uses a dynamic import keyed on process.platform/process.arch to
+# load its native platform package at runtime.  bun build --compile cannot
+# resolve these cross-target imports, so we mark the whole opentui family as
+# external.  TUI commands (config, monitor) detect the missing module at runtime
+# and print a friendly message directing users to `bunx mcp-squared`.
+EXTERNAL_FLAGS=(
+  --external "@opentui/core"
+  --external "@opentui/core-darwin-arm64"
+  --external "@opentui/core-darwin-x64"
+  --external "@opentui/core-linux-arm64"
+  --external "@opentui/core-linux-x64"
+  --external "@opentui/core-win32-arm64"
+  --external "@opentui/core-win32-x64"
+)
+
 TARGETS=(
   "bun-darwin-arm64"
   "bun-darwin-x64"
@@ -39,7 +55,7 @@ for target in "${TARGETS[@]}"; do
   logfile="$OUT_DIR/mcp-squared-${target}.log"
 
   printf "%s\n" "[$target] compiling..."
-  if bun build "$ENTRYPOINT" --compile --target="$target" --outfile="$outfile" >"$logfile" 2>&1; then
+  if bun build "$ENTRYPOINT" --compile --target="$target" --outfile="$outfile" "${EXTERNAL_FLAGS[@]}" >"$logfile" 2>&1; then
     size_bytes="$(wc -c < "$outfile" | tr -d '[:space:]')"
     size_mb="$(awk -v b="$size_bytes" 'BEGIN { printf "%.1f", b / 1048576 }')"
 
@@ -87,7 +103,7 @@ probe_build_log="$OUT_DIR/embedding-probe.build.log"
 probe_run_log="$OUT_DIR/embedding-probe.run.log"
 
 echo "[embedding-probe] compiling..."
-if bun build scripts/embedding-probe.ts --compile --target="$NATIVE_TARGET" --outfile="$probe_out" >"$probe_build_log" 2>&1; then
+if bun build scripts/embedding-probe.ts --compile --target="$NATIVE_TARGET" --outfile="$probe_out" "${EXTERNAL_FLAGS[@]}" >"$probe_build_log" 2>&1; then
   echo "  build: PASS"
   echo "  running compiled probe..."
   if env -i HOME="$HOME" PATH="/usr/bin:/bin" "$probe_out" >"$probe_run_log" 2>&1; then
