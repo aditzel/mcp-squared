@@ -124,7 +124,7 @@ SSE upstreams can enable OAuth via `auth = true` (or an object with `callbackPor
 
 ## Issue Tracking
 
-This project uses **bd** (beads) for issue tracking. See `AGENTS.md` for workflow.
+This project uses GitHub Issues and pull requests for issue tracking. See `AGENTS.md` for workflow.
 
 ## Key Dependencies
 

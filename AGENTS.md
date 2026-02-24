@@ -4,16 +4,15 @@
 - Maintainer/Owner: Allan Ditzel (GitHub: `aditzel`, email: `allan@allanditzel.com`)
 - Additional maintainers: none. External contributions are reviewed and merged by the maintainer.
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+This project uses GitHub Issues and pull requests for issue tracking.
 
 ## Quick Reference
 
 ```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
+gh issue list --limit 20           # Find available work
+gh issue view <id>                 # View issue details
+gh issue create --title "..."      # Create a follow-up issue
+gh pr status                       # Review PR status
 ```
 
 ## Landing the Plane (Session Completion)
@@ -24,11 +23,10 @@ bd sync               # Sync with git
 
 1. **File issues for remaining work** - Create issues for anything that needs follow-up
 2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
+3. **Update issue/PR status** - Close finished work and update linked issues/PRs
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd sync
    git push
    git status  # MUST show "up to date with origin"
    ```

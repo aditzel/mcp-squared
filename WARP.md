@@ -60,13 +60,12 @@ The codebase is organized to separate the CLI, server logic, indexing, and tooli
 
 ## Task Management & Rules
 
-### Issue Tracking (Beads)
-This project uses **bd** (beads) for local issue tracking.
-- **Find available work**: `bd ready`
-- **View issue details**: `bd show <id>`
-- **Claim work**: `bd update <id> --status in_progress`
-- **Close work**: `bd close <id>`
-- **Sync**: `bd sync`
+### Issue Tracking
+This project uses GitHub Issues and pull requests for work tracking.
+- **Find available work**: `gh issue list --limit 20`
+- **View issue details**: `gh issue view <id>`
+- **Create follow-up issue**: `gh issue create --title "..." --body "..."`
+- **Review PR status**: `gh pr status`
 
 ### "Landing the Plane" (Session Completion)
 **CRITICAL**: Before finishing a session, you **MUST** perform the following:
@@ -77,11 +76,10 @@ This project uses **bd** (beads) for local issue tracking.
    bun test && bun run build && bun run lint
   ```
    - Do not commit unless the above gates are clean, even if failing checks already exist elsewhere.
-3. **Update Issues**: Close completed tasks in `bd`.
+3. **Update Issues/PRs**: Close completed tasks and update linked issues/PRs.
 4. **Push to Remote**:
    ```bash
    git pull --rebase
-   bd sync
    git push
    ```
    *Verify `git status` is clean and up to date.*
