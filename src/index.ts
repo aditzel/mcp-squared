@@ -617,10 +617,8 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
  * with the opentui package name in the message.
  */
 function isTuiModuleNotFoundError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
   const cause =
     error instanceof Error ? (error as { cause?: unknown }).cause : undefined;
-
   if (
     cause !== undefined &&
     cause !== error &&
@@ -629,19 +627,15 @@ function isTuiModuleNotFoundError(error: unknown): boolean {
     return true;
   }
 
-  if (!message.includes("@opentui")) {
-    return false;
-  }
-
+  const message = error instanceof Error ? error.message : String(error);
   if (error instanceof Error && hasMissingModuleErrorCode(error)) {
     return true;
   }
 
-  if (hasMissingModuleMessage(message)) {
-    return true;
-  }
-
-  return false;
+  return (
+    hasMissingModuleMessage(message) ||
+    hasMissingModuleErrorCode(error as { code?: unknown })
+  );
 }
 
 function hasMissingModuleErrorCode(error: { code?: unknown }): boolean {

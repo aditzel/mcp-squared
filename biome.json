@@ -13,9 +13,5 @@
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2
-  },
-  "files": {
-    "include": ["**/*"],
-    "ignore": ["dist/**", "node_modules/**", ".beads/**", "bun.lockb"]
   }
 }

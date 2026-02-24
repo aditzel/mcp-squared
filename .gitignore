@@ -35,3 +35,4 @@ coverage/
 
 # Test artifacts
 tests/fixtures/*.toml
+.beads/
