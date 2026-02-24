@@ -15,6 +15,10 @@ gh issue create --title "..."      # Create a follow-up issue
 gh pr status                       # Review PR status
 ```
 
+## Package Manager Policy
+
+- ALWAYS use bun instead of npm or pnpm.
+
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.

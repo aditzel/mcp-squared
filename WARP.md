@@ -7,6 +7,10 @@ MCP² (Mercury Control Plane) is a local-first meta-server and proxy for the Mod
 
 **Status**: Alpha (v0.1.x)
 
+## Package Manager Policy
+
+- ALWAYS use bun instead of npm or pnpm.
+
 **Key Technologies:**
 - **Runtime**: [Bun](https://bun.sh)
 - **Language**: TypeScript
