@@ -10,23 +10,20 @@
  * @module oauth
  */
 
-export { openBrowser, logAuthorizationUrl } from "./browser.js";
+export { logAuthorizationUrl, openBrowser } from "./browser.js";
 
 export {
-  OAuthCallbackServer,
   type CallbackResult,
   type CallbackServerOptions,
+  OAuthCallbackServer,
 } from "./callback-server.js";
-
-export { McpOAuthProvider } from "./provider.js";
-
 export {
-  TokenStorage,
+  type PreflightAuthResult,
+  performPreflightAuth,
+} from "./preflight.js";
+export { McpOAuthProvider } from "./provider.js";
+export {
   type OAuthTokens,
   type StoredTokenData,
+  TokenStorage,
 } from "./token-storage.js";
-
-export {
-  performPreflightAuth,
-  type PreflightAuthResult,
-} from "./preflight.js";

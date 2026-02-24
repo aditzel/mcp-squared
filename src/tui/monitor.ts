@@ -13,10 +13,10 @@ import {
   ASCIIFontRenderable,
   BoxRenderable,
   type CliRenderer,
+  createCliRenderer,
   type KeyEvent,
   RGBA,
   TextRenderable,
-  createCliRenderer,
 } from "@opentui/core";
 import type { InstanceRegistryEntry } from "../config/index.js";
 import { getSocketFilePath } from "../config/paths.js";

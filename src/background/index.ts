@@ -7,16 +7,15 @@
  * @module background
  */
 
+export type { ToolChanges, ToolSnapshot } from "./change-detection.js";
 export {
   captureServerSnapshot,
   captureSnapshot,
   detectChanges,
   hasChanges,
 } from "./change-detection.js";
-export type { ToolChanges, ToolSnapshot } from "./change-detection.js";
-
-export { IndexRefreshManager } from "./index-refresh.js";
 export type {
   IndexRefreshManagerEvents,
   IndexRefreshManagerOptions,
 } from "./index-refresh.js";
+export { IndexRefreshManager } from "./index-refresh.js";

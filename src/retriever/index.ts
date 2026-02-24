@@ -8,8 +8,8 @@
  */
 
 export {
-  Retriever,
   type RetrieveResult,
+  Retriever,
   type RetrieverOptions,
   type SearchOptions,
   type ToolFullSchema,

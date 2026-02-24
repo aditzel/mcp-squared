@@ -16,11 +16,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import {
+  build_sink,
   Guard,
   type LoadedPolicy,
-  type ObsSink,
-  build_sink,
   load_policy,
+  type ObsSink,
   readSafetyEnv,
   task_span,
   tool_span,

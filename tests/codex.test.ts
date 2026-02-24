@@ -6,8 +6,8 @@ import { stringify as stringifyToml } from "smol-toml";
 
 import { getParser } from "@/import/parsers";
 import { CodexParser } from "@/import/parsers/codex";
-import { performInstallation } from "@/install";
 import type { McpServerEntry } from "@/install";
+import { performInstallation } from "@/install";
 import { CodexWriter, getWriter } from "@/install/writers";
 
 describe("CodexParser", () => {

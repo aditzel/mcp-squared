@@ -8,9 +8,9 @@
  */
 
 export {
-  IndexStore,
   type CooccurrenceRecord,
   type IndexedTool,
+  IndexStore,
   type IndexStoreOptions,
   type RelatedTool,
   type SemanticSearchResult,

@@ -17,8 +17,8 @@ import { ZedWriter } from "./zed.js";
 export { BaseConfigWriter } from "./base.js";
 export { CodexWriter } from "./codex.js";
 export {
-  StandardMcpServersWriter,
   STANDARD_MCPSERVERS_TOOLS,
+  StandardMcpServersWriter,
 } from "./standard.js";
 export { VSCodeWriter } from "./vscode.js";
 export { ZedWriter } from "./zed.js";

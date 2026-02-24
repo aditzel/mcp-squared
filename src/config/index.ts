@@ -11,25 +11,36 @@
  */
 
 export {
-  ConfigSchema,
-  DEFAULT_CONFIG,
-  LATEST_SCHEMA_VERSION,
-  LogLevelSchema,
-  OAuthConfigSchema,
-  SelectionCacheSchema,
-  UpstreamServerSchema,
-  type LogLevel,
-  type McpSquaredConfig,
-  type SelectionCacheConfig,
-  type UpstreamServerConfig,
-  type UpstreamSseServerConfig,
-  type UpstreamStdioServerConfig,
-} from "./schema.js";
-
+  deleteInstanceEntry,
+  type InstanceRegistryEntry,
+  type InstanceRegistryEntryRecord,
+  listActiveInstanceEntries,
+  listInstanceEntries,
+  readInstanceEntry,
+  writeInstanceEntry,
+} from "./instance-registry.js";
 export {
+  ConfigError,
+  ConfigNotFoundError,
+  ConfigParseError,
+  ConfigValidationError,
+  type LoadConfigResult,
+  loadConfig,
+  loadConfigFromPath,
+  loadConfigFromPathSync,
+  loadConfigSync,
+} from "./load.js";
+export {
+  migrateConfig,
+  type RawConfig,
+  UnknownSchemaVersionError,
+} from "./migrations/index.js";
+export {
+  type ConfigPathResult,
+  type ConfigSource,
   discoverConfigPath,
-  ensureDaemonDir,
   ensureConfigDir,
+  ensureDaemonDir,
   ensureInstanceRegistryDir,
   ensureSocketDir,
   getDaemonDir,
@@ -40,49 +51,32 @@ export {
   getPidFilePath,
   getSocketDir,
   getSocketFilePath,
-  type ConfigPathResult,
-  type ConfigSource,
 } from "./paths.js";
-
-export {
-  ConfigError,
-  ConfigNotFoundError,
-  ConfigParseError,
-  ConfigValidationError,
-  loadConfig,
-  loadConfigFromPath,
-  loadConfigFromPathSync,
-  loadConfigSync,
-  type LoadConfigResult,
-} from "./load.js";
-
 export {
   ConfigSaveError,
   saveConfig,
   saveConfigSync,
 } from "./save.js";
-
 export {
-  UnknownSchemaVersionError,
-  migrateConfig,
-  type RawConfig,
-} from "./migrations/index.js";
-
+  ConfigSchema,
+  DEFAULT_CONFIG,
+  LATEST_SCHEMA_VERSION,
+  type LogLevel,
+  LogLevelSchema,
+  type McpSquaredConfig,
+  OAuthConfigSchema,
+  type SelectionCacheConfig,
+  SelectionCacheSchema,
+  type UpstreamServerConfig,
+  UpstreamServerSchema,
+  type UpstreamSseServerConfig,
+  type UpstreamStdioServerConfig,
+} from "./schema.js";
 export {
   formatValidationIssues,
+  type ValidationIssue,
+  type ValidationSeverity,
   validateConfig,
   validateStdioUpstream,
   validateUpstreamConfig,
-  type ValidationIssue,
-  type ValidationSeverity,
 } from "./validate.js";
-
-export {
-  deleteInstanceEntry,
-  listActiveInstanceEntries,
-  listInstanceEntries,
-  readInstanceEntry,
-  writeInstanceEntry,
-  type InstanceRegistryEntry,
-  type InstanceRegistryEntryRecord,
-} from "./instance-registry.js";

@@ -4,7 +4,7 @@
  * @module daemon/transport
  */
 
-import { type Socket, connect } from "node:net";
+import { connect, type Socket } from "node:net";
 import type {
   Transport,
   TransportSendOptions,

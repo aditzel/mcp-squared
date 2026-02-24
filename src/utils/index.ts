@@ -7,8 +7,8 @@
 export {
   formatQualifiedName,
   isQualifiedName,
-  parseQualifiedName,
   type ParsedToolName,
+  parseQualifiedName,
 } from "./tool-names.js";
 
 export { safelyCloseTransport } from "./transport.js";

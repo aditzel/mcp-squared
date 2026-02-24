@@ -10,7 +10,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { parse as parseToml } from "smol-toml";
 import { ZodError } from "zod";
-import { type RawConfig, migrateConfig } from "./migrations/index.js";
+import { migrateConfig, type RawConfig } from "./migrations/index.js";
 import {
   type ConfigSource,
   discoverConfigPath,

@@ -6,7 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, unlinkSync } from "node:fs";
-import { type Server, type Socket, connect, createServer } from "node:net";
+import { connect, createServer, type Server, type Socket } from "node:net";
 import { dirname } from "node:path";
 import { ensureDaemonDir, getDaemonSocketPath } from "../config/paths.js";
 import { VERSION } from "../index.js";

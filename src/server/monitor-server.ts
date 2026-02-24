@@ -9,7 +9,7 @@
  */
 
 import { existsSync, unlinkSync } from "node:fs";
-import { type Server, type Socket, createServer } from "node:net";
+import { createServer, type Server, type Socket } from "node:net";
 import type { Cataloger } from "../upstream/cataloger.js";
 import type { StatsCollector } from "./stats.js";
 

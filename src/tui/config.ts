@@ -2,6 +2,7 @@ import {
   ASCIIFontRenderable,
   BoxRenderable,
   type CliRenderer,
+  createCliRenderer,
   InputRenderable,
   type KeyEvent,
   type PasteEvent,
@@ -10,15 +11,14 @@ import {
   SelectRenderable,
   SelectRenderableEvents,
   TextRenderable,
-  createCliRenderer,
 } from "@opentui/core";
 import {
   DEFAULT_CONFIG,
-  type McpSquaredConfig,
-  type UpstreamServerConfig,
   getDefaultConfigPath,
   loadConfig,
+  type McpSquaredConfig,
   saveConfig,
+  type UpstreamServerConfig,
 } from "../config/index.js";
 import { VERSION } from "../index.js";
 import { testUpstreamConnection } from "../upstream/index.js";

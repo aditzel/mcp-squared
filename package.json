@@ -10,7 +10,10 @@
   "bin": {
     "mcp-squared": "bin/mcp-squared"
   },
-  "files": ["bin", "dist"],
+  "files": [
+    "bin",
+    "dist"
+  ],
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",

@@ -19,17 +19,17 @@ import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { type MonitorArgs, parseArgs, printHelp } from "./cli/index.js";
 import type { DaemonArgs, ProxyArgs } from "./cli/index.js";
+import { type MonitorArgs, parseArgs, printHelp } from "./cli/index.js";
 import {
-  type InstanceRegistryEntry,
-  type McpSquaredConfig,
   deleteInstanceEntry,
   ensureInstanceRegistryDir,
   ensureSocketDir,
   formatValidationIssues,
+  type InstanceRegistryEntry,
   listActiveInstanceEntries,
   loadConfig,
+  type McpSquaredConfig,
   validateConfig,
   validateUpstreamConfig,
   writeInstanceEntry,
@@ -45,8 +45,8 @@ import { runInstall } from "./install/runner.js";
 import {
   McpOAuthProvider,
   OAuthCallbackServer,
-  TokenStorage,
   performPreflightAuth,
+  TokenStorage,
 } from "./oauth/index.js";
 import { McpSquaredServer } from "./server/index.js";
 import { type TestResult, testUpstreamConnection } from "./upstream/index.js";

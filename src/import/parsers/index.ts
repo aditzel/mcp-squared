@@ -8,52 +8,49 @@
  */
 
 import type { ToolId } from "../types.js";
-import type { BaseConfigParser } from "./base.js";
-
 import { AntigravityParser } from "./antigravity.js";
+import type { BaseConfigParser } from "./base.js";
 // Standard format parsers (mcpServers key)
 import { ClaudeCodeParser } from "./claude-code.js";
 import { ClaudeDesktopParser } from "./claude-desktop.js";
 import { ClineParser } from "./cline.js";
+import { CodexParser } from "./codex.js";
 import { CursorParser } from "./cursor.js";
 import { FactoryParser } from "./factory.js";
 import { GeminiCliParser } from "./gemini-cli.js";
 import { JetBrainsParser } from "./jetbrains.js";
 import { KiloCodeParser } from "./kilo-code.js";
+import { OpenCodeParser } from "./opencode.js";
 import { QwenCodeParser } from "./qwen-code.js";
 import { RooCodeParser } from "./roo-code.js";
 import { TraeParser } from "./trae.js";
-import { WarpParser } from "./warp.js";
-import { WindsurfParser } from "./windsurf.js";
-
-import { CodexParser } from "./codex.js";
-import { OpenCodeParser } from "./opencode.js";
 // Custom format parsers
 import { VSCodeParser } from "./vscode.js";
+import { WarpParser } from "./warp.js";
+import { WindsurfParser } from "./windsurf.js";
 import { ZedParser } from "./zed.js";
 
+export { AntigravityParser } from "./antigravity.js";
 // Re-export base class and types
 export { BaseConfigParser, StandardMcpServersParser } from "./base.js";
-
 // Re-export all parsers for direct access
 export { ClaudeCodeParser } from "./claude-code.js";
 export { ClaudeDesktopParser } from "./claude-desktop.js";
-export { CursorParser } from "./cursor.js";
-export { WindsurfParser } from "./windsurf.js";
 export { ClineParser } from "./cline.js";
-export { RooCodeParser } from "./roo-code.js";
-export { KiloCodeParser } from "./kilo-code.js";
-export { GeminiCliParser } from "./gemini-cli.js";
-export { FactoryParser } from "./factory.js";
-export { QwenCodeParser } from "./qwen-code.js";
-export { TraeParser } from "./trae.js";
-export { AntigravityParser } from "./antigravity.js";
-export { JetBrainsParser } from "./jetbrains.js";
-export { VSCodeParser } from "./vscode.js";
-export { ZedParser } from "./zed.js";
-export { OpenCodeParser } from "./opencode.js";
-export { WarpParser } from "./warp.js";
 export { CodexParser } from "./codex.js";
+export { CursorParser } from "./cursor.js";
+export { FactoryParser } from "./factory.js";
+export { GeminiCliParser } from "./gemini-cli.js";
+export { JetBrainsParser } from "./jetbrains.js";
+export { KiloCodeParser } from "./kilo-code.js";
+export { OpenCodeParser } from "./opencode.js";
+export { QwenCodeParser } from "./qwen-code.js";
+export { RooCodeParser } from "./roo-code.js";
+export { TraeParser } from "./trae.js";
+export { VSCodeParser } from "./vscode.js";
+export { WarpParser } from "./warp.js";
+export { WindsurfParser } from "./windsurf.js";
+export { ZedParser } from "./zed.js";
 
 /**
  * Singleton instances of all parsers, indexed by tool ID.

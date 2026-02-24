@@ -5,20 +5,20 @@
  */
 
 export {
-  mapExternalServer,
-  mapExternalServers,
-  normalizeEnvVars,
-  normalizeEnvValue,
   getTransportType,
   type MappedServer,
   type MappingResult,
+  mapExternalServer,
+  mapExternalServers,
+  normalizeEnvValue,
+  normalizeEnvVars,
 } from "./mapper.js";
 
 export {
+  generateUniqueName,
+  getBaseName,
+  hasConflict,
   isValidServerName,
   normalizeServerName,
-  generateUniqueName,
   normalizeServerNames,
-  hasConflict,
-  getBaseName,
 } from "./normalizer.js";
