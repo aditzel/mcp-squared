@@ -14,7 +14,21 @@
  * @module tui/config-loader
  */
 
+type ConfigLoaderModule = {
+  runConfigTui: () => Promise<void>;
+};
+
+function getConfigModuleSpecifier(): string {
+  // Build the module path at runtime so Bun doesn't eagerly include the TUI module
+  // in startup compilation paths.
+  return ["./", "config", ".js"].join("");
+}
+
+function loadConfigModule(): Promise<ConfigLoaderModule> {
+  return import(getConfigModuleSpecifier()) as Promise<ConfigLoaderModule>;
+}
+
 export async function runConfigTui(): Promise<void> {
-  const { runConfigTui: _run } = await import("./config.js");
+  const { runConfigTui: _run } = await loadConfigModule();
   return _run();
 }

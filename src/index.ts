@@ -592,6 +592,7 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
     if (isTuiModuleNotFoundError(error)) {
       printTuiUnavailableError("monitor");
       process.exit(1);
+      return;
     }
     const err = error as Error;
     console.error(`Error launching monitor: ${err.message}`);
@@ -618,7 +619,28 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
  */
 function isTuiModuleNotFoundError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes("Cannot find module") && message.includes("@opentui");
+  if (!message.includes("@opentui")) {
+    return false;
+  }
+
+  if (error instanceof Error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
+      return true;
+    }
+  }
+
+  if (
+    message.includes("Cannot find module") ||
+    message.includes("Cannot find package")
+  ) {
+    return true;
+  }
+
+  const cause = error instanceof Error ? (error as { cause?: unknown }).cause : undefined;
+  return (
+    cause !== undefined && cause !== error && isTuiModuleNotFoundError(cause)
+  );
 }
 
 /**
@@ -958,6 +980,7 @@ export async function main(
         if (isTuiModuleNotFoundError(error)) {
           printTuiUnavailableError("config");
           process.exit(1);
+          return;
         }
         throw error;
       }

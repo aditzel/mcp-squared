@@ -14,11 +14,29 @@
  * @module tui/monitor-loader
  */
 
-export type { MonitorTuiOptions } from "./monitor.js";
+type MonitorTuiOptions = {
+  socketPath?: string;
+  refreshInterval?: number;
+  instances?: unknown[];
+};
+
+type MonitorLoaderModule = {
+  runMonitorTui: (options?: MonitorTuiOptions) => Promise<void>;
+};
+
+function getMonitorModuleSpecifier(): string {
+  // Build the module path at runtime so Bun doesn't eagerly include the TUI module
+  // in startup compilation paths.
+  return ["./", "monitor", ".js"].join("");
+}
+
+async function loadMonitorModule(): Promise<MonitorLoaderModule> {
+  return import(getMonitorModuleSpecifier()) as Promise<MonitorLoaderModule>;
+}
 
 export async function runMonitorTui(
-  ...args: Parameters<typeof import("./monitor.js").runMonitorTui>
+  options: MonitorTuiOptions = {},
 ): Promise<void> {
-  const { runMonitorTui: _run } = await import("./monitor.js");
-  return _run(...args);
+  const { runMonitorTui: runMonitor } = await loadMonitorModule();
+  return runMonitor(options);
 }
