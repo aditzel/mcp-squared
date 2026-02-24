@@ -1,6 +1,6 @@
 {
   "name": "mcp-squared",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP² (Mercury Control Plane) - A local-first meta-server and proxy for the Model Context Protocol",
   "author": "aditzel",
   "license": "Apache-2.0",

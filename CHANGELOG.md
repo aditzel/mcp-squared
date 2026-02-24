@@ -7,12 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- Tightened npm package contents to include only runtime artifacts (`bin/mcp-squared`, `dist/index.js`, `dist/*.scm`, `dist/*.wasm`), excluding standalone compile outputs and logs.
+## [0.2.0] - 2026-02-24
 
 ### Added
 - `bun run release:check` script to run test/build/lint/typecheck and verify package contents with `bun pm pack --dry-run`.
 - Maintainer release runbook at `docs/RELEASING.md`.
+
+### Changed
+- Tightened npm package contents to include only runtime artifacts (`bin/mcp-squared`, `dist/index.js`, `dist/*.scm`, `dist/*.wasm`), excluding standalone compile outputs and logs.
+
+### Fixed
+- Improved standalone binary compile reliability across platforms (lazy TUI loading and compile/runtime hardening).
+
+### Security
+- Hardened OAuth/config handling and dependency posture via follow-up remediation work.
 
 ## [0.1.0] - 2026-02-19
 
