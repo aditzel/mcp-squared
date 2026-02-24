@@ -628,14 +628,12 @@ function isTuiModuleNotFoundError(error: unknown): boolean {
   }
 
   const message = error instanceof Error ? error.message : String(error);
-  if (error instanceof Error && hasMissingModuleErrorCode(error)) {
-    return true;
-  }
-
-  return (
+  const hasMissingModule =
     hasMissingModuleMessage(message) ||
-    hasMissingModuleErrorCode(error as { code?: unknown })
-  );
+    hasMissingModuleErrorCode(error as { code?: unknown });
+  const hasOpentuiMarker = containsOpentuiMarker(message);
+
+  return hasMissingModule && hasOpentuiMarker;
 }
 
 function hasMissingModuleErrorCode(error: { code?: unknown }): boolean {
@@ -647,6 +645,14 @@ function hasMissingModuleMessage(message: string): boolean {
   return (
     message.includes("Cannot find module") ||
     message.includes("Cannot find package")
+  );
+}
+
+function containsOpentuiMarker(message: string): boolean {
+  const lowercaseMessage = message.toLowerCase();
+  return (
+    lowercaseMessage.includes("@opentui") ||
+    lowercaseMessage.includes("opentui")
   );
 }
 
