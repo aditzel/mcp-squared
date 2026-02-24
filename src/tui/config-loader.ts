@@ -19,9 +19,10 @@ type ConfigLoaderModule = {
 };
 
 function getConfigModuleSpecifier(): string {
-  // Build the module path at runtime so Bun doesn't eagerly include the TUI module
-  // in startup compilation paths.
-  return ["./", "config", ".js"].join("");
+  // Build the module path at runtime so Bun doesn't eagerly include the TUI module.
+  const modulePath = ["./", "config", ".js"].join("");
+  const baseUrl = new URL(".", import.meta.url);
+  return new URL(modulePath, baseUrl).href;
 }
 
 function loadConfigModule(): Promise<ConfigLoaderModule> {

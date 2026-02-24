@@ -591,8 +591,7 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
   } catch (error) {
     if (isTuiModuleNotFoundError(error)) {
       printTuiUnavailableError("monitor");
-      process.exit(1);
-      return;
+      return process.exit(1);
     }
     const err = error as Error;
     console.error(`Error launching monitor: ${err.message}`);
@@ -623,23 +622,29 @@ function isTuiModuleNotFoundError(error: unknown): boolean {
     return false;
   }
 
-  if (error instanceof Error) {
-    const code = (error as { code?: unknown }).code;
-    if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
-      return true;
-    }
-  }
-
-  if (
-    message.includes("Cannot find module") ||
-    message.includes("Cannot find package")
-  ) {
+  if (error instanceof Error && hasMissingModuleErrorCode(error)) {
     return true;
   }
 
-  const cause = error instanceof Error ? (error as { cause?: unknown }).cause : undefined;
+  if (hasMissingModuleMessage(message)) {
+    return true;
+  }
+
+  const cause = error instanceof Error
+    ? (error as { cause?: unknown }).cause
+    : undefined;
+  return cause !== undefined && cause !== error && isTuiModuleNotFoundError(cause);
+}
+
+function hasMissingModuleErrorCode(error: { code?: unknown }): boolean {
+  const code = error.code;
+  return code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND";
+}
+
+function hasMissingModuleMessage(message: string): boolean {
   return (
-    cause !== undefined && cause !== error && isTuiModuleNotFoundError(cause)
+    message.includes("Cannot find module") ||
+    message.includes("Cannot find package")
   );
 }
 
@@ -979,8 +984,7 @@ export async function main(
       } catch (error) {
         if (isTuiModuleNotFoundError(error)) {
           printTuiUnavailableError("config");
-          process.exit(1);
-          return;
+          return process.exit(1);
         }
         throw error;
       }
