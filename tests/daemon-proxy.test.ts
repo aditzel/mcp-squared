@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createServer } from "node:net";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { DEFAULT_CONFIG } from "@/config/schema";
 import { createProxyBridge } from "@/daemon/proxy";
 import { DaemonServer } from "@/daemon/server";
 import { McpSquaredServer } from "@/server";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { withTempConfigHome } from "./helpers/config-home";
 
 const SOCKET_LISTEN_SUPPORTED = await new Promise<boolean>((resolve) => {

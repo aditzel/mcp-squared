@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
-  IndexRefreshManager,
-  type ToolChanges,
   captureSnapshot,
   detectChanges,
   hasChanges,
+  IndexRefreshManager,
+  type ToolChanges,
 } from "../src/background/index.js";
 import type { Retriever } from "../src/retriever/index.js";
 import type {

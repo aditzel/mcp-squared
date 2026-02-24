@@ -12,18 +12,18 @@ import { parse as parseToml } from "smol-toml";
 import type { ImportArgs } from "../cli/index.js";
 import {
   DEFAULT_CONFIG,
-  type McpSquaredConfig,
   discoverConfigPath,
   getDefaultConfigPath,
   loadConfig,
+  type McpSquaredConfig,
   saveConfig,
 } from "../config/index.js";
 import { type DiscoveredConfig, discoverConfigs } from "./discovery/index.js";
 import {
+  detectConflicts,
   type IncomingServerGroup,
   type MergeInput,
   type MergeResult,
-  detectConflicts,
   mergeWithResolutions,
   mergeWithStrategy,
   summarizeChanges,

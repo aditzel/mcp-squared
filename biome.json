@@ -1,6 +1,5 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.2/schema.json",
-  "assist": { "actions": { "source": { "organizeImports": "off" } } },
   "linter": {
     "enabled": true,
     "rules": {
@@ -14,8 +13,5 @@
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2
-  },
-  "files": {
-    "includes": ["**", "!dist", "!node_modules", "!.beads", "!bun.lockb"]
   }
 }

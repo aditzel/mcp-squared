@@ -7,7 +7,7 @@
  * @module tui/monitor-client
  */
 
-import { type Socket, connect } from "node:net";
+import { connect, type Socket } from "node:net";
 import type { ServerStats, ToolStats } from "../server/stats.js";
 
 function isTcpEndpoint(endpoint: string): boolean {

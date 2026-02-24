@@ -9,6 +9,6 @@
 
 export {
   EmbeddingGenerator,
-  EmbeddingRuntimeDependencyError,
   type EmbeddingOptions,
+  EmbeddingRuntimeDependencyError,
 } from "./generator.js";

@@ -13,11 +13,10 @@ import type { DiscoveredConfig, ImportScope, ToolId } from "../types.js";
 import { getEnv } from "./paths.js";
 import { ALL_TOOL_IDS, getToolPaths } from "./registry.js";
 
-export { getToolPaths, ALL_TOOL_IDS, isValidToolId } from "./registry.js";
-export * from "./paths.js";
-
 // Re-export types used by discovery consumers
 export type { DiscoveredConfig } from "../types.js";
+export * from "./paths.js";
+export { ALL_TOOL_IDS, getToolPaths, isValidToolId } from "./registry.js";
 
 /**
  * Options for config discovery.

@@ -4,10 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { parseArgs } from "@/cli";
+import type { McpServerEntry } from "@/install";
 import {
-  StandardMcpServersWriter,
-  VSCodeWriter,
-  ZedWriter,
   createBackup,
   discoverAvailableTools,
   getToolDisplayName,
@@ -15,8 +13,10 @@ import {
   isValidInstallMode,
   isValidInstallScope,
   performInstallation,
+  StandardMcpServersWriter,
+  VSCodeWriter,
+  ZedWriter,
 } from "@/install";
-import type { McpServerEntry } from "@/install";
 
 describe("isValidInstallMode", () => {
   test("accepts 'replace'", () => {

@@ -28,6 +28,16 @@ bun run build            # Build to dist/
 bun run clean            # Remove dist/
 ```
 
+## Commit Rules
+
+You MUST NOT commit changes until all of these are clean:
+
+- `bun test`
+- `bun run build`
+- `bun run lint`
+
+This applies even when failures are pre-existing in the branch.
+
 ### Running a Single Test
 
 ```bash

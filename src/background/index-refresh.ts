@@ -12,11 +12,11 @@ import { EventEmitter } from "node:events";
 import type { Retriever } from "../retriever/index.js";
 import type { Cataloger } from "../upstream/index.js";
 import {
-  type ToolChanges,
-  type ToolSnapshot,
   captureSnapshot,
   detectChanges,
   hasChanges,
+  type ToolChanges,
+  type ToolSnapshot,
 } from "./change-detection.js";
 
 /**

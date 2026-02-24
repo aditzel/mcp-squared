@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ZodError } from "zod";
 import {
   ConfigError,
   ConfigNotFoundError,
@@ -9,18 +10,17 @@ import {
   ConfigSchema,
   ConfigValidationError,
   DEFAULT_CONFIG,
-  type McpSquaredConfig,
-  UnknownSchemaVersionError,
   discoverConfigPath,
   formatValidationIssues,
   loadConfig,
   loadConfigFromPath,
+  type McpSquaredConfig,
   migrateConfig,
   saveConfig,
+  UnknownSchemaVersionError,
   validateConfig,
   validateStdioUpstream,
 } from "@/config";
-import { ZodError } from "zod";
 
 describe("ConfigSchema", () => {
   test("parses empty object with defaults", () => {

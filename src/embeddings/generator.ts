@@ -8,8 +8,8 @@
  */
 
 import {
-  type FeatureExtractionPipeline,
   env,
+  type FeatureExtractionPipeline,
   pipeline,
 } from "@huggingface/transformers";
 

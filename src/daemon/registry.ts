@@ -11,7 +11,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { type Socket, connect } from "node:net";
+import { connect, type Socket } from "node:net";
 import { ensureDaemonDir, getDaemonRegistryPath } from "../config/paths.js";
 import { isProcessRunning } from "../config/pid.js";
 

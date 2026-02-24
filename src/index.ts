@@ -19,17 +19,17 @@ import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { type MonitorArgs, parseArgs, printHelp } from "./cli/index.js";
 import type { DaemonArgs, ProxyArgs } from "./cli/index.js";
+import { type MonitorArgs, parseArgs, printHelp } from "./cli/index.js";
 import {
-  type InstanceRegistryEntry,
-  type McpSquaredConfig,
   deleteInstanceEntry,
   ensureInstanceRegistryDir,
   ensureSocketDir,
   formatValidationIssues,
+  type InstanceRegistryEntry,
   listActiveInstanceEntries,
   loadConfig,
+  type McpSquaredConfig,
   validateConfig,
   validateUpstreamConfig,
   writeInstanceEntry,
@@ -45,8 +45,8 @@ import { runInstall } from "./install/runner.js";
 import {
   McpOAuthProvider,
   OAuthCallbackServer,
-  TokenStorage,
   performPreflightAuth,
+  TokenStorage,
 } from "./oauth/index.js";
 import { McpSquaredServer } from "./server/index.js";
 import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
@@ -586,9 +586,13 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
       instances,
       refreshInterval: options.noAutoRefresh ? 0 : options.refreshInterval,
     };
-    const { runMonitorTui } = await import("./tui/monitor.js");
+    const { runMonitorTui } = await import("./tui/monitor-loader.js");
     await runMonitorTui(monitorOptions);
   } catch (error) {
+    if (isTuiModuleNotFoundError(error)) {
+      printTuiUnavailableError("monitor");
+      return process.exit(1);
+    }
     const err = error as Error;
     console.error(`Error launching monitor: ${err.message}`);
     console.error("");
@@ -601,6 +605,71 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
     console.error("  mcp-squared");
     process.exit(1);
   }
+}
+
+/**
+ * Returns true if the error indicates a missing TUI runtime dependency
+ * (@opentui/core or its platform-specific native packages).
+ *
+ * In compiled standalone binaries the TUI packages are marked --external and
+ * resolved at runtime.  When they are absent (no bun install context), the
+ * dynamic import of the TUI module itself throws a "Cannot find module" error
+ * with the opentui package name in the message.
+ */
+function isTuiModuleNotFoundError(error: unknown): boolean {
+  const cause =
+    error instanceof Error ? (error as { cause?: unknown }).cause : undefined;
+  if (
+    cause !== undefined &&
+    cause !== error &&
+    isTuiModuleNotFoundError(cause)
+  ) {
+    return true;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const hasMissingModule =
+    hasMissingModuleMessage(message) ||
+    hasMissingModuleErrorCode(error as { code?: unknown });
+  const hasOpentuiMarker = containsOpentuiMarker(message);
+
+  return hasMissingModule && hasOpentuiMarker;
+}
+
+function hasMissingModuleErrorCode(error: { code?: unknown }): boolean {
+  const code = error.code;
+  return code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND";
+}
+
+function hasMissingModuleMessage(message: string): boolean {
+  return (
+    message.includes("Cannot find module") ||
+    message.includes("Cannot find package")
+  );
+}
+
+function containsOpentuiMarker(message: string): boolean {
+  const lowercaseMessage = message.toLowerCase();
+  return (
+    lowercaseMessage.includes("@opentui") ||
+    lowercaseMessage.includes("opentui")
+  );
+}
+
+/**
+ * Prints a user-friendly error when TUI commands are invoked in an environment
+ * where @opentui/core is not available (e.g. standalone compiled binary).
+ */
+function printTuiUnavailableError(command: string): void {
+  console.error(
+    `Error: The '${command}' command requires the TUI runtime (@opentui/core),`,
+  );
+  console.error("which is not available in this environment.");
+  console.error("");
+  console.error("To use TUI commands, run mcp-squared via bun:");
+  console.error(`  bunx mcp-squared ${command}`);
+  console.error("  # or");
+  console.error(`  bun run src/index.ts ${command}`);
 }
 
 function augmentProcessInfo(entries: InstanceRegistryEntry[]): void {
@@ -917,8 +986,16 @@ export async function main(
 
   switch (args.mode) {
     case "config": {
-      const { runConfigTui } = await import("./tui/config.js");
-      await runConfigTui();
+      try {
+        const { runConfigTui } = await import("./tui/config-loader.js");
+        await runConfigTui();
+      } catch (error) {
+        if (isTuiModuleNotFoundError(error)) {
+          printTuiUnavailableError("config");
+          return process.exit(1);
+        }
+        throw error;
+      }
       break;
     }
     case "test":

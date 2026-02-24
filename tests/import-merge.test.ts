@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_CONFIG, type McpSquaredConfig } from "@/config/schema";
 import {
-  type MergeInput,
   detectConflicts,
+  type MergeInput,
   mergeWithResolutions,
   mergeWithStrategy,
 } from "@/import/merge";

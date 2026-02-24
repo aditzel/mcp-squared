@@ -41,3 +41,5 @@ bd sync               # Sync with git
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
+- **NEVER commit if test, build, and lint are not cleanly passing first**, even if issues pre-exist in the repository.
+  - Use this gate before commit: `bun test && bun run build && bun run lint`

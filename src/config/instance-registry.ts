@@ -10,13 +10,13 @@
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { type Socket, connect } from "node:net";
+import { connect, type Socket } from "node:net";
 import { join } from "node:path";
 import { getInstanceRegistryDir } from "./paths.js";
 import { isProcessRunning } from "./pid.js";

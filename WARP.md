@@ -74,8 +74,9 @@ This project uses **bd** (beads) for local issue tracking.
 1. **Capture Remaining Work**: File new issues for any incomplete tasks or follow-ups.
 2. **Quality Gates**: Ensure code passes all checks:
    ```bash
-   bun run lint && bun run typecheck && bun test
-   ```
+   bun test && bun run build && bun run lint
+  ```
+   - Do not commit unless the above gates are clean, even if failing checks already exist elsewhere.
 3. **Update Issues**: Close completed tasks in `bd`.
 4. **Push to Remote**:
    ```bash

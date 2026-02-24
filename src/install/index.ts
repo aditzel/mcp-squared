@@ -7,13 +7,12 @@
  * @module install
  */
 
+export { createBackup, createBackupAsync } from "./backup.js";
 export {
   discoverAvailableTools,
   performInstallation,
   runInstall,
 } from "./runner.js";
-
-export { createBackup, createBackupAsync } from "./backup.js";
 
 export {
   type DiscoveredTool,
@@ -22,10 +21,10 @@ export {
   type InstallOptions,
   type InstallResult,
   type InstallScope,
-  type McpServerEntry,
-  type ToolInstallResult,
   isValidInstallMode,
   isValidInstallScope,
+  type McpServerEntry,
+  type ToolInstallResult,
 } from "./types.js";
 
 export {
