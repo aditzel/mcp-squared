@@ -11,8 +11,10 @@
     "mcp-squared": "bin/mcp-squared"
   },
   "files": [
-    "bin",
-    "dist"
+    "bin/mcp-squared",
+    "dist/index.js",
+    "dist/*.scm",
+    "dist/*.wasm"
   ],
   "scripts": {
     "dev": "bun run --watch src/index.ts",
@@ -26,6 +28,7 @@
     "test:watch": "bun test --watch",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src tests scripts AGENTS.md CLAUDE.md WARP.md README.md CHANGELOG.md package.json biome.json tsconfig.json",
+    "release:check": "bun test && bun run build && bun run lint && bun run typecheck && bun pm pack --dry-run",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "clean": "rm -rf dist",

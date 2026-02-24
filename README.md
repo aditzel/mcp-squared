@@ -190,6 +190,10 @@ See `docs/ARCHITECTURE.md` for a full architecture breakdown.
 
 We welcome contributions! Please see `.github/CONTRIBUTING.md` for details on how to get started.
 
+## Releasing
+
+Maintainers can follow `docs/RELEASING.md` for the npm release checklist.
+
 ## License
 
 Apache-2.0

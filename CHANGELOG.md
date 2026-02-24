@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Tightened npm package contents to include only runtime artifacts (`bin/mcp-squared`, `dist/index.js`, `dist/*.scm`, `dist/*.wasm`), excluding standalone compile outputs and logs.
+
+### Added
+- `bun run release:check` script to run test/build/lint/typecheck and verify package contents with `bun pm pack --dry-run`.
+- Maintainer release runbook at `docs/RELEASING.md`.
+
 ## [0.1.0] - 2026-02-19
 
 ### Added
