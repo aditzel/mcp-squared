@@ -164,8 +164,10 @@ export class OAuthCallbackServer {
    */
   async waitForCallback(): Promise<CallbackResult> {
     return new Promise((resolve, reject) => {
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
       let resolved = false;
+      const timeoutId = setTimeout(() => {
+        fail(new Error(`OAuth callback timeout after ${this.timeoutMs}ms`));
+      }, this.timeoutMs);
 
       const cleanup = () => {
         if (timeoutId) {
@@ -187,11 +189,6 @@ export class OAuthCallbackServer {
         cleanup();
         reject(error);
       };
-
-      // Set up timeout
-      timeoutId = setTimeout(() => {
-        fail(new Error(`OAuth callback timeout after ${this.timeoutMs}ms`));
-      }, this.timeoutMs);
 
       // Create server
       this.server = createServer((req, res) => {

@@ -618,6 +618,17 @@ async function runMonitor(options: MonitorArgs): Promise<void> {
  */
 function isTuiModuleNotFoundError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
+  const cause =
+    error instanceof Error ? (error as { cause?: unknown }).cause : undefined;
+
+  if (
+    cause !== undefined &&
+    cause !== error &&
+    isTuiModuleNotFoundError(cause)
+  ) {
+    return true;
+  }
+
   if (!message.includes("@opentui")) {
     return false;
   }
@@ -630,10 +641,7 @@ function isTuiModuleNotFoundError(error: unknown): boolean {
     return true;
   }
 
-  const cause = error instanceof Error
-    ? (error as { cause?: unknown }).cause
-    : undefined;
-  return cause !== undefined && cause !== error && isTuiModuleNotFoundError(cause);
+  return false;
 }
 
 function hasMissingModuleErrorCode(error: { code?: unknown }): boolean {
