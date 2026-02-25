@@ -54,6 +54,45 @@ import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
 /** Current version of MCP² */
 export const VERSION = "0.1.0";
 
+const DEFAULT_OAUTH_CALLBACK_PORT = 8089;
+const DEFAULT_OAUTH_CLIENT_NAME = "MCP²";
+
+interface OAuthProviderOptions {
+  callbackPort: number;
+  clientName: string;
+}
+
+type OAuthAuthConfigInput =
+  | UpstreamSseServerConfig["sse"]["auth"]
+  | {
+      callbackPort?: number;
+      clientName?: string;
+    }
+  | undefined;
+
+export function resolveDefaultServerMode(
+  stdinIsTTY: boolean,
+  stdoutIsTTY: boolean,
+): "daemon" | "proxy" {
+  return stdinIsTTY && stdoutIsTTY ? "daemon" : "proxy";
+}
+
+export function resolveOAuthProviderOptions(
+  authConfig: OAuthAuthConfigInput,
+): OAuthProviderOptions {
+  if (!authConfig || typeof authConfig !== "object") {
+    return {
+      callbackPort: DEFAULT_OAUTH_CALLBACK_PORT,
+      clientName: DEFAULT_OAUTH_CLIENT_NAME,
+    };
+  }
+
+  return {
+    callbackPort: authConfig.callbackPort ?? DEFAULT_OAUTH_CALLBACK_PORT,
+    clientName: authConfig.clientName ?? DEFAULT_OAUTH_CLIENT_NAME,
+  };
+}
+
 /**
  * Starts the MCP server in stdio mode.
  * Loads configuration, sets up signal handlers, and begins listening.
@@ -398,10 +437,9 @@ async function runAuth(targetName: string): Promise<void> {
   // Create OAuth provider and storage
   // Use auth config if provided, otherwise use defaults
   const tokenStorage = new TokenStorage();
-  const authConfig =
-    typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : undefined;
-  const callbackPort = authConfig?.callbackPort ?? 8089;
-  const clientName = authConfig?.clientName ?? "MCP²";
+  const { callbackPort, clientName } = resolveOAuthProviderOptions(
+    sseConfig.sse.auth,
+  );
   const authProvider = new McpOAuthProvider(targetName, tokenStorage, {
     callbackPort,
     clientName,
@@ -1029,7 +1067,10 @@ export async function main(
         await startServer();
         break;
       }
-      if (process.stdin.isTTY && process.stdout.isTTY) {
+      if (
+        resolveDefaultServerMode(process.stdin.isTTY, process.stdout.isTTY) ===
+        "daemon"
+      ) {
         await runDaemon(args.daemon);
       } else {
         await runProxyCommand(args.proxy);

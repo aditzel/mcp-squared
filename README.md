@@ -111,6 +111,21 @@ mcp-squared install --proxy
 mcp-squared install --stdio
 ```
 
+## Orchestration Coverage Targets
+
+To keep runtime orchestration regressions from slipping into releases, treat these as required guardrails:
+
+- `src/index.ts` startup/shutdown lifecycle behavior must remain covered by dedicated regression tests (stdin close/end and cleanup paths).
+- Default daemon/proxy auto-routing (`TTY` vs piped stdio) must remain covered by unit tests.
+- OAuth runtime option resolution (callback port + client name) must remain covered by unit tests.
+
+Current coverage anchors:
+- `tests/process-lifecycle.test.ts`
+- `tests/daemon-proxy.test.ts`
+- `tests/index-orchestration-helpers.test.ts`
+
+When changing startup, shutdown, proxy/daemon selection, or auth orchestration in `src/index.ts`, update/add tests in these areas as part of the same change.
+
 ## Configuration
 
 Config discovery order:
