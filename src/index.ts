@@ -46,6 +46,7 @@ import {
   McpOAuthProvider,
   OAuthCallbackServer,
   performPreflightAuth,
+  resolveOAuthProviderOptions,
   TokenStorage,
 } from "./oauth/index.js";
 import { McpSquaredServer } from "./server/index.js";
@@ -398,10 +399,9 @@ async function runAuth(targetName: string): Promise<void> {
   // Create OAuth provider and storage
   // Use auth config if provided, otherwise use defaults
   const tokenStorage = new TokenStorage();
-  const authConfig =
-    typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : undefined;
-  const callbackPort = authConfig?.callbackPort ?? 8089;
-  const clientName = authConfig?.clientName ?? "MCP²";
+  const { callbackPort, clientName } = resolveOAuthProviderOptions(
+    sseConfig.sse.auth,
+  );
   const authProvider = new McpOAuthProvider(targetName, tokenStorage, {
     callbackPort,
     clientName,

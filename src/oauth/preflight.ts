@@ -16,7 +16,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { McpSquaredConfig } from "../config/index.js";
 import type { UpstreamSseServerConfig } from "../config/schema.js";
 import { OAuthCallbackServer } from "./callback-server.js";
-import { McpOAuthProvider } from "./provider.js";
+import { McpOAuthProvider, resolveOAuthProviderOptions } from "./provider.js";
 import { TokenStorage } from "./token-storage.js";
 
 /** Result of pre-flight authentication */
@@ -70,10 +70,9 @@ export async function performPreflightAuth(
 
   // Check each upstream for valid tokens
   for (const { name, config: sseConfig } of sseUpstreams) {
-    const authConfig =
-      typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : undefined;
-    const callbackPort = authConfig?.callbackPort ?? 8089;
-    const clientName = authConfig?.clientName ?? "MCP²";
+    const { callbackPort, clientName } = resolveOAuthProviderOptions(
+      sseConfig.sse.auth,
+    );
 
     const authProvider = new McpOAuthProvider(name, tokenStorage, {
       callbackPort,
@@ -119,9 +118,7 @@ async function performInteractiveAuth(
   sseConfig: UpstreamSseServerConfig,
   authProvider: McpOAuthProvider,
 ): Promise<void> {
-  const authConfig =
-    typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : undefined;
-  const callbackPort = authConfig?.callbackPort ?? 8089;
+  const { callbackPort } = resolveOAuthProviderOptions(sseConfig.sse.auth);
 
   // Start callback server
   const callbackServer = new OAuthCallbackServer({

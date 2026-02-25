@@ -21,7 +21,14 @@ export {
   type PreflightAuthResult,
   performPreflightAuth,
 } from "./preflight.js";
-export { McpOAuthProvider } from "./provider.js";
+export {
+  DEFAULT_OAUTH_CALLBACK_PORT,
+  DEFAULT_OAUTH_CLIENT_NAME,
+  McpOAuthProvider,
+  type OAuthAuthConfigInput,
+  type ResolvedOAuthProviderOptions,
+  resolveOAuthProviderOptions,
+} from "./provider.js";
 export {
   type OAuthTokens,
   type StoredTokenData,

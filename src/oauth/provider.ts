@@ -25,10 +25,10 @@ import { logAuthorizationUrl, openBrowser } from "./browser.js";
 import type { TokenStorage } from "./token-storage.js";
 
 /** Default callback port for OAuth redirects */
-const DEFAULT_CALLBACK_PORT = 8089;
+export const DEFAULT_OAUTH_CALLBACK_PORT = 8089;
 
 /** Default client name for dynamic registration */
-const DEFAULT_CLIENT_NAME = "MCP²";
+export const DEFAULT_OAUTH_CLIENT_NAME = "MCP²";
 
 /**
  * Configuration options for McpOAuthProvider.
@@ -43,6 +43,35 @@ export interface McpOAuthProviderOptions {
    * Use this in server mode where interactive auth isn't possible.
    */
   nonInteractive?: boolean;
+}
+
+export type OAuthAuthConfigInput =
+  | boolean
+  | {
+      callbackPort?: number;
+      clientName?: string;
+    }
+  | undefined;
+
+export interface ResolvedOAuthProviderOptions {
+  callbackPort: number;
+  clientName: string;
+}
+
+export function resolveOAuthProviderOptions(
+  authConfig: OAuthAuthConfigInput,
+): ResolvedOAuthProviderOptions {
+  if (!authConfig || typeof authConfig !== "object") {
+    return {
+      callbackPort: DEFAULT_OAUTH_CALLBACK_PORT,
+      clientName: DEFAULT_OAUTH_CLIENT_NAME,
+    };
+  }
+
+  return {
+    callbackPort: authConfig.callbackPort ?? DEFAULT_OAUTH_CALLBACK_PORT,
+    clientName: authConfig.clientName ?? DEFAULT_OAUTH_CLIENT_NAME,
+  };
 }
 
 /**
@@ -86,8 +115,8 @@ export class McpOAuthProvider implements OAuthClientProvider {
   ) {
     this.upstreamName = upstreamName;
     this.storage = storage;
-    this.callbackPort = options.callbackPort ?? DEFAULT_CALLBACK_PORT;
-    this._clientName = options.clientName ?? DEFAULT_CLIENT_NAME;
+    this.callbackPort = options.callbackPort ?? DEFAULT_OAUTH_CALLBACK_PORT;
+    this._clientName = options.clientName ?? DEFAULT_OAUTH_CLIENT_NAME;
     this._nonInteractive = options.nonInteractive ?? false;
   }
 

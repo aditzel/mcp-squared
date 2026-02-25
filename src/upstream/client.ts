@@ -10,8 +10,11 @@ import type {
   UpstreamStdioServerConfig,
 } from "../config/schema.js";
 import {
+  type CallbackResult,
+  type CallbackServerOptions,
   McpOAuthProvider,
   OAuthCallbackServer,
+  resolveOAuthProviderOptions,
   TokenStorage,
 } from "../oauth/index.js";
 import { safelyCloseTransport } from "../utils/transport.js";
@@ -55,6 +58,23 @@ export interface TestOptions {
     verbose: boolean,
     onStderr: (text: string) => void,
   ) => Transport;
+  /** Override SSE transport construction (testing only) */
+  httpTransportFactory?: (
+    config: UpstreamSseServerConfig,
+    log: (msg: string) => void,
+    verbose: boolean,
+    authProvider?: McpOAuthProvider,
+  ) => StreamableHTTPClientTransport;
+  /** Override OAuth callback server construction (testing only) */
+  oauthCallbackServerFactory?: (
+    options: CallbackServerOptions,
+  ) => OAuthCallbackServerLike;
+}
+
+interface OAuthCallbackServerLike {
+  getCallbackUrl(): string;
+  waitForCallback(): Promise<CallbackResult>;
+  stop(): void;
 }
 
 function resolveEnvVars(env: Record<string, string>): Record<string, string> {
@@ -169,11 +189,20 @@ async function handleOAuthCallback(
   transport: StreamableHTTPClientTransport,
   provider: McpOAuthProvider,
   log: (msg: string) => void,
+  callbackServerFactory: (
+    options: CallbackServerOptions,
+  ) => OAuthCallbackServerLike = (options) => new OAuthCallbackServer(options),
 ): Promise<void> {
+  const callbackUrl = new URL(provider.redirectUrl);
+  const callbackPort = Number.parseInt(callbackUrl.port, 10);
+  if (Number.isNaN(callbackPort) || callbackPort <= 0) {
+    throw new Error(`Invalid OAuth callback URL: ${provider.redirectUrl}`);
+  }
+
   // Start callback server to receive the authorization code
-  const callbackServer = new OAuthCallbackServer({
-    port: 8089,
-    path: "/callback",
+  const callbackServer = callbackServerFactory({
+    port: callbackPort,
+    path: callbackUrl.pathname || "/callback",
     timeoutMs: 300_000, // 5 minutes
   });
 
@@ -257,12 +286,13 @@ export async function testUpstreamConnection(
       const tokenStorage = new TokenStorage();
       const hasStoredTokens = tokenStorage.load(name)?.tokens !== undefined;
       if (sseConfig.sse.auth || hasStoredTokens) {
-        const authOptions =
-          typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : {};
+        const authOptions = resolveOAuthProviderOptions(sseConfig.sse.auth);
         authProvider = new McpOAuthProvider(name, tokenStorage, authOptions);
       }
 
-      httpTransport = createHttpTransport(
+      const httpTransportFactory =
+        options.httpTransportFactory ?? createHttpTransport;
+      httpTransport = httpTransportFactory(
         sseConfig,
         log,
         verbose,
@@ -303,7 +333,12 @@ export async function testUpstreamConnection(
       if (err instanceof UnauthorizedError && authProvider && httpTransport) {
         if (authProvider.isInteractive()) {
           log("OAuth authorization required, opening browser...");
-          await handleOAuthCallback(httpTransport, authProvider, log);
+          await handleOAuthCallback(
+            httpTransport,
+            authProvider,
+            log,
+            options.oauthCallbackServerFactory,
+          );
 
           // Retry connection after auth
           log("Retrying connection after OAuth...");
