@@ -68,16 +68,23 @@ type ExecuteHandlerResult = {
   isError: boolean;
 };
 
+type SessionWithRegisteredTools = {
+  _registeredTools?: Record<
+    string,
+    { handler?: (args: ExecuteHandlerArgs) => Promise<ExecuteHandlerResult> }
+  >;
+};
+
 function getExecuteHandler(
   server: McpSquaredServer,
 ): (args: ExecuteHandlerArgs) => Promise<ExecuteHandlerResult> {
-  const session = server.createSessionServer() as {
-    _registeredTools: Record<
-      string,
-      { handler: (args: ExecuteHandlerArgs) => Promise<ExecuteHandlerResult> }
-    >;
-  };
-  return session._registeredTools["execute"].handler;
+  const session =
+    server.createSessionServer() as unknown as SessionWithRegisteredTools;
+  const handler = session._registeredTools?.["execute"]?.handler;
+  if (!handler) {
+    throw new Error("execute handler is not registered");
+  }
+  return handler;
 }
 
 function parseExecutePayload(
