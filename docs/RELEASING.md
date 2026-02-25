@@ -32,6 +32,8 @@ This checklist is for maintainers publishing `mcp-squared` to npm.
    ```bash
    bun run release:check
    ```
+   This includes `bun run audit` as a hard gate.
+   If an advisory is temporarily accepted, record it in `docs/DEPENDENCY_EXCEPTIONS.md` and link the tracking issue before proceeding.
 5. Confirm npm will accept the version:
    ```bash
    npm view mcp-squared version
@@ -62,3 +64,8 @@ The npm package intentionally ships only runtime files:
 - `dist/*.wasm`
 
 Compiled standalone binaries and compile logs in `dist/compile/` are excluded from npm publishes.
+
+## Dependency hygiene
+
+- Follow `docs/DEPENDENCY_MAINTENANCE.md` for weekly cadence and risk handling.
+- Keep `docs/DEPENDENCY_EXCEPTIONS.md` current (or explicitly empty).

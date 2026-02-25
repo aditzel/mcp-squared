@@ -56,6 +56,9 @@ bun run build
 
 # Run tests
 bun test
+
+# Dependency audit
+bun run audit
 ```
 
 ### Standalone Executable (Experimental)
@@ -192,7 +195,7 @@ We welcome contributions! Please see `.github/CONTRIBUTING.md` for details on ho
 
 ## Releasing
 
-Maintainers can follow `docs/RELEASING.md` for the npm release checklist.
+Maintainers can follow `docs/RELEASING.md` for the npm release checklist and `docs/DEPENDENCY_MAINTENANCE.md` for dependency cadence and exception handling.
 
 ## License
 

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Dependency maintenance runbook at `docs/DEPENDENCY_MAINTENANCE.md` and exception register at `docs/DEPENDENCY_EXCEPTIONS.md`.
+
+### Changed
+- CI and publish workflows now run `bun run audit` after dependency install.
+- `release:check` now includes dependency auditing (`bun run audit`).
+
+### Security
+- Upgraded key dependencies (`@modelcontextprotocol/sdk`, `@opentui/core`, `@biomejs/biome`) and pinned patched transitive ranges for `ajv` and `hono` via overrides.
+
 ## [0.2.0] - 2026-02-24
 
 ### Added

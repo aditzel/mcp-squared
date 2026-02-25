@@ -37,6 +37,9 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      - name: Dependency audit
+        run: bun run audit
+
       - name: Test
         run: bun test --coverage --coverage-reporter=lcov
 

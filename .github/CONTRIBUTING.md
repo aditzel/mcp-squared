@@ -21,7 +21,8 @@ bun run dev
 # Run tests
 bun test
 
-# Lint + typecheck
+# Dependency audit + static checks
+bun run audit
 bun run lint
 bun run typecheck
 ```
