@@ -6,7 +6,7 @@ import type {
 } from "../src/config/schema.js";
 import { Cataloger, type ServerConnection } from "../src/upstream/cataloger.js";
 
-type CatalogerInternals = Cataloger & {
+type CatalogerAccess = {
   connections: Map<string, ServerConnection>;
   connect: (key: string, config: ServerConnection["config"]) => Promise<void>;
   getAuthStateVersion: (key: string) => number;
@@ -233,7 +233,7 @@ describe("Cataloger", () => {
 
     test("reconnects auth-pending upstream when auth state changes", async () => {
       const cataloger = new Cataloger();
-      const internals = cataloger as unknown as CatalogerInternals;
+      const internals = cataloger as unknown as CatalogerAccess;
       const connectMock = mock(async () => {});
 
       const connection: ServerConnection = {
@@ -256,8 +256,7 @@ describe("Cataloger", () => {
 
       internals.connections.set("oauth-upstream", connection);
       internals.getAuthStateVersion = () => 2;
-      internals.connect =
-        connectMock as unknown as CatalogerInternals["connect"];
+      internals.connect = connectMock as unknown as CatalogerAccess["connect"];
 
       await cataloger.refreshTools("oauth-upstream");
 
@@ -270,7 +269,7 @@ describe("Cataloger", () => {
 
     test("does not reconnect auth-pending upstream when auth state is unchanged", async () => {
       const cataloger = new Cataloger();
-      const internals = cataloger as unknown as CatalogerInternals;
+      const internals = cataloger as unknown as CatalogerAccess;
       const connectMock = mock(async () => {});
 
       const connection: ServerConnection = {
@@ -293,8 +292,7 @@ describe("Cataloger", () => {
 
       internals.connections.set("oauth-upstream", connection);
       internals.getAuthStateVersion = () => 2;
-      internals.connect =
-        connectMock as unknown as CatalogerInternals["connect"];
+      internals.connect = connectMock as unknown as CatalogerAccess["connect"];
 
       await cataloger.refreshTools("oauth-upstream");
 
@@ -303,7 +301,7 @@ describe("Cataloger", () => {
 
     test("marks connection auth-pending when refresh hits UnauthorizedError", async () => {
       const cataloger = new Cataloger();
-      const internals = cataloger as unknown as CatalogerInternals;
+      const internals = cataloger as unknown as CatalogerAccess;
       const listToolsMock = mock(async () => {
         throw new UnauthorizedError("Unauthorized");
       });
