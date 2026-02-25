@@ -100,6 +100,8 @@ export interface ServerConnection {
   authProvider: McpOAuthProvider | null;
   /** Whether auth is pending (browser authorization required) */
   authPending: boolean;
+  /** Monotonic auth state version (token file updatedAt) */
+  authStateVersion: number;
 }
 
 /**
@@ -215,6 +217,7 @@ export class Cataloger {
       transport: null,
       authProvider: null,
       authPending: false,
+      authStateVersion: this.getAuthStateVersion(key),
     };
     this.connections.set(key, connection);
 
@@ -608,7 +611,12 @@ export class Cataloger {
    */
   async refreshTools(key: string): Promise<void> {
     const connection = this.connections.get(key);
-    if (!connection?.client || connection.status !== "connected") {
+    if (!connection) {
+      return;
+    }
+
+    if (!connection.client || connection.status !== "connected") {
+      await this.reconnectIfAuthStateUpdated(connection);
       return;
     }
 
@@ -620,7 +628,17 @@ export class Cataloger {
         inputSchema: tool.inputSchema as ToolInputSchema,
         serverKey: key,
       }));
+      connection.error = undefined;
+      connection.authPending = false;
     } catch (err) {
+      if (err instanceof UnauthorizedError && connection.authProvider) {
+        if (connection.authProvider.isNonInteractive()) {
+          connection.authPending = true;
+          connection.status = "error";
+          connection.error = `OAuth authorization required. Run: mcp-squared auth ${key}`;
+          return;
+        }
+      }
       connection.status = "error";
       connection.error = err instanceof Error ? err.message : String(err);
     }
@@ -638,6 +656,37 @@ export class Cataloger {
       refreshPromises.push(this.refreshTools(key));
     }
     await Promise.allSettled(refreshPromises);
+  }
+
+  /**
+   * Reconnects auth-pending upstreams after OAuth state changes.
+   *
+   * This allows long-running daemon instances to recover automatically after
+   * `mcp-squared auth <upstream>` updates token storage.
+   */
+  private async reconnectIfAuthStateUpdated(
+    connection: ServerConnection,
+  ): Promise<void> {
+    if (!connection.authPending || !connection.authProvider) {
+      return;
+    }
+
+    const authStateVersion = this.getAuthStateVersion(connection.key);
+    if (authStateVersion <= connection.authStateVersion) {
+      return;
+    }
+
+    connection.authStateVersion = authStateVersion;
+    await this.connect(connection.key, connection.config);
+  }
+
+  /**
+   * Returns a monotonic auth state version for an upstream.
+   * Uses token file updatedAt to detect external auth updates.
+   */
+  private getAuthStateVersion(key: string): number {
+    const tokenStorage = new TokenStorage();
+    return tokenStorage.load(key)?.updatedAt ?? 0;
   }
 
   /**

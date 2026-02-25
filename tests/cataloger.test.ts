@@ -1,6 +1,29 @@
-import { describe, expect, test } from "bun:test";
-import type { McpSquaredConfig } from "../src/config/schema.js";
-import { Cataloger } from "../src/upstream/cataloger.js";
+import { describe, expect, mock, test } from "bun:test";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import type {
+  McpSquaredConfig,
+  UpstreamSseServerConfig,
+} from "../src/config/schema.js";
+import { Cataloger, type ServerConnection } from "../src/upstream/cataloger.js";
+
+type CatalogerInternals = Cataloger & {
+  connections: Map<string, ServerConnection>;
+  connect: (key: string, config: ServerConnection["config"]) => Promise<void>;
+  getAuthStateVersion: (key: string) => number;
+};
+
+function createSseConfig(): UpstreamSseServerConfig {
+  return {
+    transport: "sse",
+    enabled: true,
+    env: {},
+    sse: {
+      url: "https://example.com/mcp",
+      headers: {},
+      auth: true,
+    },
+  };
+}
 
 describe("Cataloger", () => {
   describe("constructor", () => {
@@ -206,6 +229,112 @@ describe("Cataloger", () => {
       const cataloger = new Cataloger();
       await cataloger.refreshTools("nonexistent");
       // Should not throw
+    });
+
+    test("reconnects auth-pending upstream when auth state changes", async () => {
+      const cataloger = new Cataloger();
+      const internals = cataloger as unknown as CatalogerInternals;
+      const connectMock = mock(async () => {});
+
+      const connection: ServerConnection = {
+        key: "oauth-upstream",
+        config: createSseConfig(),
+        status: "error",
+        error:
+          "OAuth authorization required. Run: mcp-squared auth oauth-upstream",
+        serverName: undefined,
+        serverVersion: undefined,
+        tools: [],
+        client: null,
+        transport: null,
+        authProvider: {
+          isNonInteractive: () => true,
+        } as unknown as NonNullable<ServerConnection["authProvider"]>,
+        authPending: true,
+        authStateVersion: 1,
+      };
+
+      internals.connections.set("oauth-upstream", connection);
+      internals.getAuthStateVersion = () => 2;
+      internals.connect =
+        connectMock as unknown as CatalogerInternals["connect"];
+
+      await cataloger.refreshTools("oauth-upstream");
+
+      expect(connectMock).toHaveBeenCalledTimes(1);
+      expect(connectMock).toHaveBeenCalledWith(
+        "oauth-upstream",
+        connection.config,
+      );
+    });
+
+    test("does not reconnect auth-pending upstream when auth state is unchanged", async () => {
+      const cataloger = new Cataloger();
+      const internals = cataloger as unknown as CatalogerInternals;
+      const connectMock = mock(async () => {});
+
+      const connection: ServerConnection = {
+        key: "oauth-upstream",
+        config: createSseConfig(),
+        status: "error",
+        error:
+          "OAuth authorization required. Run: mcp-squared auth oauth-upstream",
+        serverName: undefined,
+        serverVersion: undefined,
+        tools: [],
+        client: null,
+        transport: null,
+        authProvider: {
+          isNonInteractive: () => true,
+        } as unknown as NonNullable<ServerConnection["authProvider"]>,
+        authPending: true,
+        authStateVersion: 2,
+      };
+
+      internals.connections.set("oauth-upstream", connection);
+      internals.getAuthStateVersion = () => 2;
+      internals.connect =
+        connectMock as unknown as CatalogerInternals["connect"];
+
+      await cataloger.refreshTools("oauth-upstream");
+
+      expect(connectMock).toHaveBeenCalledTimes(0);
+    });
+
+    test("marks connection auth-pending when refresh hits UnauthorizedError", async () => {
+      const cataloger = new Cataloger();
+      const internals = cataloger as unknown as CatalogerInternals;
+      const listToolsMock = mock(async () => {
+        throw new UnauthorizedError("Unauthorized");
+      });
+
+      const connection: ServerConnection = {
+        key: "oauth-upstream",
+        config: createSseConfig(),
+        status: "connected",
+        error: undefined,
+        serverName: "example",
+        serverVersion: "1.0.0",
+        tools: [],
+        client: {
+          listTools: listToolsMock,
+        } as unknown as NonNullable<ServerConnection["client"]>,
+        transport: null,
+        authProvider: {
+          isNonInteractive: () => true,
+        } as unknown as NonNullable<ServerConnection["authProvider"]>,
+        authPending: false,
+        authStateVersion: 2,
+      };
+
+      internals.connections.set("oauth-upstream", connection);
+
+      await cataloger.refreshTools("oauth-upstream");
+
+      expect(listToolsMock).toHaveBeenCalledTimes(1);
+      expect(connection.status).toBe("error");
+      expect(connection.authPending).toBe(true);
+      expect(connection.error).toContain("mcp-squared auth oauth-upstream");
     });
   });
 
