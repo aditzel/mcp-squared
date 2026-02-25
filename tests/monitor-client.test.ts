@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
-import { type AddressInfo, createServer, type Server } from "node:net";
+import {
+  type AddressInfo,
+  createServer,
+  type Server,
+  type Socket,
+} from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { StatsCollector } from "@/server/stats";
@@ -176,6 +181,23 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       await listenServer(server);
       mockServer = server;
       return server;
+    }
+
+    function getSocketListenerCounts(client: MonitorClient): {
+      data: number;
+      error: number;
+      close: number;
+    } {
+      const socket = (client as unknown as { socket: Socket | null }).socket;
+      if (!socket) {
+        throw new Error("Expected client socket to be initialized");
+      }
+
+      return {
+        data: socket.listenerCount("data"),
+        error: socket.listenerCount("error"),
+        close: socket.listenerCount("close"),
+      };
     }
 
     describe("constructor", () => {
@@ -408,9 +430,119 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         expect(results.length).toBe(10);
         expect(results.every((r) => r.message === "pong")).toBe(true);
       });
+
+      test("serializes concurrent commands to avoid listener growth", async () => {
+        const server = createServer((socket) => {
+          socket.on("data", () => {
+            setTimeout(() => {
+              socket.write(
+                `${JSON.stringify({
+                  status: "success",
+                  data: { message: "pong" },
+                  timestamp: Date.now(),
+                })}\n`,
+              );
+            }, 30);
+          });
+        });
+        await listenServer(server);
+
+        await monitorClient.connect();
+        const baseline = getSocketListenerCounts(monitorClient);
+
+        const requests = Array.from({ length: 20 }, () => monitorClient.ping());
+
+        // Allow the first in-flight command listeners to attach.
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        const during = getSocketListenerCounts(monitorClient);
+
+        // Baseline listeners come from connect(); at most one extra command worth should be present.
+        expect(during.data).toBeLessThanOrEqual(baseline.data + 2);
+        expect(during.error).toBeLessThanOrEqual(baseline.error + 1);
+        expect(during.close).toBeLessThanOrEqual(baseline.close + 1);
+
+        const results = await Promise.all(requests);
+        expect(results.length).toBe(20);
+        expect(results.every((r) => r.message === "pong")).toBe(true);
+
+        const after = getSocketListenerCounts(monitorClient);
+        expect(after).toEqual(baseline);
+
+        monitorClient.disconnect();
+        await new Promise<void>((resolve) => {
+          server.close(() => resolve());
+        });
+      });
     });
 
     describe("error handling", () => {
+      test("cleans up per-command listeners on success and error responses", async () => {
+        const server = createServer((socket) => {
+          socket.on("data", (data) => {
+            const command = data.toString().trim();
+            const response =
+              command === "stats"
+                ? {
+                    status: "error",
+                    error: "forced error",
+                    timestamp: Date.now(),
+                  }
+                : {
+                    status: "success",
+                    data: { message: "pong" },
+                    timestamp: Date.now(),
+                  };
+            socket.write(`${JSON.stringify(response)}\n`);
+          });
+        });
+        await listenServer(server);
+
+        await monitorClient.connect();
+        const baseline = getSocketListenerCounts(monitorClient);
+
+        await expect(monitorClient.ping()).resolves.toEqual({
+          message: "pong",
+        });
+        expect(getSocketListenerCounts(monitorClient)).toEqual(baseline);
+
+        await expect(monitorClient.getStats()).rejects.toThrow("forced error");
+        expect(getSocketListenerCounts(monitorClient)).toEqual(baseline);
+
+        monitorClient.disconnect();
+        await new Promise<void>((resolve) => {
+          server.close(() => resolve());
+        });
+      });
+
+      test("cleans up listeners after repeated response timeouts", async () => {
+        const server = createServer((socket) => {
+          socket.on("data", () => {
+            // Intentionally never respond to trigger timeout cleanup.
+          });
+        });
+        await listenServer(server);
+
+        const timeoutClient = new MonitorClient({
+          socketPath,
+          timeout: 20,
+        });
+        await timeoutClient.connect();
+        const baseline = getSocketListenerCounts(timeoutClient);
+
+        for (let i = 0; i < 15; i++) {
+          await expect(timeoutClient.ping()).rejects.toThrow(
+            "Response timeout after 20ms",
+          );
+        }
+
+        expect(getSocketListenerCounts(timeoutClient)).toEqual(baseline);
+        timeoutClient.disconnect();
+
+        await new Promise<void>((resolve) => {
+          server.close(() => resolve());
+        });
+      });
+
       test("handles malformed response", async () => {
         const server = createServer((socket) => {
           socket.once("data", () => {
@@ -440,9 +572,11 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         await listenServer(server);
 
         await monitorClient.connect();
+        const baseline = getSocketListenerCounts(monitorClient);
         await expect(monitorClient.ping()).rejects.toThrow(
           "Connection closed before receiving response",
         );
+        expect(getSocketListenerCounts(monitorClient)).toEqual(baseline);
 
         await new Promise<void>((resolve) => {
           server.close(() => resolve());

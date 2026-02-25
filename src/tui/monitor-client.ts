@@ -120,6 +120,7 @@ export class MonitorClient {
   private readonly timeout: number;
   private socket: Socket | null = null;
   private isConnected = false;
+  private commandChain: Promise<void> = Promise.resolve();
 
   /**
    * Creates a new MonitorClient instance.
@@ -203,18 +204,59 @@ export class MonitorClient {
   private async sendCommand<T = unknown>(
     command: string,
   ): Promise<MonitorResponse<T>> {
+    const run = () => this.sendCommandImmediate<T>(command);
+    const result = this.commandChain.then(run, run);
+    this.commandChain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  /**
+   * Sends a command immediately to the monitor server.
+   * Callers should use sendCommand() to preserve single-flight semantics.
+   */
+  private async sendCommandImmediate<T = unknown>(
+    command: string,
+  ): Promise<MonitorResponse<T>> {
     if (!this.isConnected || !this.socket) {
       throw new Error("Not connected to monitor server");
     }
 
     return new Promise((resolve, reject) => {
       let buffer = "";
-      let responseReceived = false;
+      let settled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
       const cleanup = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = undefined;
+        }
+
         this.socket?.off("data", handleData);
         this.socket?.off("error", handleError);
         this.socket?.off("close", handleClose);
+        this.socket?.off("data", handleFirstData);
+      };
+
+      const settleResolve = (response: MonitorResponse<T>) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve(response);
+      };
+
+      const settleReject = (error: Error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        reject(error);
       };
 
       const handleData = (data: Buffer) => {
@@ -225,33 +267,39 @@ export class MonitorClient {
         buffer = lines.pop() || ""; // Keep incomplete line in buffer
 
         for (const line of lines) {
-          if (line.trim() && !responseReceived) {
-            responseReceived = true;
-            cleanup();
+          if (!line.trim() || settled) {
+            continue;
+          }
 
-            try {
-              const response = JSON.parse(line) as MonitorResponse<T>;
-              if (response.status === "error") {
-                reject(new Error(response.error ?? "Unknown error"));
-              } else {
-                resolve(response);
-              }
-            } catch (error) {
-              reject(new Error(`Failed to parse response: ${error}`));
+          try {
+            const response = JSON.parse(line) as MonitorResponse<T>;
+            if (response.status === "error") {
+              settleReject(new Error(response.error ?? "Unknown error"));
+            } else {
+              settleResolve(response);
             }
+          } catch (error) {
+            settleReject(new Error(`Failed to parse response: ${error}`));
           }
         }
       };
 
       const handleError = (error: Error) => {
-        cleanup();
-        reject(new Error(`Socket error: ${error.message}`));
+        settleReject(new Error(`Socket error: ${error.message}`));
       };
 
       const handleClose = () => {
-        cleanup();
-        if (!responseReceived) {
-          reject(new Error("Connection closed before receiving response"));
+        if (!settled) {
+          settleReject(
+            new Error("Connection closed before receiving response"),
+          );
+        }
+      };
+
+      const handleFirstData = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = undefined;
         }
       };
 
@@ -268,14 +316,11 @@ export class MonitorClient {
       this.socket.write(`${command}\n`);
 
       // Set timeout for response
-      const timeoutId = setTimeout(() => {
-        cleanup();
-        reject(new Error(`Response timeout after ${this.timeout}ms`));
+      timeoutId = setTimeout(() => {
+        settleReject(new Error(`Response timeout after ${this.timeout}ms`));
       }, this.timeout);
 
-      this.socket.once("data", () => {
-        clearTimeout(timeoutId);
-      });
+      this.socket.once("data", handleFirstData);
     });
   }
 
