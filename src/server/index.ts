@@ -536,7 +536,7 @@ export class McpSquaredServer {
             const policyResult = evaluatePolicy(
               {
                 serverKey: tool.serverKey,
-                toolName: args.tool_name,
+                toolName: tool.name,
                 confirmationToken: args.confirmation_token,
               },
               this.config,

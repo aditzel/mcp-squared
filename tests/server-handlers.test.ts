@@ -11,7 +11,11 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { DEFAULT_CONFIG, type McpSquaredConfig } from "@/config/schema";
-import { compilePolicy, getToolVisibilityCompiled } from "@/security/index.js";
+import {
+  clearPendingConfirmations,
+  compilePolicy,
+  getToolVisibilityCompiled,
+} from "@/security/index.js";
 import { McpSquaredServer } from "@/server/index";
 
 // Helper to create config with custom security settings
@@ -52,6 +56,175 @@ function indexTools(
     });
   }
 }
+
+type ExecuteHandlerArgs = {
+  tool_name: string;
+  arguments?: Record<string, unknown>;
+  confirmation_token?: string;
+};
+
+type ExecuteHandlerResult = {
+  content: Array<{ type: "text"; text: string }>;
+  isError: boolean;
+};
+
+function getExecuteHandler(
+  server: McpSquaredServer,
+): (args: ExecuteHandlerArgs) => Promise<ExecuteHandlerResult> {
+  const session = server.createSessionServer() as {
+    _registeredTools: Record<
+      string,
+      { handler: (args: ExecuteHandlerArgs) => Promise<ExecuteHandlerResult> }
+    >;
+  };
+  return session._registeredTools["execute"].handler;
+}
+
+function parseExecutePayload(
+  result: ExecuteHandlerResult,
+): Record<string, unknown> {
+  const text = result.content[0]?.text;
+  return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+}
+
+function mockCatalogerForSingleTool(server: McpSquaredServer): {
+  callToolRequests: string[];
+} {
+  const callToolRequests: string[] = [];
+  const cataloger = server.getCataloger() as unknown as {
+    findTool: (toolName: string) => {
+      tool: { name: string; serverKey: string } | undefined;
+      ambiguous: boolean;
+      alternatives: string[];
+    };
+    callTool: (
+      toolName: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ content: unknown[]; isError: boolean | undefined }>;
+  };
+
+  cataloger.findTool = (toolName: string) => {
+    if (toolName === "delete_file" || toolName === "github:delete_file") {
+      return {
+        tool: { name: "delete_file", serverKey: "github" },
+        ambiguous: false,
+        alternatives: [],
+      };
+    }
+
+    return { tool: undefined, ambiguous: false, alternatives: [] };
+  };
+
+  cataloger.callTool = async (toolName: string) => {
+    callToolRequests.push(toolName);
+    return {
+      content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
+      isError: false,
+    };
+  };
+
+  return { callToolRequests };
+}
+
+describe("execute tool policy normalization", () => {
+  let server: McpSquaredServer | null = null;
+
+  afterEach(async () => {
+    clearPendingConfirmations();
+    if (server) {
+      await server.stop();
+      server = null;
+    }
+  });
+
+  test("applies block policy consistently to bare and qualified names", async () => {
+    const config = createSecurityConfig({
+      allow: ["*:*"],
+      block: ["github:delete_file"],
+    });
+    server = new McpSquaredServer({ config });
+    const { callToolRequests } = mockCatalogerForSingleTool(server);
+    const execute = getExecuteHandler(server);
+
+    const bareResult = await execute({
+      tool_name: "delete_file",
+      arguments: {},
+    });
+    const qualifiedResult = await execute({
+      tool_name: "github:delete_file",
+      arguments: {},
+    });
+
+    const barePayload = parseExecutePayload(bareResult);
+    const qualifiedPayload = parseExecutePayload(qualifiedResult);
+
+    expect(bareResult.isError).toBe(true);
+    expect(qualifiedResult.isError).toBe(true);
+    expect(barePayload["blocked"]).toBe(true);
+    expect(qualifiedPayload["blocked"]).toBe(true);
+    expect(callToolRequests).toEqual([]);
+  });
+
+  test("applies confirm policy consistently and accepts cross-form confirmation tokens", async () => {
+    const config = createSecurityConfig({
+      allow: ["*:*"],
+      confirm: ["github:delete_file"],
+    });
+    server = new McpSquaredServer({ config });
+    const { callToolRequests } = mockCatalogerForSingleTool(server);
+    const execute = getExecuteHandler(server);
+
+    const qualifiedConfirm = await execute({
+      tool_name: "github:delete_file",
+      arguments: {},
+    });
+    const qualifiedConfirmPayload = parseExecutePayload(qualifiedConfirm);
+
+    expect(qualifiedConfirm.isError).toBe(false);
+    expect(qualifiedConfirmPayload["requires_confirmation"]).toBe(true);
+    const token = qualifiedConfirmPayload["confirmation_token"];
+    expect(typeof token).toBe("string");
+    expect(callToolRequests).toEqual([]);
+
+    const bareAllowed = await execute({
+      tool_name: "delete_file",
+      arguments: {},
+      confirmation_token: token as string,
+    });
+    const bareAllowedPayload = parseExecutePayload(bareAllowed);
+
+    expect(bareAllowed.isError).toBe(false);
+    expect(bareAllowedPayload).toEqual({ ok: true });
+    expect(callToolRequests).toEqual(["delete_file"]);
+  });
+
+  test("applies allow policy consistently to bare and qualified names", async () => {
+    const config = createSecurityConfig({
+      allow: ["github:delete_file"],
+    });
+    server = new McpSquaredServer({ config });
+    const { callToolRequests } = mockCatalogerForSingleTool(server);
+    const execute = getExecuteHandler(server);
+
+    const bareResult = await execute({
+      tool_name: "delete_file",
+      arguments: {},
+    });
+    const qualifiedResult = await execute({
+      tool_name: "github:delete_file",
+      arguments: {},
+    });
+
+    const barePayload = parseExecutePayload(bareResult);
+    const qualifiedPayload = parseExecutePayload(qualifiedResult);
+
+    expect(bareResult.isError).toBe(false);
+    expect(qualifiedResult.isError).toBe(false);
+    expect(barePayload).toEqual({ ok: true });
+    expect(qualifiedPayload).toEqual({ ok: true });
+    expect(callToolRequests).toEqual(["delete_file", "github:delete_file"]);
+  });
+});
 
 describe("Security policy filtering", () => {
   let server: McpSquaredServer | null = null;
