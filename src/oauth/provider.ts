@@ -58,6 +58,10 @@ export interface ResolvedOAuthProviderOptions {
   clientName: string;
 }
 
+function isValidCallbackPort(value: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= 65_535;
+}
+
 export function resolveOAuthProviderOptions(
   authConfig: OAuthAuthConfigInput,
 ): ResolvedOAuthProviderOptions {
@@ -68,8 +72,13 @@ export function resolveOAuthProviderOptions(
     };
   }
 
+  const callbackPort = authConfig.callbackPort ?? DEFAULT_OAUTH_CALLBACK_PORT;
+  if (!isValidCallbackPort(callbackPort)) {
+    throw new RangeError(`Invalid OAuth callbackPort: ${callbackPort}`);
+  }
+
   return {
-    callbackPort: authConfig.callbackPort ?? DEFAULT_OAUTH_CALLBACK_PORT,
+    callbackPort,
     clientName: authConfig.clientName ?? DEFAULT_OAUTH_CLIENT_NAME,
   };
 }

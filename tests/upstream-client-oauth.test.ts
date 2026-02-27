@@ -1,13 +1,14 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { UpstreamSseServerConfig } from "../src/config/schema.js";
+import type { UpstreamSseServerConfig } from "@/config/schema.js";
 import {
   type CallbackResult,
   type CallbackServerOptions,
   DEFAULT_OAUTH_CALLBACK_PORT,
-} from "../src/oauth/index.js";
-import { testUpstreamConnection } from "../src/upstream/client.js";
+} from "@/oauth/index.js";
+import { testUpstreamConnection } from "@/upstream/client.js";
+import { withTempConfigHome } from "./helpers/config-home";
 
 function createSseConfig(
   auth: UpstreamSseServerConfig["sse"]["auth"],
@@ -25,6 +26,18 @@ function createSseConfig(
 }
 
 describe("testUpstreamConnection OAuth callback settings", () => {
+  let restoreConfigHome: (() => void) | undefined;
+
+  beforeEach(async () => {
+    const ctx = await withTempConfigHome();
+    restoreConfigHome = ctx.restore;
+  });
+
+  afterEach(() => {
+    restoreConfigHome?.();
+    restoreConfigHome = undefined;
+  });
+
   test("uses custom callbackPort from upstream auth config", async () => {
     const observedCallbackServerOptions: CallbackServerOptions[] = [];
     let issuedState: string | undefined;

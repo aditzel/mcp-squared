@@ -91,7 +91,7 @@ export async function performPreflightAuth(
     console.error(`[preflight] Server URL: ${sseConfig.sse.url}`);
 
     try {
-      await performInteractiveAuth(name, sseConfig, authProvider);
+      await performInteractiveAuth(name, sseConfig, authProvider, callbackPort);
       result.authenticated.push(name);
       console.error(`[preflight] ✓ Authentication successful for '${name}'`);
     } catch (err) {
@@ -117,9 +117,8 @@ async function performInteractiveAuth(
   name: string,
   sseConfig: UpstreamSseServerConfig,
   authProvider: McpOAuthProvider,
+  callbackPort: number,
 ): Promise<void> {
-  const { callbackPort } = resolveOAuthProviderOptions(sseConfig.sse.auth);
-
   // Start callback server
   const callbackServer = new OAuthCallbackServer({
     port: callbackPort,
