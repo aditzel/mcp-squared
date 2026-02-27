@@ -16,7 +16,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { McpSquaredConfig } from "../config/index.js";
 import type { UpstreamSseServerConfig } from "../config/schema.js";
 import { OAuthCallbackServer } from "./callback-server.js";
-import { McpOAuthProvider } from "./provider.js";
+import { McpOAuthProvider, resolveOAuthProviderOptions } from "./provider.js";
 import { TokenStorage } from "./token-storage.js";
 
 /** Result of pre-flight authentication */
@@ -70,29 +70,27 @@ export async function performPreflightAuth(
 
   // Check each upstream for valid tokens
   for (const { name, config: sseConfig } of sseUpstreams) {
-    const authConfig =
-      typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : undefined;
-    const callbackPort = authConfig?.callbackPort ?? 8089;
-    const clientName = authConfig?.clientName ?? "MCP²";
-
-    const authProvider = new McpOAuthProvider(name, tokenStorage, {
-      callbackPort,
-      clientName,
-    });
-
-    // Check if we already have valid tokens
-    const existingTokens = authProvider.tokens();
-    if (existingTokens && !authProvider.isTokenExpired()) {
-      result.alreadyValid.push(name);
-      continue;
-    }
-
-    // Need to authenticate - run interactive flow
-    console.error(`\n[preflight] OAuth required for '${name}'`);
-    console.error(`[preflight] Server URL: ${sseConfig.sse.url}`);
-
     try {
-      await performInteractiveAuth(name, sseConfig, authProvider);
+      const { callbackPort, clientName } = resolveOAuthProviderOptions(
+        sseConfig.sse.auth,
+      );
+
+      const authProvider = new McpOAuthProvider(name, tokenStorage, {
+        callbackPort,
+        clientName,
+      });
+
+      // Check if we already have valid tokens
+      const existingTokens = authProvider.tokens();
+      if (existingTokens && !authProvider.isTokenExpired()) {
+        result.alreadyValid.push(name);
+        continue;
+      }
+
+      // Need to authenticate - run interactive flow
+      console.error(`\n[preflight] OAuth required for '${name}'`);
+      console.error(`[preflight] Server URL: ${sseConfig.sse.url}`);
+      await performInteractiveAuth(name, sseConfig, authProvider, callbackPort);
       result.authenticated.push(name);
       console.error(`[preflight] ✓ Authentication successful for '${name}'`);
     } catch (err) {
@@ -118,11 +116,8 @@ async function performInteractiveAuth(
   name: string,
   sseConfig: UpstreamSseServerConfig,
   authProvider: McpOAuthProvider,
+  callbackPort: number,
 ): Promise<void> {
-  const authConfig =
-    typeof sseConfig.sse.auth === "object" ? sseConfig.sse.auth : undefined;
-  const callbackPort = authConfig?.callbackPort ?? 8089;
-
   // Start callback server
   const callbackServer = new OAuthCallbackServer({
     port: callbackPort,
