@@ -1,22 +1,56 @@
 import { readFileSync } from "node:fs";
+import packageManifest from "../package.json";
 
 interface PackageManifest {
   version?: unknown;
 }
 
-function resolveVersion(): string {
+interface ResolveVersionOptions {
+  env?: NodeJS.ProcessEnv;
+  fallbackVersion?: string;
+  manifestUrl?: URL;
+  readManifest?: (manifestUrl: URL) => PackageManifest;
+}
+
+function normalizeVersion(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readManifestFile(manifestUrl: URL): PackageManifest {
+  const raw = readFileSync(manifestUrl, "utf8");
+  return JSON.parse(raw) as PackageManifest;
+}
+
+const BUNDLED_PACKAGE_VERSION =
+  normalizeVersion((packageManifest as PackageManifest).version) ?? "0.0.0";
+
+export function resolveVersion(options: ResolveVersionOptions = {}): string {
+  const readManifest = options.readManifest ?? readManifestFile;
+  const manifestUrl =
+    options.manifestUrl ?? new URL("../package.json", import.meta.url);
+
   try {
-    const manifestUrl = new URL("../package.json", import.meta.url);
-    const raw = readFileSync(manifestUrl, "utf8");
-    const manifest = JSON.parse(raw) as PackageManifest;
-    if (typeof manifest.version === "string" && manifest.version.length > 0) {
-      return manifest.version;
+    const manifest = readManifest(manifestUrl);
+    const manifestVersion = normalizeVersion(manifest.version);
+    if (manifestVersion) {
+      return manifestVersion;
     }
   } catch {
     // Fall back for constrained/runtime-compiled environments.
   }
 
-  return process.env["npm_package_version"] ?? "0.0.0";
+  const envVersion = normalizeVersion(
+    (options.env ?? process.env)["npm_package_version"],
+  );
+  if (envVersion) {
+    return envVersion;
+  }
+
+  return normalizeVersion(options.fallbackVersion) ?? BUNDLED_PACKAGE_VERSION;
 }
 
 /** Current version of MCP², resolved from package metadata. */
