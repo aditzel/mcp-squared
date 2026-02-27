@@ -70,27 +70,26 @@ export async function performPreflightAuth(
 
   // Check each upstream for valid tokens
   for (const { name, config: sseConfig } of sseUpstreams) {
-    const { callbackPort, clientName } = resolveOAuthProviderOptions(
-      sseConfig.sse.auth,
-    );
-
-    const authProvider = new McpOAuthProvider(name, tokenStorage, {
-      callbackPort,
-      clientName,
-    });
-
-    // Check if we already have valid tokens
-    const existingTokens = authProvider.tokens();
-    if (existingTokens && !authProvider.isTokenExpired()) {
-      result.alreadyValid.push(name);
-      continue;
-    }
-
-    // Need to authenticate - run interactive flow
-    console.error(`\n[preflight] OAuth required for '${name}'`);
-    console.error(`[preflight] Server URL: ${sseConfig.sse.url}`);
-
     try {
+      const { callbackPort, clientName } = resolveOAuthProviderOptions(
+        sseConfig.sse.auth,
+      );
+
+      const authProvider = new McpOAuthProvider(name, tokenStorage, {
+        callbackPort,
+        clientName,
+      });
+
+      // Check if we already have valid tokens
+      const existingTokens = authProvider.tokens();
+      if (existingTokens && !authProvider.isTokenExpired()) {
+        result.alreadyValid.push(name);
+        continue;
+      }
+
+      // Need to authenticate - run interactive flow
+      console.error(`\n[preflight] OAuth required for '${name}'`);
+      console.error(`[preflight] Server URL: ${sseConfig.sse.url}`);
       await performInteractiveAuth(name, sseConfig, authProvider, callbackPort);
       result.authenticated.push(name);
       console.error(`[preflight] ✓ Authentication successful for '${name}'`);

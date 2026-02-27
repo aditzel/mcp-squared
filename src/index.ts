@@ -399,9 +399,19 @@ async function runAuth(targetName: string): Promise<void> {
   // Create OAuth provider and storage
   // Use auth config if provided, otherwise use defaults
   const tokenStorage = new TokenStorage();
-  const { callbackPort, clientName } = resolveOAuthProviderOptions(
-    sseConfig.sse.auth,
-  );
+  let callbackPort: number;
+  let clientName: string;
+  try {
+    ({ callbackPort, clientName } = resolveOAuthProviderOptions(
+      sseConfig.sse.auth,
+    ));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      `Error: Invalid OAuth configuration for '${targetName}': ${message}`,
+    );
+    process.exit(1);
+  }
   const authProvider = new McpOAuthProvider(targetName, tokenStorage, {
     callbackPort,
     clientName,
