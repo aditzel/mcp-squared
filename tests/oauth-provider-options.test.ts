@@ -67,4 +67,18 @@ describe("resolveOAuthProviderOptions", () => {
       resolveOAuthProviderOptions({ callbackPort: 1234.5 }),
     ).toThrowError();
   });
+
+  test("throws on invalid clientName values", () => {
+    expect(() =>
+      resolveOAuthProviderOptions({ clientName: "" }),
+    ).toThrowError();
+    expect(() =>
+      resolveOAuthProviderOptions({ clientName: "   " }),
+    ).toThrowError();
+    expect(() =>
+      resolveOAuthProviderOptions({
+        clientName: 123 as unknown as string,
+      }),
+    ).toThrowError();
+  });
 });

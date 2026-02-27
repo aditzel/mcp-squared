@@ -62,6 +62,10 @@ function isValidCallbackPort(value: number): boolean {
   return Number.isInteger(value) && value >= 1 && value <= 65_535;
 }
 
+function isValidClientName(value: string): boolean {
+  return value.trim().length > 0;
+}
+
 export function resolveOAuthProviderOptions(
   authConfig: OAuthAuthConfigInput,
 ): ResolvedOAuthProviderOptions {
@@ -77,9 +81,14 @@ export function resolveOAuthProviderOptions(
     throw new RangeError(`Invalid OAuth callbackPort: ${callbackPort}`);
   }
 
+  const clientName = authConfig.clientName ?? DEFAULT_OAUTH_CLIENT_NAME;
+  if (typeof clientName !== "string" || !isValidClientName(clientName)) {
+    throw new TypeError(`Invalid OAuth clientName: ${String(clientName)}`);
+  }
+
   return {
     callbackPort,
-    clientName: authConfig.clientName ?? DEFAULT_OAUTH_CLIENT_NAME,
+    clientName,
   };
 }
 
