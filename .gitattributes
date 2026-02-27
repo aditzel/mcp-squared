@@ -1,5 +1,2 @@
 * text=auto eol=lf
 *.md markdown
-
-# Use bd merge for beads JSONL files
-.beads/issues.jsonl merge=beads
