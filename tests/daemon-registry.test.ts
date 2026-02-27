@@ -6,6 +6,7 @@ import {
   readDaemonRegistry,
   writeDaemonRegistry,
 } from "@/daemon/registry";
+import { VERSION } from "@/version";
 import { withTempConfigHome } from "./helpers/config-home";
 
 const SOCKET_LISTEN_SUPPORTED = await new Promise<boolean>((resolve) => {
@@ -38,7 +39,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         endpoint: "tcp://127.0.0.1:0",
         pid: process.pid,
         startedAt: Date.now(),
-        version: "0.1.0",
+        version: VERSION,
       };
 
       writeDaemonRegistry(entry);

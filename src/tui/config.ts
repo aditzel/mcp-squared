@@ -20,8 +20,8 @@ import {
   saveConfig,
   type UpstreamServerConfig,
 } from "../config/index.js";
-import { VERSION } from "../index.js";
 import { testUpstreamConnection } from "../upstream/index.js";
+import { VERSION } from "../version.js";
 
 const PROJECT_DESCRIPTION = "Mercury Control Plane";
 

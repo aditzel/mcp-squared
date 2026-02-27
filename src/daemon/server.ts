@@ -9,9 +9,9 @@ import { existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { connect, createServer, type Server, type Socket } from "node:net";
 import { dirname } from "node:path";
 import { ensureDaemonDir, getDaemonSocketPath } from "../config/paths.js";
-import { VERSION } from "../index.js";
 import type { McpSquaredServer } from "../server/index.js";
 import type { MonitorClientInfo } from "../server/monitor-server.js";
+import { VERSION } from "../version.js";
 import { deleteDaemonRegistry, writeDaemonRegistry } from "./registry.js";
 import { SocketServerTransport } from "./transport.js";
 

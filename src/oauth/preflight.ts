@@ -15,6 +15,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { McpSquaredConfig } from "../config/index.js";
 import type { UpstreamSseServerConfig } from "../config/schema.js";
+import { VERSION } from "../version.js";
 import { OAuthCallbackServer } from "./callback-server.js";
 import { McpOAuthProvider, resolveOAuthProviderOptions } from "./provider.js";
 import { TokenStorage } from "./token-storage.js";
@@ -143,7 +144,7 @@ async function performInteractiveAuth(
   // Create client
   const client = new Client({
     name: "mcp-squared-preflight",
-    version: "0.1.0",
+    version: VERSION,
   });
 
   try {

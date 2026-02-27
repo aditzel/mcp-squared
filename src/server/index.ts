@@ -35,7 +35,6 @@ import {
   type McpSquaredConfig,
   SearchModeSchema,
 } from "../config/schema.js";
-import { VERSION } from "../index.js";
 import {
   Retriever,
   type ToolFullSchema,
@@ -50,6 +49,7 @@ import {
   getToolVisibilityCompiled,
 } from "../security/index.js";
 import { Cataloger } from "../upstream/index.js";
+import { VERSION } from "../version.js";
 import { MonitorServer } from "./monitor-server.js";
 import { type ServerStats, StatsCollector, type ToolStats } from "./stats.js";
 

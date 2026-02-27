@@ -51,9 +51,9 @@ import {
 } from "./oauth/index.js";
 import { McpSquaredServer } from "./server/index.js";
 import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
+import { VERSION } from "./version.js";
 
-/** Current version of MCP² */
-export const VERSION = "0.1.0";
+export { VERSION };
 
 /**
  * Starts the MCP server in stdio mode.
