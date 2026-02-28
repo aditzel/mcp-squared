@@ -75,7 +75,7 @@ target_suffix() {
 is_infra_failure_log() {
   local logfile="$1"
   grep -Eiq \
-    'failed to (download|extract executable)|error sending request|timed out|temporary failure|connection reset|econnreset|etimedout|eai_again|could not resolve host|getaddrinfo|tls|certificate|network' \
+    'failed to (download|extract executable)|error sending request|request timed out|temporary failure in name resolution|connection reset by peer|econnreset|etimedout|eai_again|could not resolve host|getaddrinfo|tls handshake( timeout)?|x509:|certificate verify failed|ssl_error' \
     "$logfile"
 }
 
