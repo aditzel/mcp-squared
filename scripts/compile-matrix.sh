@@ -72,6 +72,24 @@ target_suffix() {
   esac
 }
 
+sanitize_target_token() {
+  local target="$1"
+
+  if [ -z "$target" ]; then
+    return 1
+  fi
+
+  if [[ "$target" == *"/"* || "$target" == *"\\"* || "$target" == *".."* ]]; then
+    return 1
+  fi
+
+  if [[ ! "$target" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    return 1
+  fi
+
+  printf "%s\n" "$target"
+}
+
 is_infra_failure_log() {
   local logfile="$1"
   grep -Eiq \
@@ -135,6 +153,15 @@ run_post_build_validations() {
 
 read -r -a TARGETS <<< "$TARGETS_INPUT"
 
+declare -a SANITIZED_TARGETS=()
+for target in "${TARGETS[@]}"; do
+  sanitized_target="$(sanitize_target_token "$target")" || {
+    echo "Invalid compile target '$target'. Targets must not contain path separators, '..', or unsafe characters."
+    exit 1
+  }
+  SANITIZED_TARGETS+=("$sanitized_target")
+done
+
 mkdir -p "$OUT_DIR"
 
 HOST_PLATFORM="$(to_platform "$(uname -s)")"
@@ -170,10 +197,12 @@ fi
 echo "Targets: ${TARGETS[*]}"
 echo
 
-for target in "${TARGETS[@]}"; do
+for idx in "${!TARGETS[@]}"; do
+  target="${TARGETS[$idx]}"
+  sanitized_target="${SANITIZED_TARGETS[$idx]}"
   suffix="$(target_suffix "$target")"
-  outfile="$OUT_DIR/mcp-squared-${target}${suffix}"
-  logfile="$OUT_DIR/mcp-squared-${target}.log"
+  outfile="$OUT_DIR/mcp-squared-${sanitized_target}${suffix}"
+  logfile="$OUT_DIR/mcp-squared-${sanitized_target}.log"
 
   printf "%s\n" "[$target] compiling..."
   if bun build "$ENTRYPOINT" --compile --target="$target" --outfile="$outfile" "${EXTERNAL_FLAGS[@]}" >"$logfile" 2>&1; then
@@ -244,16 +273,46 @@ if [ -n "$NATIVE_TARGET" ]; then
     fi
   else
     if is_infra_failure_log "$probe_build_log"; then
-      infra_failures=$((infra_failures + 1))
-      failures=$((failures + 1))
-      echo "  build: FAIL (INFRA/NETWORK)"
+      echo "  first failure classified as infra/network; retrying once..."
+      if bun build scripts/embedding-probe.ts --compile --target="$NATIVE_TARGET" --outfile="$probe_out" "${EXTERNAL_FLAGS[@]}" >"$probe_build_log" 2>&1; then
+        echo "  build: PASS (after retry)"
+        echo "  running compiled probe..."
+        if run_in_clean_env "$probe_out" >"$probe_run_log" 2>&1; then
+          echo "  runtime: PASS"
+        elif grep -Eiq 'onnxruntime|libonnxruntime|EmbeddingRuntimeDependencyError' "$probe_run_log"; then
+          if [ "$REQUIRE_EMBEDDING_RUNTIME" = "1" ]; then
+            failures=$((failures + 1))
+            product_failures=$((product_failures + 1))
+            echo "  runtime: FAIL (PRODUCT)"
+            echo "  run log: $probe_run_log"
+            print_log_excerpt "$probe_run_log" 12
+          else
+            warnings=$((warnings + 1))
+            echo "  runtime: WARN (onnxruntime dependency unavailable)"
+            echo "  run log: $probe_run_log"
+            print_log_excerpt "$probe_run_log" 6
+          fi
+        else
+          failures=$((failures + 1))
+          product_failures=$((product_failures + 1))
+          echo "  runtime: FAIL (PRODUCT)"
+          echo "  run log: $probe_run_log"
+          print_log_excerpt "$probe_run_log" 12
+        fi
+      else
+        infra_failures=$((infra_failures + 1))
+        failures=$((failures + 1))
+        echo "  build: FAIL (INFRA/NETWORK)"
+        echo "  build log: $probe_build_log"
+        print_log_excerpt "$probe_build_log" 12
+      fi
     else
       product_failures=$((product_failures + 1))
       failures=$((failures + 1))
       echo "  build: FAIL (PRODUCT)"
+      echo "  build log: $probe_build_log"
+      print_log_excerpt "$probe_build_log" 12
     fi
-    echo "  build log: $probe_build_log"
-    print_log_excerpt "$probe_build_log" 12
   fi
 else
   echo "[embedding-probe] skipped: no native target resolved for this host."
