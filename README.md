@@ -69,7 +69,7 @@ Build a single-file executable with Bun:
 bun run build:compile
 ```
 
-Run the compile validation matrix (target support, size check, standalone smoke test, embeddings probe):
+Run the compile validation matrix (darwin/linux/windows target support, size checks, standalone smoke test, embeddings probe):
 
 ```bash
 bun run build:compile:matrix
