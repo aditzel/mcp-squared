@@ -13,6 +13,7 @@ import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { VERSION } from "@/version.js";
 import type { McpSquaredConfig } from "../config/index.js";
 import type { UpstreamSseServerConfig } from "../config/schema.js";
 import { OAuthCallbackServer } from "./callback-server.js";
@@ -27,6 +28,16 @@ export interface PreflightAuthResult {
   alreadyValid: string[];
   /** Upstreams that failed authentication */
   failed: Array<{ name: string; error: string }>;
+}
+
+export function getPreflightClientMetadata(): {
+  name: string;
+  version: string;
+} {
+  return {
+    name: "mcp-squared-preflight",
+    version: VERSION,
+  };
 }
 
 /**
@@ -141,10 +152,7 @@ async function performInteractiveAuth(
   );
 
   // Create client
-  const client = new Client({
-    name: "mcp-squared-preflight",
-    version: "0.1.0",
-  });
+  const client = new Client(getPreflightClientMetadata());
 
   try {
     console.error(

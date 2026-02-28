@@ -200,12 +200,14 @@ Example response:
 
 Proxy → Daemon:
 
+Use the runtime-shared `VERSION` source when populating `payload.version` so this value stays aligned with the running binary.
+
 ```json
 {
   "type": "hello",
   "clientId": "c-abc",
   "payload": {
-    "version": "0.1.0",
+    "version": "<runtime VERSION>",
     "configHash": "optional"
   }
 }

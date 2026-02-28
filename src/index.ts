@@ -19,6 +19,7 @@ import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { VERSION } from "@/version.js";
 import type { DaemonArgs, ProxyArgs } from "./cli/index.js";
 import { type MonitorArgs, parseArgs, printHelp } from "./cli/index.js";
 import {
@@ -52,8 +53,7 @@ import {
 import { McpSquaredServer } from "./server/index.js";
 import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
 
-/** Current version of MCP² */
-export const VERSION = "0.1.0";
+export { VERSION };
 
 /**
  * Starts the MCP server in stdio mode.

@@ -15,6 +15,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { VERSION } from "@/version.js";
 import {
   build_sink,
   Guard,
@@ -35,7 +36,6 @@ import {
   type McpSquaredConfig,
   SearchModeSchema,
 } from "../config/schema.js";
-import { VERSION } from "../index.js";
 import {
   Retriever,
   type ToolFullSchema,
