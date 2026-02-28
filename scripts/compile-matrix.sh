@@ -133,8 +133,7 @@ run_post_build_validations() {
   echo "  no-runtime-deps smoke: $smoke_status"
 }
 
-# shellcheck disable=SC2206
-TARGETS=($TARGETS_INPUT)
+read -r -a TARGETS <<< "$TARGETS_INPUT"
 
 mkdir -p "$OUT_DIR"
 
