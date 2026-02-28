@@ -5,6 +5,7 @@ describe("resolveVersion", () => {
   test("returns manifest version when available", () => {
     const version = resolveVersion({
       readManifest: () => ({ version: "9.8.7" }),
+      readBundledManifest: () => ({}),
       fallbackVersion: "1.0.0",
       env: {},
     });
@@ -17,6 +18,7 @@ describe("resolveVersion", () => {
       readManifest: () => {
         throw new Error("missing package.json");
       },
+      readBundledManifest: () => ({}),
       env: { npm_package_version: "4.3.2" },
       fallbackVersion: "1.0.0",
     });
@@ -29,6 +31,7 @@ describe("resolveVersion", () => {
       readManifest: () => {
         throw new Error("missing package.json");
       },
+      readBundledManifest: () => ({}),
       env: {},
       fallbackVersion: "2.0.1",
     });
@@ -41,6 +44,7 @@ describe("resolveVersion", () => {
       readManifest: () => {
         throw new Error("missing package.json");
       },
+      readBundledManifest: () => ({}),
       env: { npm_package_version: "   " },
       fallbackVersion: "3.1.4",
     });

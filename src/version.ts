@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 
 interface PackageManifest {
   version?: unknown;
@@ -9,6 +10,7 @@ interface ResolveVersionOptions {
   fallbackVersion?: string;
   manifestUrl?: URL;
   readManifest?: (manifestUrl: URL) => PackageManifest;
+  readBundledManifest?: () => PackageManifest;
 }
 
 function normalizeVersion(value: unknown): string | undefined {
@@ -24,7 +26,10 @@ function readManifestFile(manifestUrl: URL): PackageManifest {
   return JSON.parse(raw) as PackageManifest;
 }
 
-const BUNDLED_PACKAGE_VERSION = "0.2.0";
+function readBundledManifestFile(): PackageManifest {
+  const require = createRequire(import.meta.url);
+  return require("../package.json") as PackageManifest;
+}
 
 export function resolveVersion(options: ResolveVersionOptions = {}): string {
   const readManifest = options.readManifest ?? readManifestFile;
@@ -48,7 +53,18 @@ export function resolveVersion(options: ResolveVersionOptions = {}): string {
     return envVersion;
   }
 
-  return normalizeVersion(options.fallbackVersion) ?? BUNDLED_PACKAGE_VERSION;
+  const readBundledManifest =
+    options.readBundledManifest ?? readBundledManifestFile;
+  try {
+    const bundledVersion = normalizeVersion(readBundledManifest().version);
+    if (bundledVersion) {
+      return bundledVersion;
+    }
+  } catch {
+    // Fall back when bundled manifests are unavailable.
+  }
+
+  return normalizeVersion(options.fallbackVersion) ?? "0.0.0";
 }
 
 /** Current version of MCP², resolved from package metadata. */
