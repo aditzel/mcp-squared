@@ -94,6 +94,45 @@ run_in_clean_env() {
   env -i HOME="$HOME" PATH="/usr/bin:/bin" "$@"
 }
 
+run_post_build_validations() {
+  local target="$1"
+  local suffix="$2"
+  local outfile="$3"
+
+  size_bytes="$(wc -c < "$outfile" | tr -d '[:space:]')"
+  size_mb="$(awk -v b="$size_bytes" 'BEGIN { printf "%.1f", b / 1048576 }')"
+
+  size_status="PASS"
+  if [ "$size_bytes" -gt "$max_size_bytes" ]; then
+    size_status="FAIL"
+    failures=$((failures + 1))
+    product_failures=$((product_failures + 1))
+  fi
+
+  smoke_status="N/A"
+  if [ -n "$NATIVE_TARGET" ] && [ "$target" = "$NATIVE_TARGET" ]; then
+    tmpdir="$(mktemp -d)"
+    binary_name="mcp-squared${suffix}"
+    cp "$outfile" "$tmpdir/$binary_name"
+    chmod +x "$tmpdir/$binary_name" 2>/dev/null || true
+
+    if (
+      cd "$tmpdir" && run_in_clean_env "./$binary_name" --version >/dev/null 2>&1
+    ); then
+      smoke_status="PASS"
+    else
+      smoke_status="FAIL"
+      failures=$((failures + 1))
+      product_failures=$((product_failures + 1))
+    fi
+
+    rm -rf "$tmpdir"
+  fi
+
+  echo "  size: ${size_mb}MB ($size_status)"
+  echo "  no-runtime-deps smoke: $smoke_status"
+}
+
 # shellcheck disable=SC2206
 TARGETS=($TARGETS_INPUT)
 
@@ -139,39 +178,8 @@ for target in "${TARGETS[@]}"; do
 
   printf "%s\n" "[$target] compiling..."
   if bun build "$ENTRYPOINT" --compile --target="$target" --outfile="$outfile" "${EXTERNAL_FLAGS[@]}" >"$logfile" 2>&1; then
-    size_bytes="$(wc -c < "$outfile" | tr -d '[:space:]')"
-    size_mb="$(awk -v b="$size_bytes" 'BEGIN { printf "%.1f", b / 1048576 }')"
-
-    size_status="PASS"
-    if [ "$size_bytes" -gt "$max_size_bytes" ]; then
-      size_status="FAIL"
-      failures=$((failures + 1))
-      product_failures=$((product_failures + 1))
-    fi
-
-    smoke_status="N/A"
-    if [ -n "$NATIVE_TARGET" ] && [ "$target" = "$NATIVE_TARGET" ]; then
-      tmpdir="$(mktemp -d)"
-      binary_name="mcp-squared${suffix}"
-      cp "$outfile" "$tmpdir/$binary_name"
-      chmod +x "$tmpdir/$binary_name" 2>/dev/null || true
-
-      if (
-        cd "$tmpdir" && run_in_clean_env "./$binary_name" --version >/dev/null 2>&1
-      ); then
-        smoke_status="PASS"
-      else
-        smoke_status="FAIL"
-        failures=$((failures + 1))
-        product_failures=$((product_failures + 1))
-      fi
-
-      rm -rf "$tmpdir"
-    fi
-
     echo "  build: PASS"
-    echo "  size: ${size_mb}MB ($size_status)"
-    echo "  no-runtime-deps smoke: $smoke_status"
+    run_post_build_validations "$target" "$suffix" "$outfile"
     echo "  output: $outfile"
     echo "  log: $logfile"
   else
@@ -179,11 +187,8 @@ for target in "${TARGETS[@]}"; do
     if is_infra_failure_log "$logfile"; then
       echo "  first failure classified as infra/network; retrying once..."
       if bun build "$ENTRYPOINT" --compile --target="$target" --outfile="$outfile" "${EXTERNAL_FLAGS[@]}" >"$logfile" 2>&1; then
-        size_bytes="$(wc -c < "$outfile" | tr -d '[:space:]')"
-        size_mb="$(awk -v b="$size_bytes" 'BEGIN { printf "%.1f", b / 1048576 }')"
         echo "  build: PASS (after retry)"
-        echo "  size: ${size_mb}MB (PASS)"
-        echo "  no-runtime-deps smoke: N/A"
+        run_post_build_validations "$target" "$suffix" "$outfile"
         echo "  output: $outfile"
         echo "  log: $logfile"
         echo
