@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { getPreflightClientMetadata } from "@/oauth/preflight";
-import { VERSION } from "@/version";
+import { getPreflightClientMetadata } from "@/oauth/preflight.js";
+import { VERSION } from "@/version.js";
 
 describe("getPreflightClientMetadata", () => {
   test("returns client metadata with shared VERSION", () => {

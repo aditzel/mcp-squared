@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import packageManifest from "../package.json";
 
 interface PackageManifest {
   version?: unknown;
@@ -25,8 +24,7 @@ function readManifestFile(manifestUrl: URL): PackageManifest {
   return JSON.parse(raw) as PackageManifest;
 }
 
-const BUNDLED_PACKAGE_VERSION =
-  normalizeVersion((packageManifest as PackageManifest).version) ?? "0.0.0";
+const BUNDLED_PACKAGE_VERSION = "0.2.0";
 
 export function resolveVersion(options: ResolveVersionOptions = {}): string {
   const readManifest = options.readManifest ?? readManifestFile;

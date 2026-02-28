@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveVersion } from "@/version";
+import { resolveVersion } from "@/version.js";
 
 describe("resolveVersion", () => {
   test("returns manifest version when available", () => {
