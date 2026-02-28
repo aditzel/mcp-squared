@@ -112,6 +112,39 @@ run_in_clean_env() {
   env -i HOME="$HOME" PATH="/usr/bin:/bin" "$@"
 }
 
+run_probe_and_handle_result() {
+  local probe_out="$1"
+  local probe_run_log="$2"
+
+  echo "  running compiled probe..."
+  if run_in_clean_env "$probe_out" >"$probe_run_log" 2>&1; then
+    echo "  runtime: PASS"
+    return
+  fi
+
+  if grep -Eiq 'onnxruntime|libonnxruntime|EmbeddingRuntimeDependencyError' "$probe_run_log"; then
+    if [ "$REQUIRE_EMBEDDING_RUNTIME" = "1" ]; then
+      failures=$((failures + 1))
+      product_failures=$((product_failures + 1))
+      echo "  runtime: FAIL (PRODUCT)"
+      echo "  run log: $probe_run_log"
+      print_log_excerpt "$probe_run_log" 12
+    else
+      warnings=$((warnings + 1))
+      echo "  runtime: WARN (onnxruntime dependency unavailable)"
+      echo "  run log: $probe_run_log"
+      print_log_excerpt "$probe_run_log" 6
+    fi
+    return
+  fi
+
+  failures=$((failures + 1))
+  product_failures=$((product_failures + 1))
+  echo "  runtime: FAIL (PRODUCT)"
+  echo "  run log: $probe_run_log"
+  print_log_excerpt "$probe_run_log" 12
+}
+
 run_post_build_validations() {
   local target="$1"
   local suffix="$2"
@@ -248,61 +281,22 @@ if [ -n "$NATIVE_TARGET" ]; then
   echo "[embedding-probe] compiling..."
   if bun build scripts/embedding-probe.ts --compile --target="$NATIVE_TARGET" --outfile="$probe_out" "${EXTERNAL_FLAGS[@]}" >"$probe_build_log" 2>&1; then
     echo "  build: PASS"
-    echo "  running compiled probe..."
-    if run_in_clean_env "$probe_out" >"$probe_run_log" 2>&1; then
-      echo "  runtime: PASS"
-    elif grep -Eiq 'onnxruntime|libonnxruntime|EmbeddingRuntimeDependencyError' "$probe_run_log"; then
-      if [ "$REQUIRE_EMBEDDING_RUNTIME" = "1" ]; then
-        failures=$((failures + 1))
-        product_failures=$((product_failures + 1))
-        echo "  runtime: FAIL (PRODUCT)"
-        echo "  run log: $probe_run_log"
-        print_log_excerpt "$probe_run_log" 12
-      else
-        warnings=$((warnings + 1))
-        echo "  runtime: WARN (onnxruntime dependency unavailable)"
-        echo "  run log: $probe_run_log"
-        print_log_excerpt "$probe_run_log" 6
-      fi
-    else
-      failures=$((failures + 1))
-      product_failures=$((product_failures + 1))
-      echo "  runtime: FAIL (PRODUCT)"
-      echo "  run log: $probe_run_log"
-      print_log_excerpt "$probe_run_log" 12
-    fi
+    run_probe_and_handle_result "$probe_out" "$probe_run_log"
   else
     if is_infra_failure_log "$probe_build_log"; then
       echo "  first failure classified as infra/network; retrying once..."
       if bun build scripts/embedding-probe.ts --compile --target="$NATIVE_TARGET" --outfile="$probe_out" "${EXTERNAL_FLAGS[@]}" >"$probe_build_log" 2>&1; then
         echo "  build: PASS (after retry)"
-        echo "  running compiled probe..."
-        if run_in_clean_env "$probe_out" >"$probe_run_log" 2>&1; then
-          echo "  runtime: PASS"
-        elif grep -Eiq 'onnxruntime|libonnxruntime|EmbeddingRuntimeDependencyError' "$probe_run_log"; then
-          if [ "$REQUIRE_EMBEDDING_RUNTIME" = "1" ]; then
-            failures=$((failures + 1))
-            product_failures=$((product_failures + 1))
-            echo "  runtime: FAIL (PRODUCT)"
-            echo "  run log: $probe_run_log"
-            print_log_excerpt "$probe_run_log" 12
-          else
-            warnings=$((warnings + 1))
-            echo "  runtime: WARN (onnxruntime dependency unavailable)"
-            echo "  run log: $probe_run_log"
-            print_log_excerpt "$probe_run_log" 6
-          fi
-        else
-          failures=$((failures + 1))
-          product_failures=$((product_failures + 1))
-          echo "  runtime: FAIL (PRODUCT)"
-          echo "  run log: $probe_run_log"
-          print_log_excerpt "$probe_run_log" 12
-        fi
+        run_probe_and_handle_result "$probe_out" "$probe_run_log"
       else
-        infra_failures=$((infra_failures + 1))
         failures=$((failures + 1))
-        echo "  build: FAIL (INFRA/NETWORK)"
+        if is_infra_failure_log "$probe_build_log"; then
+          infra_failures=$((infra_failures + 1))
+          echo "  build: FAIL (INFRA/NETWORK)"
+        else
+          product_failures=$((product_failures + 1))
+          echo "  build: FAIL (PRODUCT)"
+        fi
         echo "  build log: $probe_build_log"
         print_log_excerpt "$probe_build_log" 12
       fi
