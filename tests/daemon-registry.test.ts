@@ -6,7 +6,7 @@ import {
   readDaemonRegistry,
   writeDaemonRegistry,
 } from "@/daemon/registry";
-import { VERSION } from "@/version";
+import { VERSION } from "@/version.js";
 import { withTempConfigHome } from "./helpers/config-home";
 
 const SOCKET_LISTEN_SUPPORTED = await new Promise<boolean>((resolve) => {
