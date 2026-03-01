@@ -83,7 +83,7 @@ export function writeDaemonRegistry(entry: DaemonRegistryEntry): void {
   const path = getDaemonRegistryPath(entry.configHash);
   const tempPath = `${path}.${process.pid}.tmp`;
   const payload = `${JSON.stringify(entry, null, 2)}\n`;
-  writeFileSync(tempPath, payload, { encoding: "utf8" });
+  writeFileSync(tempPath, payload, { encoding: "utf8", mode: 0o600 });
   renameSync(tempPath, path);
 }
 

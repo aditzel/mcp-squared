@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { connect, createServer } from "node:net";
-import { DEFAULT_CONFIG } from "@/config/schema";
-import { DaemonServer } from "@/daemon/server";
-import { SocketClientTransport } from "@/daemon/transport";
-import { McpSquaredServer } from "@/server";
-import { withTempConfigHome } from "./helpers/config-home";
+import { DEFAULT_CONFIG } from "@/config/schema.js";
+import { DaemonServer } from "@/daemon/server.js";
+import { SocketClientTransport } from "@/daemon/transport.js";
+import { McpSquaredServer } from "@/server/index.js";
+import { withTempConfigHome } from "./helpers/config-home.js";
 
 const SOCKET_LISTEN_SUPPORTED = await new Promise<boolean>((resolve) => {
   const server = createServer();

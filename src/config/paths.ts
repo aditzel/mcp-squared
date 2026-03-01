@@ -181,7 +181,10 @@ export function ensureSocketDir(): void {
  * Ensures the daemon directory exists.
  */
 export function ensureDaemonDir(configHash?: string): void {
-  ensureDir(getDaemonDir(configHash));
+  const daemonDir = getDaemonDir(configHash);
+  if (!existsSync(daemonDir)) {
+    mkdirSync(daemonDir, { recursive: true, mode: 0o700 });
+  }
 }
 
 /**
