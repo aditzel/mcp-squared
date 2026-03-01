@@ -6,7 +6,14 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, unlinkSync } from "node:fs";
-import { connect, createServer, type Server, type Socket } from "node:net";
+import {
+  connect,
+  createServer,
+  isIPv4,
+  isIPv6,
+  type Server,
+  type Socket,
+} from "node:net";
 import { dirname } from "node:path";
 import { VERSION } from "@/version.js";
 import { ensureDaemonDir, getDaemonSocketPath } from "../config/paths.js";
@@ -26,7 +33,7 @@ function parseTcpEndpoint(endpoint: string): { host: string; port: number } {
   if (url.protocol !== "tcp:") {
     throw new Error(`Invalid TCP endpoint protocol: ${url.protocol}`);
   }
-  const host = url.hostname;
+  const host = normalizeHost(url.hostname);
   const port = Number.parseInt(url.port, 10);
   if (!host || Number.isNaN(port)) {
     throw new Error(`Invalid TCP endpoint: ${endpoint}`);
@@ -44,13 +51,24 @@ function normalizeHost(host: string): string {
 
 function isLoopbackHost(host: string): boolean {
   const normalized = normalizeHost(host);
-  if (normalized === "localhost" || normalized === "::1") {
+  if (normalized === "localhost") {
     return true;
   }
-  if (normalized.startsWith("127.")) {
-    return true;
+  if (isIPv4(normalized)) {
+    return normalized.split(".")[0] === "127";
   }
-  return normalized === "::ffff:127.0.0.1" || normalized === "::ffff:7f00:1";
+  if (isIPv6(normalized)) {
+    return normalized === "::1";
+  }
+  return false;
+}
+
+function formatTcpEndpoint(host: string, port: number): string {
+  const normalized = normalizeHost(host);
+  if (normalized.includes(":")) {
+    return `tcp://[${normalized}]:${port}`;
+  }
+  return `tcp://${normalized}:${port}`;
 }
 
 function assertLoopbackTcpEndpoint(endpoint: string): void {
@@ -206,7 +224,7 @@ export class DaemonServer {
     if (tcp) {
       const address = this.server.address();
       if (address && typeof address !== "string") {
-        this.endpoint = `tcp://${address.address}:${address.port}`;
+        this.endpoint = formatTcpEndpoint(address.address, address.port);
       } else {
         this.endpoint = this.socketPath;
       }
@@ -394,9 +412,9 @@ export class DaemonServer {
     if (this.ownerSessionId) {
       return;
     }
-    const next = Array.from(this.sessions.values()).sort(
-      (a, b) => a.connectedAt - b.connectedAt,
-    )[0];
+    const next = Array.from(this.sessions.values())
+      .filter((session) => session.authenticated)
+      .sort((a, b) => a.connectedAt - b.connectedAt)[0];
     if (next) {
       this.ownerSessionId = next.id;
       this.broadcastOwnerChange();
@@ -408,6 +426,9 @@ export class DaemonServer {
       return;
     }
     for (const session of this.sessions.values()) {
+      if (!session.authenticated) {
+        continue;
+      }
       void session.transport.sendControl({
         type: "ownerChanged",
         ownerSessionId: this.ownerSessionId,

@@ -7,11 +7,11 @@
 import { spawn } from "node:child_process";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { getDaemonSocketPath } from "../config/paths.js";
+import { getDaemonSocketPath } from "@/config/paths.js";
 import {
   type DaemonRegistryEntry,
   loadLiveDaemonRegistry,
-} from "./registry.js";
+} from "@/daemon/registry.js";
 import { SocketClientTransport } from "./transport.js";
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 5000;
@@ -29,6 +29,7 @@ export interface ProxyBridgeOptions extends ProxyOptions {
   stdioTransport: Transport;
   heartbeatIntervalMs?: number;
   debug?: boolean;
+  spawnDaemon?: (sharedSecret?: string) => void;
 }
 
 export interface ProxyBridge {
@@ -54,10 +55,13 @@ async function waitForDaemon(
   return null;
 }
 
-function spawnDaemonProcess(): void {
+function spawnDaemonProcess(sharedSecret?: string): void {
   const execPath = process.execPath;
   const scriptPath = process.argv[1];
-  const args = scriptPath ? [scriptPath, "daemon"] : ["daemon"];
+  const baseArgs = scriptPath ? [scriptPath, "daemon"] : ["daemon"];
+  const args = sharedSecret
+    ? [...baseArgs, `--daemon-secret=${sharedSecret}`]
+    : baseArgs;
 
   const child = spawn(execPath, args, {
     detached: true,
@@ -69,6 +73,7 @@ function spawnDaemonProcess(): void {
 export async function createProxyBridge(
   options: ProxyBridgeOptions,
 ): Promise<ProxyBridge> {
+  const spawnDaemon = options.spawnDaemon ?? spawnDaemonProcess;
   let endpoint = options.endpoint;
   let sharedSecret = options.sharedSecret?.trim();
   let sessionId: string | null = null;
@@ -84,7 +89,7 @@ export async function createProxyBridge(
       endpoint = registry.endpoint;
       sharedSecret ??= registry.sharedSecret;
     } else if (!options.noSpawn) {
-      spawnDaemonProcess();
+      spawnDaemon(sharedSecret);
       const entry = await waitForDaemon(
         DEFAULT_STARTUP_TIMEOUT_MS,
         options.configHash,
