@@ -28,12 +28,47 @@ function isTcpEndpoint(endpoint: string): boolean {
   return endpoint.startsWith("tcp://");
 }
 
+function parseMappedIpv4Address(normalizedHost: string): string | null {
+  if (!normalizedHost.startsWith("::ffff:")) {
+    return null;
+  }
+
+  const mappedIpv4 = normalizedHost.slice("::ffff:".length);
+  if (isIPv4(mappedIpv4)) {
+    return mappedIpv4;
+  }
+
+  const hextets = mappedIpv4.split(":");
+  if (hextets.length !== 2) {
+    return null;
+  }
+  if (!hextets.every((segment) => /^[0-9a-f]{1,4}$/.test(segment))) {
+    return null;
+  }
+
+  const high = Number.parseInt(hextets[0] ?? "", 16);
+  const low = Number.parseInt(hextets[1] ?? "", 16);
+  if (
+    Number.isNaN(high) ||
+    Number.isNaN(low) ||
+    high < 0 ||
+    high > 0xffff ||
+    low < 0 ||
+    low > 0xffff
+  ) {
+    return null;
+  }
+
+  return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
+}
+
 function parseTcpEndpoint(endpoint: string): { host: string; port: number } {
   const url = new URL(endpoint);
   if (url.protocol !== "tcp:") {
     throw new Error(`Invalid TCP endpoint protocol: ${url.protocol}`);
   }
-  const host = normalizeHost(url.hostname);
+  const normalizedHost = normalizeHost(url.hostname);
+  const host = parseMappedIpv4Address(normalizedHost) ?? normalizedHost;
   const port = Number.parseInt(url.port, 10);
   if (!host || Number.isNaN(port)) {
     throw new Error(`Invalid TCP endpoint: ${endpoint}`);
@@ -50,38 +85,8 @@ function normalizeHost(host: string): string {
 }
 
 function isMappedIpv4Loopback(normalizedHost: string): boolean {
-  if (!normalizedHost.startsWith("::ffff:")) {
-    return false;
-  }
-
-  const mappedIpv4 = normalizedHost.slice("::ffff:".length);
-  if (isIPv4(mappedIpv4)) {
-    return mappedIpv4.split(".")[0] === "127";
-  }
-
-  const hextets = mappedIpv4.split(":");
-  if (hextets.length !== 2) {
-    return false;
-  }
-  if (!hextets.every((segment) => /^[0-9a-f]{1,4}$/.test(segment))) {
-    return false;
-  }
-
-  const high = Number.parseInt(hextets[0] ?? "", 16);
-  const low = Number.parseInt(hextets[1] ?? "", 16);
-  if (
-    Number.isNaN(high) ||
-    Number.isNaN(low) ||
-    high < 0 ||
-    high > 0xffff ||
-    low < 0 ||
-    low > 0xffff
-  ) {
-    return false;
-  }
-
-  const firstOctet = (high >> 8) & 0xff;
-  return firstOctet === 127;
+  const mappedIpv4 = parseMappedIpv4Address(normalizedHost);
+  return mappedIpv4 !== null && mappedIpv4.split(".")[0] === "127";
 }
 
 function isLoopbackHost(host: string): boolean {
@@ -246,9 +251,7 @@ export class DaemonServer {
     await new Promise<void>((resolve, reject) => {
       this.server?.once("error", (error) => reject(error));
       if (tcp) {
-        const url = new URL(this.socketPath);
-        const host = url.hostname;
-        const port = Number.parseInt(url.port, 10);
+        const { host, port } = parseTcpEndpoint(this.socketPath);
         if (!host || Number.isNaN(port)) {
           reject(new Error(`Invalid TCP endpoint: ${this.socketPath}`));
           return;
@@ -370,18 +373,21 @@ export class DaemonServer {
       void this.handleDisconnect(sessionId);
     };
 
-    transport.oncontrol = (message) => {
+    transport.oncontrol = async (message) => {
       switch (message.type) {
         case "hello":
           if (
             this.sharedSecret !== undefined &&
             message.sharedSecret !== this.sharedSecret
           ) {
-            void transport.sendControl({
-              type: "error",
-              message: "Daemon authentication failed: invalid shared secret.",
-            });
-            void this.handleDisconnect(sessionId);
+            try {
+              await transport.sendControl({
+                type: "error",
+                message: "Daemon authentication failed: invalid shared secret.",
+              });
+            } finally {
+              await this.handleDisconnect(sessionId);
+            }
             break;
           }
           if (message.clientId !== undefined) {

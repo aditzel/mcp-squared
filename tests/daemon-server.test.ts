@@ -108,11 +108,6 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       try {
         await daemon.start();
         started = true;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        expect(
-          message.includes("Refusing non-loopback daemon TCP endpoint"),
-        ).toBe(false);
       } finally {
         if (started) {
           await daemon.stop();
