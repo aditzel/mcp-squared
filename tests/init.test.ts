@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse as parseToml } from "smol-toml";
-import { generateConfigToml, runInit } from "../src/init/runner.js";
+import { generateConfigToml, runInit } from "@/init/runner.js";
 
 describe("generateConfigToml", () => {
   test("hardened profile produces confirm-all config", () => {
@@ -13,9 +13,9 @@ describe("generateConfigToml", () => {
       string,
       Record<string, unknown>
     >;
-    expect(security["tools"]!["allow"]).toEqual([]);
-    expect(security["tools"]!["block"]).toEqual([]);
-    expect(security["tools"]!["confirm"]).toEqual(["*:*"]);
+    expect(security["tools"]?.["allow"]).toEqual([]);
+    expect(security["tools"]?.["block"]).toEqual([]);
+    expect(security["tools"]?.["confirm"]).toEqual(["*:*"]);
   });
 
   test("permissive profile produces allow-all config", () => {
@@ -25,9 +25,9 @@ describe("generateConfigToml", () => {
       string,
       Record<string, unknown>
     >;
-    expect(security["tools"]!["allow"]).toEqual(["*:*"]);
-    expect(security["tools"]!["block"]).toEqual([]);
-    expect(security["tools"]!["confirm"]).toEqual([]);
+    expect(security["tools"]?.["allow"]).toEqual(["*:*"]);
+    expect(security["tools"]?.["block"]).toEqual([]);
+    expect(security["tools"]?.["confirm"]).toEqual([]);
   });
 
   test("hardened config has schemaVersion 1", () => {
@@ -40,9 +40,9 @@ describe("generateConfigToml", () => {
     const toml = generateConfigToml("hardened");
     const parsed = parseToml(toml) as Record<string, unknown>;
     const ops = parsed["operations"] as Record<string, Record<string, unknown>>;
-    expect(ops["findTools"]!["defaultLimit"]).toBe(5);
-    expect(ops["findTools"]!["defaultMode"]).toBe("fast");
-    expect(ops["logging"]!["level"]).toBe("info");
+    expect(ops["findTools"]?.["defaultLimit"]).toBe(5);
+    expect(ops["findTools"]?.["defaultMode"]).toBe("fast");
+    expect(ops["logging"]?.["level"]).toBe("info");
   });
 
   test("hardened config contains explanatory comments", () => {
@@ -96,8 +96,8 @@ describe("runInit", () => {
         string,
         Record<string, unknown>
       >;
-      expect(security["tools"]!["allow"]).toEqual([]);
-      expect(security["tools"]!["confirm"]).toEqual(["*:*"]);
+      expect(security["tools"]?.["allow"]).toEqual([]);
+      expect(security["tools"]?.["confirm"]).toEqual(["*:*"]);
     } finally {
       process.chdir(origCwd);
     }
@@ -116,8 +116,8 @@ describe("runInit", () => {
         string,
         Record<string, unknown>
       >;
-      expect(security["tools"]!["allow"]).toEqual(["*:*"]);
-      expect(security["tools"]!["confirm"]).toEqual([]);
+      expect(security["tools"]?.["allow"]).toEqual(["*:*"]);
+      expect(security["tools"]?.["confirm"]).toEqual([]);
     } finally {
       process.chdir(origCwd);
     }
@@ -126,14 +126,18 @@ describe("runInit", () => {
   test("exits with error when config already exists (no --force)", async () => {
     const origCwd = process.cwd();
     process.chdir(tmpDir);
-    const exitSpy = spyOn(process, "exit").mockImplementation(
-      (() => {}) as never,
-    );
+    const exitSpy = spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit called");
+    }) as never);
     try {
       // Write initial config
       await runInit({ security: "hardened", project: true, force: false });
-      // Try again without --force
-      await runInit({ security: "hardened", project: true, force: false });
+      // Try again without --force — should call process.exit(1)
+      try {
+        await runInit({ security: "hardened", project: true, force: false });
+      } catch {
+        // Expected: mock throws to halt execution
+      }
       expect(exitSpy).toHaveBeenCalledWith(1);
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining("already exists"),
@@ -159,7 +163,7 @@ describe("runInit", () => {
         string,
         Record<string, unknown>
       >;
-      expect(security["tools"]!["allow"]).toEqual(["*:*"]);
+      expect(security["tools"]?.["allow"]).toEqual(["*:*"]);
     } finally {
       process.chdir(origCwd);
     }

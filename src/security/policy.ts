@@ -199,7 +199,7 @@ export function evaluatePolicy(
   // 4. Deny by default (not in allow or confirm list)
   return {
     decision: "block",
-    reason: `Tool "${toolName}" on server "${serverKey}" is not in the allow list`,
+    reason: `Tool "${toolName}" on server "${serverKey}" is not in the allow or confirm list`,
   };
 }
 

@@ -5,14 +5,21 @@ import {
   type McpSquaredConfig,
   PERMISSIVE_SECURITY,
 } from "@/config";
-import { logSecurityProfile } from "../src/index.js";
+import { logSecurityProfile } from "@/index.js";
 import {
   clearPendingConfirmations,
   compilePolicy,
   evaluatePolicy,
   getToolVisibility,
   getToolVisibilityCompiled,
-} from "../src/security/policy.js";
+} from "@/security/policy.js";
+
+function permissiveConfig(): McpSquaredConfig {
+  return {
+    ...DEFAULT_CONFIG,
+    security: PERMISSIVE_SECURITY,
+  };
+}
 
 describe("hardened security defaults", () => {
   describe("ConfigSchema.parse({}) produces hardened posture", () => {
@@ -35,7 +42,7 @@ describe("hardened security defaults", () => {
     });
   });
 
-  describe("explicit permissive config (backward compat)", () => {
+  describe("explicit permissive config parsing", () => {
     test("parse with allow=[*:*] preserves it, confirm defaults to [*:*]", () => {
       const config = ConfigSchema.parse({
         security: { tools: { allow: ["*:*"] } },
@@ -278,13 +285,6 @@ describe("policy evaluation with PERMISSIVE_SECURITY", () => {
     clearPendingConfirmations();
   });
 
-  function permissiveConfig(): McpSquaredConfig {
-    return {
-      ...DEFAULT_CONFIG,
-      security: PERMISSIVE_SECURITY,
-    };
-  }
-
   test("allows any tool without confirmation", () => {
     const config = permissiveConfig();
     const result = evaluatePolicy(
@@ -348,13 +348,6 @@ describe("tool visibility with hardened defaults", () => {
 });
 
 describe("tool visibility with PERMISSIVE_SECURITY", () => {
-  function permissiveConfig(): McpSquaredConfig {
-    return {
-      ...DEFAULT_CONFIG,
-      security: PERMISSIVE_SECURITY,
-    };
-  }
-
   test("tools are visible and do not require confirmation", () => {
     const config = permissiveConfig();
     const result = getToolVisibility("fs", "read_file", config);

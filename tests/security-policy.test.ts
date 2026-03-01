@@ -127,7 +127,7 @@ describe("evaluatePolicy", () => {
         config,
       );
       expect(result.decision).toBe("block");
-      expect(result.reason).toContain("not in the allow list");
+      expect(result.reason).toContain("not in the allow or confirm list");
     });
 
     test("allows all tools with *:* in allow list", () => {
