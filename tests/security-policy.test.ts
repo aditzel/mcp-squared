@@ -127,7 +127,7 @@ describe("evaluatePolicy", () => {
         config,
       );
       expect(result.decision).toBe("block");
-      expect(result.reason).toContain("not in the allow list");
+      expect(result.reason).toContain("not in the allow or confirm list");
     });
 
     test("allows all tools with *:* in allow list", () => {
@@ -168,9 +168,9 @@ describe("evaluatePolicy", () => {
   });
 
   describe("confirm list", () => {
-    test("returns confirm decision when in confirm list", () => {
+    test("returns confirm decision when in confirm list (not in allow)", () => {
       const config = createConfig({
-        allow: ["*:*"],
+        allow: ["db:*"],
         confirm: ["fs:write_file"],
       });
       const result = evaluatePolicy(
@@ -184,7 +184,7 @@ describe("evaluatePolicy", () => {
 
     test("block takes precedence over confirm", () => {
       const config = createConfig({
-        allow: ["*:*"],
+        allow: [],
         block: ["fs:write_file"],
         confirm: ["fs:write_file"],
       });
@@ -195,9 +195,21 @@ describe("evaluatePolicy", () => {
       expect(result.decision).toBe("block");
     });
 
-    test("confirm takes precedence over allow", () => {
+    test("allow takes precedence over confirm", () => {
       const config = createConfig({
         allow: ["*:*"],
+        confirm: ["fs:*"],
+      });
+      const result = evaluatePolicy(
+        { serverKey: "fs", toolName: "read_file" },
+        config,
+      );
+      expect(result.decision).toBe("allow");
+    });
+
+    test("confirm applies when tool is not in allow list", () => {
+      const config = createConfig({
+        allow: ["db:*"],
         confirm: ["fs:*"],
       });
       const result = evaluatePolicy(
@@ -211,7 +223,7 @@ describe("evaluatePolicy", () => {
   describe("confirmation flow", () => {
     test("allows execution with valid confirmation token", () => {
       const config = createConfig({
-        allow: ["*:*"],
+        allow: [],
         confirm: ["fs:write_file"],
       });
 
@@ -239,7 +251,7 @@ describe("evaluatePolicy", () => {
 
     test("token is single-use", () => {
       const config = createConfig({
-        allow: ["*:*"],
+        allow: [],
         confirm: ["fs:write_file"],
       });
 
@@ -275,7 +287,7 @@ describe("evaluatePolicy", () => {
 
     test("token cannot be used for different tool", () => {
       const config = createConfig({
-        allow: ["*:*"],
+        allow: [],
         confirm: ["fs:*"],
       });
 
@@ -301,7 +313,7 @@ describe("evaluatePolicy", () => {
 
     test("token cannot be used for different server", () => {
       const config = createConfig({
-        allow: ["*:*"],
+        allow: [],
         confirm: ["*:write_file"],
       });
 
@@ -326,7 +338,7 @@ describe("evaluatePolicy", () => {
 
     test("invalid token is rejected", () => {
       const config = createConfig({
-        allow: ["*:*"],
+        allow: [],
         confirm: ["fs:write_file"],
       });
 
@@ -399,8 +411,8 @@ describe("getToolVisibility", () => {
     expect(result.requiresConfirmation).toBe(false);
   });
 
-  test("returns visible: true, requiresConfirmation: true for confirm-list tools", () => {
-    const config = createConfig({ allow: ["*:*"], confirm: ["fs:write_file"] });
+  test("returns visible: true, requiresConfirmation: true for confirm-list tools (not in allow)", () => {
+    const config = createConfig({ allow: [], confirm: ["fs:write_file"] });
     const result = getToolVisibility("fs", "write_file", config);
     expect(result.visible).toBe(true);
     expect(result.requiresConfirmation).toBe(true);
@@ -431,9 +443,19 @@ describe("getToolVisibility", () => {
     expect(result.requiresConfirmation).toBe(false);
   });
 
-  test("confirm takes precedence over allow", () => {
+  test("allow takes precedence over confirm", () => {
     const config = createConfig({
       allow: ["*:*"],
+      confirm: ["fs:*"],
+    });
+    const result = getToolVisibility("fs", "read_file", config);
+    expect(result.visible).toBe(true);
+    expect(result.requiresConfirmation).toBe(false);
+  });
+
+  test("confirm applies when tool not in allow list", () => {
+    const config = createConfig({
+      allow: ["db:*"],
       confirm: ["fs:*"],
     });
     const result = getToolVisibility("fs", "read_file", config);
@@ -443,7 +465,7 @@ describe("getToolVisibility", () => {
 
   test("wildcard patterns work correctly", () => {
     const config = createConfig({
-      allow: ["*:*"],
+      allow: ["fs:read_file"],
       block: ["dangerous:*"],
       confirm: ["*:write_file"],
     });
@@ -453,12 +475,12 @@ describe("getToolVisibility", () => {
       false,
     );
 
-    // All write_file tools require confirmation
+    // All write_file tools require confirmation (not in allow)
     const writeResult = getToolVisibility("fs", "write_file", config);
     expect(writeResult.visible).toBe(true);
     expect(writeResult.requiresConfirmation).toBe(true);
 
-    // Other tools are allowed
+    // Explicitly allowed tools bypass confirmation
     const readResult = getToolVisibility("fs", "read_file", config);
     expect(readResult.visible).toBe(true);
     expect(readResult.requiresConfirmation).toBe(false);

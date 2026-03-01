@@ -65,6 +65,7 @@ export {
   LogLevelSchema,
   type McpSquaredConfig,
   OAuthConfigSchema,
+  PERMISSIVE_SECURITY,
   type SelectionCacheConfig,
   SelectionCacheSchema,
   type UpstreamServerConfig,

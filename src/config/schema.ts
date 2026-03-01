@@ -107,9 +107,9 @@ export type UpstreamSseServerConfig = z.infer<typeof UpstreamSseSchema>;
  * Patterns use glob-style matching: "serverKey:toolName" or "*:*"
  */
 export const SecurityToolsSchema = z.object({
-  allow: z.array(z.string()).default(["*:*"]),
+  allow: z.array(z.string()).default([]),
   block: z.array(z.string()).default([]),
-  confirm: z.array(z.string()).default([]),
+  confirm: z.array(z.string()).default(["*:*"]),
 });
 
 /**
@@ -119,13 +119,13 @@ export const SecurityToolsSchema = z.object({
 export const SecuritySchema = z
   .object({
     tools: SecurityToolsSchema.default({
-      allow: ["*:*"],
+      allow: [],
       block: [],
-      confirm: [],
+      confirm: ["*:*"],
     }),
   })
   .default({
-    tools: { allow: ["*:*"], block: [], confirm: [] },
+    tools: { allow: [], block: [], confirm: ["*:*"] },
   });
 
 /**
@@ -236,3 +236,11 @@ export type McpSquaredConfig = z.infer<typeof ConfigSchema>;
 
 /** Default configuration with all defaults applied */
 export const DEFAULT_CONFIG: McpSquaredConfig = ConfigSchema.parse({});
+
+/**
+ * Permissive security profile (legacy default).
+ * Allows all tools without confirmation. Useful for trusted local-only setups.
+ */
+export const PERMISSIVE_SECURITY: McpSquaredConfig["security"] = {
+  tools: { allow: ["*:*"], block: [], confirm: [] },
+};

@@ -174,7 +174,7 @@ describe("execute tool policy normalization", () => {
 
   test("applies confirm policy consistently and accepts cross-form confirmation tokens", async () => {
     const config = createSecurityConfig({
-      allow: ["*:*"],
+      allow: [],
       confirm: ["github:delete_file"],
     });
     server = new McpSquaredServer({ config });
@@ -283,7 +283,7 @@ describe("Security policy filtering", () => {
 
   test("confirm policy marks tools with requiresConfirmation", () => {
     const config = createSecurityConfig({
-      allow: ["*:*"],
+      allow: ["fs:read_file"],
       confirm: ["fs:write_file"], // Exact match (glob patterns like fs:write* not supported)
     });
     server = new McpSquaredServer({ config });

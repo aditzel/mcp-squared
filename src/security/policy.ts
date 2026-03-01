@@ -2,7 +2,7 @@
  * Policy evaluation for tool execution gates.
  *
  * Implements allow/block/confirm patterns with precedence:
- * Block > Confirm > Allow > Deny
+ * Block > Allow > Confirm > Deny
  */
 
 import type { McpSquaredConfig } from "../config/schema.js";
@@ -145,7 +145,7 @@ export function createConfirmationToken(
 /**
  * Evaluate the execution policy for a tool.
  *
- * Precedence: Block > Confirm > Allow > Deny
+ * Precedence: Block > Allow > Confirm > Deny
  *
  * @param context - The execution context (server, tool, optional confirmation token)
  * @param config - The MCP² configuration
@@ -166,7 +166,15 @@ export function evaluatePolicy(
     };
   }
 
-  // 2. Check confirm list
+  // 2. Check allow list (explicitly allowed tools bypass confirmation)
+  if (matchesAnyPattern(allow, serverKey, toolName)) {
+    return {
+      decision: "allow",
+      reason: `Tool "${toolName}" is allowed by security policy`,
+    };
+  }
+
+  // 3. Check confirm list
   if (matchesAnyPattern(confirm, serverKey, toolName)) {
     // If a valid confirmation token is provided, allow execution
     if (
@@ -188,18 +196,10 @@ export function evaluatePolicy(
     };
   }
 
-  // 3. Check allow list
-  if (matchesAnyPattern(allow, serverKey, toolName)) {
-    return {
-      decision: "allow",
-      reason: `Tool "${toolName}" is allowed by security policy`,
-    };
-  }
-
-  // 4. Deny by default (not in allow list)
+  // 4. Deny by default (not in allow or confirm list)
   return {
     decision: "block",
-    reason: `Tool "${toolName}" on server "${serverKey}" is not in the allow list`,
+    reason: `Tool "${toolName}" on server "${serverKey}" is not in the allow or confirm list`,
   };
 }
 
@@ -259,7 +259,7 @@ export function compilePolicy(config: McpSquaredConfig): CompiledPolicy {
  * - Whether a tool should appear in find_tools/describe_tools results
  * - Whether the tool will require confirmation when executed
  *
- * Precedence: Block > Confirm > Allow > Deny (implicit)
+ * Precedence: Block > Allow > Confirm > Deny (implicit)
  *
  * @param serverKey - The upstream server key
  * @param toolName - The tool name
@@ -319,16 +319,16 @@ function getToolVisibilityFromPatterns(
     return { visible: false, requiresConfirmation: false };
   }
 
-  // 2. Confirm-list tools are visible but marked
-  if (matchesAnyPattern(confirm, serverKey, toolName)) {
-    return { visible: true, requiresConfirmation: true };
-  }
-
-  // 3. Allow-list tools are visible
+  // 2. Allow-list tools are visible (bypass confirmation)
   if (matchesAnyPattern(allow, serverKey, toolName)) {
     return { visible: true, requiresConfirmation: false };
   }
 
-  // 4. Not in allow list = not visible (implicit deny)
+  // 3. Confirm-list tools are visible but marked
+  if (matchesAnyPattern(confirm, serverKey, toolName)) {
+    return { visible: true, requiresConfirmation: true };
+  }
+
+  // 4. Not in allow or confirm list = not visible (implicit deny)
   return { visible: false, requiresConfirmation: false };
 }
