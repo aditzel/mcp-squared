@@ -355,6 +355,62 @@ describe("parseArgs", () => {
     });
   });
 
+  describe("init command", () => {
+    test("parses 'init' command", () => {
+      const result = parseArgs(["init"]);
+      expect(result.mode).toBe("init");
+    });
+
+    test("has default init options", () => {
+      const result = parseArgs(["init"]);
+      expect(result.init.security).toBe("hardened");
+      expect(result.init.project).toBe(false);
+      expect(result.init.force).toBe(false);
+    });
+
+    test("parses --security=permissive", () => {
+      const result = parseArgs(["init", "--security=permissive"]);
+      expect(result.init.security).toBe("permissive");
+    });
+
+    test("parses --security=hardened", () => {
+      const result = parseArgs(["init", "--security=hardened"]);
+      expect(result.init.security).toBe("hardened");
+    });
+
+    test("parses --security without =", () => {
+      const result = parseArgs(["init", "--security", "permissive"]);
+      expect(result.init.security).toBe("permissive");
+    });
+
+    test("ignores invalid --security value", () => {
+      const result = parseArgs(["init", "--security=invalid"]);
+      expect(result.init.security).toBe("hardened"); // default
+    });
+
+    test("parses --project flag", () => {
+      const result = parseArgs(["init", "--project"]);
+      expect(result.init.project).toBe(true);
+    });
+
+    test("parses --force flag", () => {
+      const result = parseArgs(["init", "--force"]);
+      expect(result.init.force).toBe(true);
+    });
+
+    test("handles combined init flags", () => {
+      const result = parseArgs([
+        "init",
+        "--security=permissive",
+        "--project",
+        "--force",
+      ]);
+      expect(result.init.security).toBe("permissive");
+      expect(result.init.project).toBe(true);
+      expect(result.init.force).toBe(true);
+    });
+  });
+
   describe("edge cases", () => {
     test("handles empty --source value", () => {
       const result = parseArgs(["import", "--source="]);

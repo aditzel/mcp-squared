@@ -56,6 +56,22 @@ import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
 export { VERSION };
 
 /**
+ * Logs a one-line security profile notice to stderr on startup.
+ * Helps new users understand the active security posture and how to change it.
+ * @internal
+ */
+function logSecurityProfile(config: McpSquaredConfig): void {
+  const { allow, confirm } = config.security.tools;
+  const isHardened = confirm.includes("*:*") && allow.length === 0;
+
+  if (isHardened) {
+    console.error(
+      "[mcp²] Security: confirm-all mode (default). Tools require confirmation before execution. To use permissive mode: mcp-squared init --security=permissive",
+    );
+  }
+}
+
+/**
  * Starts the MCP server in stdio mode.
  * Loads configuration, sets up signal handlers, and begins listening.
  * @internal
@@ -63,6 +79,8 @@ export { VERSION };
 async function startServer(): Promise<void> {
   // Load configuration
   const { config, path: configPath } = await loadConfig();
+
+  logSecurityProfile(config);
 
   // Prune stale instance entries from previous runs
   await listActiveInstanceEntries({ prune: true });
@@ -813,6 +831,9 @@ function resolveDaemonSharedSecret(cliValue?: string): string | undefined {
  */
 async function runDaemon(options: DaemonArgs): Promise<void> {
   const { config, path: configPath } = await loadConfig();
+
+  logSecurityProfile(config);
+
   const configHash = computeConfigHash(config);
   const monitorSocketPath = getSocketFilePath(configHash);
   const runtime = new McpSquaredServer({
@@ -1047,6 +1068,11 @@ export async function main(
     case "install":
       await runInstall(args.install);
       break;
+    case "init": {
+      const { runInit } = await import("./init/runner.js");
+      await runInit(args.init);
+      break;
+    }
     case "monitor":
       await runMonitor(args.monitor);
       break;

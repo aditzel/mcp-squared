@@ -27,8 +27,9 @@ describe("ConfigSchema", () => {
     const result = ConfigSchema.parse({});
     expect(result.schemaVersion).toBe(1);
     expect(result.upstreams).toEqual({});
-    expect(result.security.tools.allow).toEqual(["*:*"]);
+    expect(result.security.tools.allow).toEqual([]);
     expect(result.security.tools.block).toEqual([]);
+    expect(result.security.tools.confirm).toEqual(["*:*"]);
     expect(result.operations.findTools.defaultLimit).toBe(5);
     expect(result.operations.findTools.defaultDetailLevel).toBe("L1");
     expect(result.operations.logging.level).toBe("info");
@@ -101,7 +102,8 @@ describe("DEFAULT_CONFIG", () => {
   test("has expected structure", () => {
     expect(DEFAULT_CONFIG.schemaVersion).toBe(1);
     expect(DEFAULT_CONFIG.upstreams).toEqual({});
-    expect(DEFAULT_CONFIG.security.tools.allow).toEqual(["*:*"]);
+    expect(DEFAULT_CONFIG.security.tools.allow).toEqual([]);
+    expect(DEFAULT_CONFIG.security.tools.confirm).toEqual(["*:*"]);
     expect(DEFAULT_CONFIG.operations.findTools.defaultLimit).toBe(5);
     expect(DEFAULT_CONFIG.operations.findTools.defaultDetailLevel).toBe("L1");
   });
