@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   ConfigSchema,
   DEFAULT_CONFIG,
   type McpSquaredConfig,
   PERMISSIVE_SECURITY,
 } from "@/config";
+import { logSecurityProfile } from "../src/index.js";
 import {
   clearPendingConfirmations,
   compilePolicy,
@@ -74,6 +75,39 @@ describe("hardened security defaults", () => {
       expect(config.security.tools.allow).toEqual(["a:*", "b:tool"]);
       expect(config.security.tools.block).toEqual(["c:danger"]);
       expect(config.security.tools.confirm).toEqual(["d:write"]);
+    });
+  });
+
+  describe("allow-only config backward compat (P1 regression fix)", () => {
+    test("config with allow=[*:*] and defaulted confirm=[*:*] allows without confirmation", () => {
+      const config = ConfigSchema.parse({
+        security: { tools: { allow: ["*:*"] } },
+      });
+      // confirm defaults to ["*:*"], but allow takes precedence
+      const result = evaluatePolicy(
+        { serverKey: "fs", toolName: "read_file" },
+        config,
+      );
+      expect(result.decision).toBe("allow");
+      expect(result.confirmationToken).toBeUndefined();
+    });
+
+    test("config with specific allow pattern bypasses confirm for matched tools", () => {
+      const config = ConfigSchema.parse({
+        security: { tools: { allow: ["github:*"] } },
+      });
+      // github tools → allowed (bypass confirm), others → confirm
+      const ghResult = evaluatePolicy(
+        { serverKey: "github", toolName: "create_issue" },
+        config,
+      );
+      expect(ghResult.decision).toBe("allow");
+
+      const fsResult = evaluatePolicy(
+        { serverKey: "fs", toolName: "write_file" },
+        config,
+      );
+      expect(fsResult.decision).toBe("confirm");
     });
   });
 
@@ -374,5 +408,57 @@ describe("compiled policy with hardened defaults", () => {
     expect(compiled.allowPatterns).toEqual(["*:*"]);
     expect(compiled.confirmPatterns).toEqual([]);
     expect(compiled.blockPatterns).toEqual([]);
+  });
+});
+
+describe("logSecurityProfile", () => {
+  let consoleErrorSpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  test("logs message when hardened defaults are active", () => {
+    logSecurityProfile(DEFAULT_CONFIG);
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy.mock.calls[0]?.[0]).toContain("confirm-all mode");
+    expect(consoleErrorSpy.mock.calls[0]?.[0]).toContain(
+      "mcp-squared init --security=permissive",
+    );
+  });
+
+  test("does not log when permissive security is active", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      security: PERMISSIVE_SECURITY,
+    };
+    logSecurityProfile(config);
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  test("does not log when allow list is non-empty", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      security: {
+        tools: { allow: ["github:*"], block: [], confirm: ["*:*"] },
+      },
+    };
+    logSecurityProfile(config);
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  test("does not log when confirm list does not include *:*", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      security: {
+        tools: { allow: [], block: [], confirm: ["fs:write_file"] },
+      },
+    };
+    logSecurityProfile(config);
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 });

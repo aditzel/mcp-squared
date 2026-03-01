@@ -60,7 +60,7 @@ export { VERSION };
  * Helps new users understand the active security posture and how to change it.
  * @internal
  */
-function logSecurityProfile(config: McpSquaredConfig): void {
+export function logSecurityProfile(config: McpSquaredConfig): void {
   const { allow, confirm } = config.security.tools;
   const isHardened = confirm.includes("*:*") && allow.length === 0;
 
