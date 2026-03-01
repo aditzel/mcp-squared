@@ -8,9 +8,9 @@ import {
   loadLiveDaemonRegistry,
   readDaemonRegistry,
   writeDaemonRegistry,
-} from "@/daemon/registry";
+} from "@/daemon/registry.js";
 import { VERSION } from "@/version.js";
-import { withTempConfigHome } from "./helpers/config-home";
+import { withTempConfigHome } from "./helpers/config-home.js";
 
 const SOCKET_LISTEN_SUPPORTED = await new Promise<boolean>((resolve) => {
   const server = createServer();
