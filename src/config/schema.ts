@@ -169,6 +169,18 @@ export const LoggingSchema = z.object({
 });
 
 /**
+ * Schema for embeddings configuration.
+ * Controls whether semantic/hybrid search embeddings are initialized at startup.
+ */
+export const EmbeddingsSchema = z.object({
+  /** Enable embedding generation for semantic/hybrid search (default: false) */
+  enabled: z.boolean().default(false),
+});
+
+/** Embeddings configuration type */
+export type EmbeddingsConfig = z.infer<typeof EmbeddingsSchema>;
+
+/**
  * Schema for selection caching configuration.
  * Controls co-occurrence tracking for tool suggestions.
  */
@@ -198,6 +210,7 @@ export const OperationsSchema = z
     }),
     index: IndexSchema.default({ refreshIntervalMs: 30_000 }),
     logging: LoggingSchema.default({ level: "info" }),
+    embeddings: EmbeddingsSchema.default({ enabled: false }),
     selectionCache: SelectionCacheSchema.default({
       enabled: true,
       minCooccurrenceThreshold: 2,
@@ -213,6 +226,7 @@ export const OperationsSchema = z
     },
     index: { refreshIntervalMs: 30_000 },
     logging: { level: "info" },
+    embeddings: { enabled: false },
     selectionCache: {
       enabled: true,
       minCooccurrenceThreshold: 2,

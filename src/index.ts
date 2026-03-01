@@ -72,6 +72,25 @@ export function logSecurityProfile(config: McpSquaredConfig): void {
 }
 
 /**
+ * Logs search mode configuration status to stderr on startup.
+ * Warns when semantic/hybrid mode is configured but embeddings are disabled.
+ * @internal
+ */
+export function logSearchModeProfile(config: McpSquaredConfig): void {
+  const { defaultMode } = config.operations.findTools;
+  const { enabled: embeddingsEnabled } = config.operations.embeddings;
+
+  if (
+    (defaultMode === "semantic" || defaultMode === "hybrid") &&
+    !embeddingsEnabled
+  ) {
+    console.error(
+      `[mcp²] Search: defaultMode is "${defaultMode}" but embeddings are disabled. Searches will fall back to fast (FTS5). Enable with: [operations.embeddings] enabled = true`,
+    );
+  }
+}
+
+/**
  * Starts the MCP server in stdio mode.
  * Loads configuration, sets up signal handlers, and begins listening.
  * @internal
@@ -81,6 +100,7 @@ async function startServer(): Promise<void> {
   const { config, path: configPath } = await loadConfig();
 
   logSecurityProfile(config);
+  logSearchModeProfile(config);
 
   // Prune stale instance entries from previous runs
   await listActiveInstanceEntries({ prune: true });
@@ -833,6 +853,7 @@ async function runDaemon(options: DaemonArgs): Promise<void> {
   const { config, path: configPath } = await loadConfig();
 
   logSecurityProfile(config);
+  logSearchModeProfile(config);
 
   const configHash = computeConfigHash(config);
   const monitorSocketPath = getSocketFilePath(configHash);
