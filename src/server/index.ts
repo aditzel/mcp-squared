@@ -199,7 +199,12 @@ export class McpSquaredServer {
       this.statsCollector.updateIndexRefreshTime(Date.now());
       // Generate embeddings for any new tools added during refresh
       if (this.config.operations.embeddings.enabled) {
-        void this.retriever.generateToolEmbeddings();
+        this.retriever.generateToolEmbeddings().catch((err) => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(
+            `[mcp²] Background embedding generation failed — ${message}`,
+          );
+        });
       }
     });
 
@@ -975,9 +980,15 @@ export class McpSquaredServer {
         await this.retriever.initializeEmbeddings();
         const embeddingCount = await this.retriever.generateToolEmbeddings();
         const toolCount = this.retriever.getIndexedToolCount();
-        console.error(
-          `[mcp²] Embeddings: initialized (${embeddingCount}/${toolCount} tools embedded). Search modes: semantic, hybrid available.`,
-        );
+        if (this.retriever.hasEmbeddings()) {
+          console.error(
+            `[mcp²] Embeddings: initialized (${embeddingCount}/${toolCount} tools embedded). Search modes: semantic, hybrid available.`,
+          );
+        } else {
+          console.error(
+            `[mcp²] Embeddings: enabled but runtime unavailable (onnxruntime not found). Falling back to fast (FTS5) search.`,
+          );
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(
