@@ -7,9 +7,12 @@
 import { spawn } from "node:child_process";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { getDaemonSocketPath } from "../config/paths.js";
-import { loadLiveDaemonRegistry } from "./registry.js";
-import { SocketClientTransport } from "./transport.js";
+import { getDaemonSocketPath } from "@/config/paths.js";
+import {
+  type DaemonRegistryEntry,
+  loadLiveDaemonRegistry,
+} from "@/daemon/registry.js";
+import { SocketClientTransport } from "@/daemon/transport.js";
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 5000;
 const HEARTBEAT_INTERVAL_MS = 5000;
@@ -19,12 +22,14 @@ export interface ProxyOptions {
   timeoutMs?: number;
   noSpawn?: boolean;
   configHash?: string;
+  sharedSecret?: string;
 }
 
 export interface ProxyBridgeOptions extends ProxyOptions {
   stdioTransport: Transport;
   heartbeatIntervalMs?: number;
   debug?: boolean;
+  spawnDaemon?: (sharedSecret?: string) => void;
 }
 
 export interface ProxyBridge {
@@ -38,19 +43,19 @@ function sleep(ms: number): Promise<void> {
 async function waitForDaemon(
   timeoutMs: number,
   configHash?: string,
-): Promise<{ endpoint: string } | null> {
+): Promise<DaemonRegistryEntry | null> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const entry = await loadLiveDaemonRegistry(configHash);
     if (entry) {
-      return { endpoint: entry.endpoint };
+      return entry;
     }
     await sleep(100);
   }
   return null;
 }
 
-function spawnDaemonProcess(): void {
+function spawnDaemonProcess(sharedSecret?: string): void {
   const execPath = process.execPath;
   const scriptPath = process.argv[1];
   const args = scriptPath ? [scriptPath, "daemon"] : ["daemon"];
@@ -58,6 +63,10 @@ function spawnDaemonProcess(): void {
   const child = spawn(execPath, args, {
     detached: true,
     stdio: "ignore",
+    env: {
+      ...process.env,
+      ...(sharedSecret ? { MCP_SQUARED_DAEMON_SECRET: sharedSecret } : {}),
+    },
   });
   child.unref();
 }
@@ -65,7 +74,9 @@ function spawnDaemonProcess(): void {
 export async function createProxyBridge(
   options: ProxyBridgeOptions,
 ): Promise<ProxyBridge> {
+  const spawnDaemon = options.spawnDaemon ?? spawnDaemonProcess;
   let endpoint = options.endpoint;
+  let sharedSecret = options.sharedSecret?.trim();
   let sessionId: string | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let isOwner = false;
@@ -77,8 +88,9 @@ export async function createProxyBridge(
     const registry = await loadLiveDaemonRegistry(options.configHash);
     if (registry) {
       endpoint = registry.endpoint;
+      sharedSecret ??= registry.sharedSecret;
     } else if (!options.noSpawn) {
-      spawnDaemonProcess();
+      spawnDaemon(sharedSecret);
       const entry = await waitForDaemon(
         DEFAULT_STARTUP_TIMEOUT_MS,
         options.configHash,
@@ -87,6 +99,7 @@ export async function createProxyBridge(
         throw new Error("Timed out waiting for daemon to start");
       }
       endpoint = entry.endpoint;
+      sharedSecret ??= entry.sharedSecret;
     } else if (options.configHash) {
       endpoint = getDaemonSocketPath(options.configHash);
     }
@@ -181,6 +194,7 @@ export async function createProxyBridge(
   void daemonTransport.sendControl({
     type: "hello",
     clientId,
+    ...(sharedSecret ? { sharedSecret } : {}),
   });
 
   heartbeatTimer = setInterval(() => {

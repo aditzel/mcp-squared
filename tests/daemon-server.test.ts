@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createServer } from "node:net";
-import { DEFAULT_CONFIG } from "@/config/schema";
-import { DaemonServer } from "@/daemon/server";
-import { SocketClientTransport } from "@/daemon/transport";
-import { McpSquaredServer } from "@/server";
-import { withTempConfigHome } from "./helpers/config-home";
+import { connect, createServer } from "node:net";
+import { DEFAULT_CONFIG } from "@/config/schema.js";
+import { DaemonServer } from "@/daemon/server.js";
+import { SocketClientTransport } from "@/daemon/transport.js";
+import { McpSquaredServer } from "@/server/index.js";
+import { withTempConfigHome } from "./helpers/config-home.js";
 
 const SOCKET_LISTEN_SUPPORTED = await new Promise<boolean>((resolve) => {
   const server = createServer();
@@ -61,6 +61,180 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       expect(daemon.getSessionCount()).toBe(0);
       expect(daemon.getSocketPath()).toContain("tcp://");
 
+      await daemon.stop();
+    });
+
+    test("rejects non-loopback TCP daemon endpoints", async () => {
+      const runtime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const daemon = new DaemonServer({
+        runtime,
+        socketPath: "tcp://0.0.0.0:0",
+      });
+
+      await expect(daemon.start()).rejects.toThrow(
+        "Refusing non-loopback daemon TCP endpoint",
+      );
+    });
+
+    test("rejects non-numeric 127-prefixed hostnames", async () => {
+      const runtime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const daemon = new DaemonServer({
+        runtime,
+        socketPath: "tcp://127.internal.example:45000",
+      });
+
+      await expect(daemon.start()).rejects.toThrow(
+        "Refusing non-loopback daemon TCP endpoint",
+      );
+    });
+
+    test("accepts IPv4-mapped IPv6 loopback addresses in guard", async () => {
+      const runtime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const daemon = new DaemonServer({
+        runtime,
+        socketPath: "tcp://[::ffff:127.0.0.1]:0",
+      });
+
+      let started = false;
+      try {
+        await daemon.start();
+        started = true;
+      } finally {
+        if (started) {
+          await daemon.stop();
+        }
+      }
+    });
+
+    test("rejects IPv4-mapped IPv6 non-loopback addresses", async () => {
+      const runtime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const daemon = new DaemonServer({
+        runtime,
+        socketPath: "tcp://[::ffff:192.168.0.10]:0",
+      });
+
+      await expect(daemon.start()).rejects.toThrow(
+        "Refusing non-loopback daemon TCP endpoint",
+      );
+    });
+
+    test("enforces shared secret during hello handshake", async () => {
+      const runtime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const daemon = new DaemonServer({
+        runtime,
+        socketPath: "tcp://127.0.0.1:0",
+        sharedSecret: "top-secret",
+        idleTimeoutMs: 5000,
+        heartbeatTimeoutMs: 1000,
+      });
+
+      await daemon.start();
+
+      const unauthorized = new SocketClientTransport({
+        endpoint: daemon.getSocketPath(),
+      });
+      let unauthorizedError: string | null = null;
+      unauthorized.oncontrol = (message) => {
+        if (message.type === "error") {
+          unauthorizedError = message.message;
+        }
+      };
+      await unauthorized.start();
+      await unauthorized.sendControl({
+        type: "hello",
+        clientId: "unauthorized",
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const unauthorizedMessage = unauthorizedError ?? "";
+      expect(unauthorizedMessage.includes("invalid shared secret")).toBe(true);
+      expect(daemon.getSessionCount()).toBe(0);
+      await unauthorized.close().catch(() => {});
+
+      const authorized = new SocketClientTransport({
+        endpoint: daemon.getSocketPath(),
+      });
+      let authorizedSession: string | null = null;
+      authorized.oncontrol = (message) => {
+        if (message.type === "helloAck") {
+          authorizedSession = message.sessionId;
+        }
+      };
+      await authorized.start();
+      await authorized.sendControl({
+        type: "hello",
+        clientId: "authorized",
+        sharedSecret: "top-secret",
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(authorizedSession).not.toBeNull();
+      expect(daemon.getSessionCount()).toBe(1);
+
+      await authorized.close();
+      await daemon.stop();
+    });
+
+    test("elects owner from authenticated sessions only", async () => {
+      const runtime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const daemon = new DaemonServer({
+        runtime,
+        socketPath: "tcp://127.0.0.1:0",
+        idleTimeoutMs: 5000,
+        heartbeatTimeoutMs: 1000,
+      });
+      await daemon.start();
+
+      const parsed = new URL(daemon.getSocketPath());
+      const rawSocket = connect({
+        host: parsed.hostname.replace(/^\[|\]$/g, ""),
+        port: Number.parseInt(parsed.port, 10),
+      });
+      await new Promise<void>((resolve) => {
+        rawSocket.once("connect", () => resolve());
+      });
+
+      const authenticated = new SocketClientTransport({
+        endpoint: daemon.getSocketPath(),
+      });
+      let ackOwner = false;
+      authenticated.oncontrol = (message) => {
+        if (message.type === "helloAck") {
+          ackOwner = message.isOwner;
+        }
+      };
+      await authenticated.start();
+      await authenticated.sendControl({
+        type: "hello",
+        clientId: "auth-client",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(ackOwner).toBe(true);
+      expect(daemon.getOwnerSessionId()).not.toBeNull();
+
+      rawSocket.destroy();
+      await authenticated.close();
       await daemon.stop();
     });
 

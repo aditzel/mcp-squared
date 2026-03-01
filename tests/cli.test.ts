@@ -330,6 +330,12 @@ describe("parseArgs", () => {
       expect(result.daemon.socketPath).toBe("/tmp/daemon.sock");
     });
 
+    test("parses daemon shared secret", () => {
+      const result = parseArgs(["daemon", "--daemon-secret=top-secret"]);
+      expect(result.mode).toBe("daemon");
+      expect(result.daemon.sharedSecret).toBe("top-secret");
+    });
+
     test("parses 'proxy' command", () => {
       const result = parseArgs(["proxy"]);
       expect(result.mode).toBe("proxy");
@@ -339,10 +345,12 @@ describe("parseArgs", () => {
       const result = parseArgs([
         "proxy",
         "--daemon-socket=/tmp/daemon.sock",
+        "--daemon-secret=top-secret",
         "--no-daemon-spawn",
       ]);
       expect(result.mode).toBe("proxy");
       expect(result.proxy.socketPath).toBe("/tmp/daemon.sock");
+      expect(result.proxy.sharedSecret).toBe("top-secret");
       expect(result.proxy.noSpawn).toBe(true);
     });
   });

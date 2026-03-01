@@ -41,6 +41,7 @@ export interface DaemonRegistryEntry {
   startedAt: number;
   version?: string;
   configHash?: string;
+  sharedSecret?: string;
 }
 
 export function readDaemonRegistry(
@@ -65,6 +66,12 @@ export function readDaemonRegistry(
     ) {
       return null;
     }
+    if (
+      data.sharedSecret !== undefined &&
+      typeof data.sharedSecret !== "string"
+    ) {
+      return null;
+    }
     return data;
   } catch {
     return null;
@@ -76,7 +83,7 @@ export function writeDaemonRegistry(entry: DaemonRegistryEntry): void {
   const path = getDaemonRegistryPath(entry.configHash);
   const tempPath = `${path}.${process.pid}.tmp`;
   const payload = `${JSON.stringify(entry, null, 2)}\n`;
-  writeFileSync(tempPath, payload, { encoding: "utf8" });
+  writeFileSync(tempPath, payload, { encoding: "utf8", mode: 0o600 });
   renameSync(tempPath, path);
 }
 

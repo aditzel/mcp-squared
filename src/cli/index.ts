@@ -113,6 +113,8 @@ export interface MonitorArgs {
 export interface DaemonArgs {
   /** Override daemon socket path */
   socketPath?: string;
+  /** Optional shared secret required for daemon IPC clients */
+  sharedSecret?: string;
 }
 
 /**
@@ -123,6 +125,8 @@ export interface ProxyArgs {
   socketPath?: string;
   /** Do not auto-spawn the daemon */
   noSpawn: boolean;
+  /** Optional shared secret used for daemon IPC authentication */
+  sharedSecret?: string;
 }
 
 /**
@@ -420,6 +424,15 @@ export function parseArgs(args: string[]): CliArgs {
         break;
       }
 
+      case "--daemon-secret": {
+        const value = argValue ?? args[++i];
+        if (value) {
+          result.daemon.sharedSecret = value;
+          result.proxy.sharedSecret = value;
+        }
+        break;
+      }
+
       case "--no-daemon-spawn":
         result.proxy.noSpawn = true;
         break;
@@ -510,10 +523,12 @@ Monitor Options:
 
 Daemon Options:
   --daemon-socket=<path>        Override daemon socket path
+  --daemon-secret=<secret>      Require shared secret for daemon IPC clients
 
 Proxy Options:
   --daemon-socket=<path>        Connect to a specific daemon socket
   --no-daemon-spawn             Do not auto-spawn daemon if missing
+  --daemon-secret=<secret>      Provide shared secret for daemon handshake
 
 Supported Tools:
   ${VALID_TOOL_IDS.join(", ")}

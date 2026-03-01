@@ -793,6 +793,18 @@ function resolveLauncherHint(): string | undefined {
   );
 }
 
+function resolveDaemonSharedSecret(cliValue?: string): string | undefined {
+  const value = cliValue ?? process.env["MCP_SQUARED_DAEMON_SECRET"];
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  return trimmed;
+}
+
 /**
  * Runs the shared MCP² daemon.
  *
@@ -811,6 +823,7 @@ async function runDaemon(options: DaemonArgs): Promise<void> {
     runtime: McpSquaredServer;
     configHash: string;
     socketPath?: string;
+    sharedSecret?: string;
     onIdleShutdown?: () => void;
   } = {
     runtime,
@@ -821,6 +834,10 @@ async function runDaemon(options: DaemonArgs): Promise<void> {
   };
   if (options.socketPath) {
     daemonOptions.socketPath = options.socketPath;
+  }
+  const sharedSecret = resolveDaemonSharedSecret(options.sharedSecret);
+  if (sharedSecret) {
+    daemonOptions.sharedSecret = sharedSecret;
   }
   const daemon = new DaemonServer(daemonOptions);
 
@@ -958,12 +975,17 @@ async function runProxyCommand(options: ProxyArgs): Promise<void> {
     endpoint?: string;
     noSpawn: boolean;
     configHash: string;
+    sharedSecret?: string;
   } = {
     noSpawn: options.noSpawn,
     configHash,
   };
   if (options.socketPath) {
     proxyOptions.endpoint = options.socketPath;
+  }
+  const sharedSecret = resolveDaemonSharedSecret(options.sharedSecret);
+  if (sharedSecret) {
+    proxyOptions.sharedSecret = sharedSecret;
   }
   try {
     proxyHandle = await runProxy(proxyOptions);

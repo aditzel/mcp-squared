@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { statSync } from "node:fs";
 import { createServer } from "node:net";
+import { platform } from "node:os";
+import { getDaemonDir, getDaemonRegistryPath } from "@/config/paths.js";
 import {
   deleteDaemonRegistry,
   loadLiveDaemonRegistry,
   readDaemonRegistry,
   writeDaemonRegistry,
-} from "@/daemon/registry";
+} from "@/daemon/registry.js";
 import { VERSION } from "@/version.js";
-import { withTempConfigHome } from "./helpers/config-home";
+import { withTempConfigHome } from "./helpers/config-home.js";
 
 const SOCKET_LISTEN_SUPPORTED = await new Promise<boolean>((resolve) => {
   const server = createServer();
@@ -40,11 +43,36 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         pid: process.pid,
         startedAt: Date.now(),
         version: VERSION,
+        sharedSecret: "secret-token",
       };
 
       writeDaemonRegistry(entry);
       const readBack = readDaemonRegistry();
       expect(readBack).toEqual(entry);
+    });
+
+    test("writes daemon registry with restricted permissions", () => {
+      const configHash = "perm-test";
+      const entry = {
+        daemonId: "daemon-perms",
+        endpoint: "tcp://127.0.0.1:0",
+        pid: process.pid,
+        startedAt: Date.now(),
+        configHash,
+        sharedSecret: "secret-token",
+      };
+
+      writeDaemonRegistry(entry);
+
+      if (platform() !== "win32") {
+        const dirMode = statSync(getDaemonDir(configHash)).mode & 0o777;
+        const fileMode =
+          statSync(getDaemonRegistryPath(configHash)).mode & 0o777;
+        expect(dirMode).toBe(0o700);
+        expect(fileMode).toBe(0o600);
+      }
+
+      deleteDaemonRegistry(configHash);
     });
 
     test("returns null for stale registry", async () => {
