@@ -10,33 +10,43 @@ bun run build:compile:matrix
 
 This runs `scripts/compile-matrix.sh`, which validates:
 
-1. Compile success for target matrix (`bun-darwin-arm64`, `bun-darwin-x64`, `bun-linux-x64`)
+1. Compile success for target matrix (`bun-darwin-arm64`, `bun-darwin-x64`, `bun-linux-x64`, `bun-windows-x64`)
 2. Binary size threshold (`<120MB`)
-3. Standalone runtime smoke test (`--version` with minimal environment)
+3. Native standalone runtime smoke test (`--version` with minimal environment)
 4. Embeddings probe (`scripts/embedding-probe.ts`) compiled and executed as binary
+5. Failure classification (`PRODUCT` vs `INFRA/NETWORK`) with log excerpts
+6. One retry for infra/network-signature compile failures
 
-## Latest Results
+### Environment Knobs
 
-Validated on **2026-02-20T20:34:23Z** (native target: `bun-linux-x64`):
+- `COMPILE_TARGETS`: Space- or comma-delimited list of targets (default: `bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-windows-x64`)
+- `NATIVE_TARGET_OVERRIDE`: Override host-derived native target when needed
+- `REQUIRE_EMBEDDING_RUNTIME=1`: Treat missing onnxruntime shared library as a hard failure (default: warning only)
+- `STRICT_INFRA_FAILURES=0`: Treat infra/network-only failures as non-blocking (default: strict failure)
 
-- `bun-darwin-arm64`: PASS
-  - Size: `61MB` (under `120MB` target)
-- `bun-darwin-x64`: PASS
-  - Size: `66MB` (under `120MB` target)
-- `bun-linux-x64`: PASS
-  - Size: `102MB` (under `120MB` target)
-  - Standalone smoke (`--version` in clean env): PASS
-- Embeddings probe (compiled): PARTIAL
-  - Build: PASS
-  - Runtime: FAIL (`libonnxruntime.so.1` missing at runtime in compiled mode)
+## CI Strategy
+
+The CI workflow (`.github/workflows/test-and-coverage.yml`) validates compile behavior in two modes:
+
+1. `ubuntu-latest` cross-target compile matrix:
+   - `bun-darwin-arm64`
+   - `bun-darwin-x64`
+   - `bun-linux-x64`
+   - `bun-windows-x64`
+2. `windows-latest` native compile/smoke path:
+   - `bun-windows-x64`
+
+This gives both broad cross-target compile signal and an explicit Windows-native execution check.
 
 ## Criteria Status
 
-- Runtime bundled for all targets: PASS (`bun-darwin-arm64`, `bun-darwin-x64`, `bun-linux-x64`)
-- Binary size target `<120MB`: PASS on all targets
-- No runtime dependencies for core CLI: PASS
-- TUI commands (`config`, `monitor`) in standalone binary: PASS when `@opentui/core` is available at runtime; graceful error message when not
-- Embeddings runtime in compiled binaries: PARTIAL — depends on external `libonnxruntime` shared lib; degrades gracefully to fast (FTS) search when absent
+- Runtime bundled for all four matrix targets: expected via compile matrix checks
+- Binary size target `<120MB`: enforced per target
+- No runtime dependencies for core CLI: enforced for native smoke target
+- Compile failures now include explicit category:
+  - `PRODUCT`: likely code/config regression
+  - `INFRA/NETWORK`: transient environment/download/extraction issue
+- Embeddings runtime in compiled binaries: `WARN` by default when ONNX shared libs are unavailable, `FAIL` only when `REQUIRE_EMBEDDING_RUNTIME=1`
 
 ## Code Changes Made for Compile Safety
 
@@ -51,3 +61,4 @@ Validated on **2026-02-20T20:34:23Z** (native target: `bun-linux-x64`):
 - `src/embeddings/generator.ts` detects missing ONNX runtime shared libraries and throws a descriptive dependency error
 - `src/retriever/retriever.ts` catches embedding runtime dependency failures, logs a clear warning, and falls back to fast search mode instead of crashing
 - `scripts/compile-matrix.sh` size threshold: `120MB`
+- `scripts/compile-matrix.sh` includes explicit Windows target handling (`.exe` outputs), host-aware native target detection, and categorized failure summaries

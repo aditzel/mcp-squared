@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  test-and-coverage:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -50,3 +50,72 @@ jobs:
 
       - name: Typecheck
         run: bun run typecheck
+
+  cross-platform-smoke:
+    name: Cross-platform smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Smoke tests
+        run: bun test tests/version.test.ts tests/oauth-preflight.test.ts tests/tool-names.test.ts tests/security-policy.test.ts
+
+  standalone-compile:
+    name: Standalone compile (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: matrix-cross-target
+            compileTargets: bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-windows-x64
+          - os: windows-latest
+            label: windows-native-smoke
+            compileTargets: bun-windows-x64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Run compile matrix validation
+        env:
+          COMPILE_TARGETS: ${{ matrix.compileTargets }}
+          STRICT_INFRA_FAILURES: "0"
+        run: bun run build:compile:matrix
