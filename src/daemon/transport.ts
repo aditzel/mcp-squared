@@ -18,7 +18,7 @@ const HEADER_LENGTH = 4;
 
 export type DaemonEnvelope =
   | { type: "mcp"; payload: JSONRPCMessage }
-  | { type: "hello"; clientId?: string }
+  | { type: "hello"; clientId?: string; sharedSecret?: string }
   | { type: "helloAck"; sessionId: string; isOwner: boolean }
   | { type: "heartbeat"; sessionId?: string }
   | { type: "ownerChanged"; ownerSessionId: string }

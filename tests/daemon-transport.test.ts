@@ -86,12 +86,19 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       };
       await client.start();
 
-      await client.sendControl({ type: "hello", clientId: "client-1" });
+      await client.sendControl({
+        type: "hello",
+        clientId: "client-1",
+        sharedSecret: "abc123",
+      });
       await client.send({ jsonrpc: "2.0", id: 1, method: "ping" });
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      expect(serverControl).toMatchObject({ type: "hello" });
+      expect(serverControl).toMatchObject({
+        type: "hello",
+        sharedSecret: "abc123",
+      });
       expect(serverMessage).toEqual({ jsonrpc: "2.0", id: 1, method: "ping" });
 
       await new Promise((resolve) => setTimeout(resolve, 50));

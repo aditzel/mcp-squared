@@ -41,6 +41,7 @@ export interface DaemonRegistryEntry {
   startedAt: number;
   version?: string;
   configHash?: string;
+  sharedSecret?: string;
 }
 
 export function readDaemonRegistry(
@@ -62,6 +63,12 @@ export function readDaemonRegistry(
       typeof data.endpoint !== "string" ||
       typeof data.pid !== "number" ||
       typeof data.startedAt !== "number"
+    ) {
+      return null;
+    }
+    if (
+      data.sharedSecret !== undefined &&
+      typeof data.sharedSecret !== "string"
     ) {
       return null;
     }

@@ -64,6 +64,82 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       await daemon.stop();
     });
 
+    test("rejects non-loopback TCP daemon endpoints", async () => {
+      const runtime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const daemon = new DaemonServer({
+        runtime,
+        socketPath: "tcp://0.0.0.0:0",
+      });
+
+      await expect(daemon.start()).rejects.toThrow(
+        "Refusing non-loopback daemon TCP endpoint",
+      );
+    });
+
+    test("enforces shared secret during hello handshake", async () => {
+      const runtime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const daemon = new DaemonServer({
+        runtime,
+        socketPath: "tcp://127.0.0.1:0",
+        sharedSecret: "top-secret",
+        idleTimeoutMs: 5000,
+        heartbeatTimeoutMs: 1000,
+      });
+
+      await daemon.start();
+
+      const unauthorized = new SocketClientTransport({
+        endpoint: daemon.getSocketPath(),
+      });
+      let unauthorizedError: string | null = null;
+      unauthorized.oncontrol = (message) => {
+        if (message.type === "error") {
+          unauthorizedError = message.message;
+        }
+      };
+      await unauthorized.start();
+      await unauthorized.sendControl({
+        type: "hello",
+        clientId: "unauthorized",
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(unauthorizedError).toContain("invalid shared secret");
+      expect(daemon.getSessionCount()).toBe(0);
+      await unauthorized.close().catch(() => {});
+
+      const authorized = new SocketClientTransport({
+        endpoint: daemon.getSocketPath(),
+      });
+      let authorizedSession: string | null = null;
+      authorized.oncontrol = (message) => {
+        if (message.type === "helloAck") {
+          authorizedSession = message.sessionId;
+        }
+      };
+      await authorized.start();
+      await authorized.sendControl({
+        type: "hello",
+        clientId: "authorized",
+        sharedSecret: "top-secret",
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(authorizedSession).not.toBeNull();
+      expect(daemon.getSessionCount()).toBe(1);
+
+      await authorized.close();
+      await daemon.stop();
+    });
+
     test("transfers ownership on disconnect", async () => {
       const socketPath = "tcp://127.0.0.1:0";
       const runtime = new McpSquaredServer({

@@ -34,6 +34,34 @@ function parseTcpEndpoint(endpoint: string): { host: string; port: number } {
   return { host, port };
 }
 
+function normalizeHost(host: string): string {
+  const lowered = host.toLowerCase();
+  if (lowered.startsWith("[") && lowered.endsWith("]")) {
+    return lowered.slice(1, -1);
+  }
+  return lowered;
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = normalizeHost(host);
+  if (normalized === "localhost" || normalized === "::1") {
+    return true;
+  }
+  if (normalized.startsWith("127.")) {
+    return true;
+  }
+  return normalized === "::ffff:127.0.0.1" || normalized === "::ffff:7f00:1";
+}
+
+function assertLoopbackTcpEndpoint(endpoint: string): void {
+  const { host } = parseTcpEndpoint(endpoint);
+  if (!isLoopbackHost(host)) {
+    throw new Error(
+      `Refusing non-loopback daemon TCP endpoint: ${endpoint}. Use localhost, 127.0.0.1, or ::1.`,
+    );
+  }
+}
+
 async function canConnect(
   endpoint: string,
   timeoutMs: number = DEFAULT_CONNECT_TIMEOUT_MS,
@@ -71,6 +99,7 @@ async function canConnect(
 interface DaemonSession {
   id: string;
   clientId?: string;
+  authenticated: boolean;
   connectedAt: number;
   lastSeen: number;
   server: ReturnType<McpSquaredServer["createSessionServer"]>;
@@ -83,6 +112,7 @@ export interface DaemonServerOptions {
   idleTimeoutMs?: number;
   heartbeatTimeoutMs?: number;
   configHash?: string;
+  sharedSecret?: string;
   onIdleShutdown?: () => void | Promise<void>;
 }
 
@@ -93,6 +123,7 @@ export class DaemonServer {
   private readonly idleTimeoutMs: number;
   private readonly heartbeatTimeoutMs: number;
   private readonly configHash: string | undefined;
+  private readonly sharedSecret: string | undefined;
   private readonly onIdleShutdown?: () => void | Promise<void>;
   private server: Server | null = null;
   private sessions = new Map<string, DaemonSession>();
@@ -107,6 +138,10 @@ export class DaemonServer {
       options.socketPath ?? getDaemonSocketPath(this.configHash);
     this.idleTimeoutMs = options.idleTimeoutMs ?? 5000;
     this.heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? 15000;
+    const sharedSecret = options.sharedSecret?.trim();
+    if (sharedSecret) {
+      this.sharedSecret = sharedSecret;
+    }
     if (options.onIdleShutdown) {
       this.onIdleShutdown = options.onIdleShutdown;
     }
@@ -119,6 +154,9 @@ export class DaemonServer {
 
     ensureDaemonDir(this.configHash);
     const tcp = isTcpEndpoint(this.socketPath);
+    if (tcp) {
+      assertLoopbackTcpEndpoint(this.socketPath);
+    }
     if (!tcp) {
       mkdirSync(dirname(this.socketPath), { recursive: true });
     }
@@ -183,6 +221,7 @@ export class DaemonServer {
       startedAt: Date.now(),
       version: VERSION,
       ...(this.configHash ? { configHash: this.configHash } : {}),
+      ...(this.sharedSecret ? { sharedSecret: this.sharedSecret } : {}),
     };
     writeDaemonRegistry(registryEntry);
 
@@ -244,6 +283,7 @@ export class DaemonServer {
 
     const session: DaemonSession = {
       id: sessionId,
+      authenticated: false,
       connectedAt: Date.now(),
       lastSeen: Date.now(),
       server: sessionServer,
@@ -251,9 +291,20 @@ export class DaemonServer {
     };
 
     this.sessions.set(sessionId, session);
-    this.runtime.getStatsCollector().incrementActiveConnections();
-    this.assignOwnerIfNeeded();
-    this.clearIdleTimer();
+
+    let sessionServerConnected = false;
+    const connectSessionServer = async (): Promise<void> => {
+      if (sessionServerConnected) {
+        return;
+      }
+      sessionServerConnected = true;
+      await sessionServer.connect(transport);
+      const original = transport.onmessage;
+      transport.onmessage = (message, extra) => {
+        session.lastSeen = Date.now();
+        original?.(message, extra);
+      };
+    };
 
     transport.onclose = () => {
       void this.handleDisconnect(sessionId);
@@ -266,8 +317,25 @@ export class DaemonServer {
     transport.oncontrol = (message) => {
       switch (message.type) {
         case "hello":
+          if (
+            this.sharedSecret !== undefined &&
+            message.sharedSecret !== this.sharedSecret
+          ) {
+            void transport.sendControl({
+              type: "error",
+              message: "Daemon authentication failed: invalid shared secret.",
+            });
+            void this.handleDisconnect(sessionId);
+            break;
+          }
           if (message.clientId !== undefined) {
             session.clientId = message.clientId;
+          }
+          if (!session.authenticated) {
+            session.authenticated = true;
+            this.runtime.getStatsCollector().incrementActiveConnections();
+            this.assignOwnerIfNeeded();
+            this.clearIdleTimer();
           }
           session.lastSeen = Date.now();
           void transport.sendControl({
@@ -275,8 +343,14 @@ export class DaemonServer {
             sessionId,
             isOwner: this.ownerSessionId === sessionId,
           });
+          void connectSessionServer().catch(() =>
+            this.handleDisconnect(sessionId),
+          );
           break;
         case "heartbeat":
+          if (!session.authenticated) {
+            break;
+          }
           session.lastSeen = Date.now();
           break;
         case "goodbye":
@@ -285,16 +359,7 @@ export class DaemonServer {
       }
     };
 
-    sessionServer
-      .connect(transport)
-      .then(() => {
-        const original = transport.onmessage;
-        transport.onmessage = (message, extra) => {
-          session.lastSeen = Date.now();
-          original?.(message, extra);
-        };
-      })
-      .catch(() => this.handleDisconnect(sessionId));
+    void transport.start().catch(() => this.handleDisconnect(sessionId));
   }
 
   private async handleDisconnect(sessionId: string): Promise<void> {
@@ -311,7 +376,9 @@ export class DaemonServer {
       // ignore
     }
 
-    this.runtime.getStatsCollector().decrementActiveConnections();
+    if (session.authenticated) {
+      this.runtime.getStatsCollector().decrementActiveConnections();
+    }
 
     if (this.ownerSessionId === sessionId) {
       this.ownerSessionId = null;
@@ -402,17 +469,19 @@ export class DaemonServer {
   }
 
   private getClientInfo(): MonitorClientInfo[] {
-    return Array.from(this.sessions.values()).map((session) => {
-      const info: MonitorClientInfo = {
-        sessionId: session.id,
-        connectedAt: session.connectedAt,
-        lastSeen: session.lastSeen,
-        isOwner: session.id === this.ownerSessionId,
-      };
-      if (session.clientId !== undefined) {
-        info.clientId = session.clientId;
-      }
-      return info;
-    });
+    return Array.from(this.sessions.values())
+      .filter((session) => session.authenticated)
+      .map((session) => {
+        const info: MonitorClientInfo = {
+          sessionId: session.id,
+          connectedAt: session.connectedAt,
+          lastSeen: session.lastSeen,
+          isOwner: session.id === this.ownerSessionId,
+        };
+        if (session.clientId !== undefined) {
+          info.clientId = session.clientId;
+        }
+        return info;
+      });
   }
 }

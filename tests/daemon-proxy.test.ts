@@ -3,6 +3,7 @@ import { createServer } from "node:net";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { DEFAULT_CONFIG } from "@/config/schema";
+import { computeConfigHash } from "@/daemon/config-hash";
 import { createProxyBridge } from "@/daemon/proxy";
 import { DaemonServer } from "@/daemon/server";
 import { McpSquaredServer } from "@/server";
@@ -56,6 +57,50 @@ if (!SOCKET_LISTEN_SUPPORTED) {
 
       const client = new Client({
         name: "proxy-test",
+        version: "0.0.0",
+      });
+
+      try {
+        await client.connect(clientTransport);
+        const { tools } = await client.listTools();
+        const toolNames = tools.map((tool) => tool.name);
+        expect(toolNames).toContain("find_tools");
+      } finally {
+        await client.close().catch(() => {});
+        await bridge.stop().catch(() => {});
+        await daemon.stop().catch(() => {});
+      }
+    });
+
+    test("uses shared secret from daemon registry when auto-discovering endpoint", async () => {
+      const configHash = computeConfigHash(DEFAULT_CONFIG);
+      const runtime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const daemon = new DaemonServer({
+        runtime,
+        socketPath: "tcp://127.0.0.1:0",
+        sharedSecret: "registry-secret",
+        configHash,
+        idleTimeoutMs: 5000,
+        heartbeatTimeoutMs: 5000,
+      });
+
+      await daemon.start();
+
+      const [clientTransport, proxyTransport] =
+        InMemoryTransport.createLinkedPair();
+
+      const bridge = await createProxyBridge({
+        stdioTransport: proxyTransport,
+        configHash,
+        noSpawn: true,
+        heartbeatIntervalMs: 50,
+      });
+
+      const client = new Client({
+        name: "proxy-test-registry-secret",
         version: "0.0.0",
       });
 

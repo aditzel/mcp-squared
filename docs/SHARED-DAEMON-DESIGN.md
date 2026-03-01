@@ -94,6 +94,7 @@ Fields:
 - `startedAt`
 - `version`
 - `configHash` (optional)
+- `sharedSecret` (optional)
 
 Rules:
 - Registry writes are atomic (write temp then rename).
@@ -206,10 +207,7 @@ Use the runtime-shared `VERSION` source when populating `payload.version` so thi
 {
   "type": "hello",
   "clientId": "c-abc",
-  "payload": {
-    "version": "<runtime VERSION>",
-    "configHash": "optional"
-  }
+  "sharedSecret": "optional"
 }
 ```
 
@@ -296,9 +294,11 @@ The daemon transport is internal and can evolve independently.
 ## Security
 
 - UDS directory permissions restrict access to the current user.
-- Optional shared secret in registry:
-  - Daemon generates random token.
-  - Proxy must include token in `hello`.
+- TCP daemon endpoints are loopback-only (`localhost`, `127.0.0.1`, `::1`).
+- Optional shared secret for daemon IPC:
+  - Set with `--daemon-secret=<secret>` or `MCP_SQUARED_DAEMON_SECRET`.
+  - Daemon stores `sharedSecret` in registry for proxy auto-discovery.
+  - Proxy includes the secret in `hello`.
 
 ## Implementation Notes
 

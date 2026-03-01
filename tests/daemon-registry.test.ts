@@ -40,6 +40,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         pid: process.pid,
         startedAt: Date.now(),
         version: VERSION,
+        sharedSecret: "secret-token",
       };
 
       writeDaemonRegistry(entry);

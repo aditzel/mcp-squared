@@ -102,7 +102,13 @@ Auto mode chooses `daemon` when running in a TTY and `proxy` when stdin/stdout a
 ```bash
 mcp-squared daemon          # Start the shared backend
 mcp-squared proxy           # Run a stdio proxy that connects to the daemon
+mcp-squared daemon --daemon-socket=tcp://127.0.0.1:45000
+mcp-squared proxy --daemon-socket=tcp://127.0.0.1:45000
 ```
+
+Security notes for TCP daemon endpoints:
+- TCP daemon bind host is restricted to loopback (`localhost`, `127.0.0.1`, `::1`).
+- Optional shared-secret handshake is available with `--daemon-secret=<secret>` (or `MCP_SQUARED_DAEMON_SECRET`).
 
 When installing into supported clients, you can register the proxy automatically:
 

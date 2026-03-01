@@ -8,7 +8,10 @@ import { spawn } from "node:child_process";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { getDaemonSocketPath } from "../config/paths.js";
-import { loadLiveDaemonRegistry } from "./registry.js";
+import {
+  type DaemonRegistryEntry,
+  loadLiveDaemonRegistry,
+} from "./registry.js";
 import { SocketClientTransport } from "./transport.js";
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 5000;
@@ -19,6 +22,7 @@ export interface ProxyOptions {
   timeoutMs?: number;
   noSpawn?: boolean;
   configHash?: string;
+  sharedSecret?: string;
 }
 
 export interface ProxyBridgeOptions extends ProxyOptions {
@@ -38,12 +42,12 @@ function sleep(ms: number): Promise<void> {
 async function waitForDaemon(
   timeoutMs: number,
   configHash?: string,
-): Promise<{ endpoint: string } | null> {
+): Promise<DaemonRegistryEntry | null> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const entry = await loadLiveDaemonRegistry(configHash);
     if (entry) {
-      return { endpoint: entry.endpoint };
+      return entry;
     }
     await sleep(100);
   }
@@ -66,6 +70,7 @@ export async function createProxyBridge(
   options: ProxyBridgeOptions,
 ): Promise<ProxyBridge> {
   let endpoint = options.endpoint;
+  let sharedSecret = options.sharedSecret?.trim();
   let sessionId: string | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let isOwner = false;
@@ -77,6 +82,7 @@ export async function createProxyBridge(
     const registry = await loadLiveDaemonRegistry(options.configHash);
     if (registry) {
       endpoint = registry.endpoint;
+      sharedSecret ??= registry.sharedSecret;
     } else if (!options.noSpawn) {
       spawnDaemonProcess();
       const entry = await waitForDaemon(
@@ -87,6 +93,7 @@ export async function createProxyBridge(
         throw new Error("Timed out waiting for daemon to start");
       }
       endpoint = entry.endpoint;
+      sharedSecret ??= entry.sharedSecret;
     } else if (options.configHash) {
       endpoint = getDaemonSocketPath(options.configHash);
     }
@@ -181,6 +188,7 @@ export async function createProxyBridge(
   void daemonTransport.sendControl({
     type: "hello",
     clientId,
+    ...(sharedSecret ? { sharedSecret } : {}),
   });
 
   heartbeatTimer = setInterval(() => {
