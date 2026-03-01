@@ -49,6 +49,41 @@ function normalizeHost(host: string): string {
   return lowered;
 }
 
+function isMappedIpv4Loopback(normalizedHost: string): boolean {
+  if (!normalizedHost.startsWith("::ffff:")) {
+    return false;
+  }
+
+  const mappedIpv4 = normalizedHost.slice("::ffff:".length);
+  if (isIPv4(mappedIpv4)) {
+    return mappedIpv4.split(".")[0] === "127";
+  }
+
+  const hextets = mappedIpv4.split(":");
+  if (hextets.length !== 2) {
+    return false;
+  }
+  if (!hextets.every((segment) => /^[0-9a-f]{1,4}$/.test(segment))) {
+    return false;
+  }
+
+  const high = Number.parseInt(hextets[0] ?? "", 16);
+  const low = Number.parseInt(hextets[1] ?? "", 16);
+  if (
+    Number.isNaN(high) ||
+    Number.isNaN(low) ||
+    high < 0 ||
+    high > 0xffff ||
+    low < 0 ||
+    low > 0xffff
+  ) {
+    return false;
+  }
+
+  const firstOctet = (high >> 8) & 0xff;
+  return firstOctet === 127;
+}
+
 function isLoopbackHost(host: string): boolean {
   const normalized = normalizeHost(host);
   if (normalized === "localhost") {
@@ -56,6 +91,9 @@ function isLoopbackHost(host: string): boolean {
   }
   if (isIPv4(normalized)) {
     return normalized.split(".")[0] === "127";
+  }
+  if (isMappedIpv4Loopback(normalized)) {
+    return true;
   }
   if (isIPv6(normalized)) {
     return normalized === "::1";

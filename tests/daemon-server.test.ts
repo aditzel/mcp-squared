@@ -94,6 +94,47 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       );
     });
 
+    test("accepts IPv4-mapped IPv6 loopback addresses in guard", async () => {
+      const runtime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const daemon = new DaemonServer({
+        runtime,
+        socketPath: "tcp://[::ffff:127.0.0.1]:0",
+      });
+
+      let started = false;
+      try {
+        await daemon.start();
+        started = true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        expect(
+          message.includes("Refusing non-loopback daemon TCP endpoint"),
+        ).toBe(false);
+      } finally {
+        if (started) {
+          await daemon.stop();
+        }
+      }
+    });
+
+    test("rejects IPv4-mapped IPv6 non-loopback addresses", async () => {
+      const runtime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const daemon = new DaemonServer({
+        runtime,
+        socketPath: "tcp://[::ffff:192.168.0.10]:0",
+      });
+
+      await expect(daemon.start()).rejects.toThrow(
+        "Refusing non-loopback daemon TCP endpoint",
+      );
+    });
+
     test("enforces shared secret during hello handshake", async () => {
       const runtime = new McpSquaredServer({
         config: DEFAULT_CONFIG,

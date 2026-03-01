@@ -12,7 +12,7 @@ import {
   type DaemonRegistryEntry,
   loadLiveDaemonRegistry,
 } from "@/daemon/registry.js";
-import { SocketClientTransport } from "./transport.js";
+import { SocketClientTransport } from "@/daemon/transport.js";
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 5000;
 const HEARTBEAT_INTERVAL_MS = 5000;
@@ -58,14 +58,15 @@ async function waitForDaemon(
 function spawnDaemonProcess(sharedSecret?: string): void {
   const execPath = process.execPath;
   const scriptPath = process.argv[1];
-  const baseArgs = scriptPath ? [scriptPath, "daemon"] : ["daemon"];
-  const args = sharedSecret
-    ? [...baseArgs, `--daemon-secret=${sharedSecret}`]
-    : baseArgs;
+  const args = scriptPath ? [scriptPath, "daemon"] : ["daemon"];
 
   const child = spawn(execPath, args, {
     detached: true,
     stdio: "ignore",
+    env: {
+      ...process.env,
+      ...(sharedSecret ? { MCP_SQUARED_DAEMON_SECRET: sharedSecret } : {}),
+    },
   });
   child.unref();
 }
