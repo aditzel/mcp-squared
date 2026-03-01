@@ -111,6 +111,7 @@ describe("Cataloger", () => {
           },
           index: { refreshIntervalMs: 30000 },
           logging: { level: "info" },
+          embeddings: { enabled: false },
           selectionCache: {
             enabled: true,
             minCooccurrenceThreshold: 2,
@@ -147,6 +148,7 @@ describe("Cataloger", () => {
           },
           index: { refreshIntervalMs: 30000 },
           logging: { level: "info" },
+          embeddings: { enabled: false },
           selectionCache: {
             enabled: true,
             minCooccurrenceThreshold: 2,

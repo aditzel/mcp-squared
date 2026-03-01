@@ -194,9 +194,13 @@ export class McpSquaredServer {
       cataloger: this.cataloger,
     });
 
-    // Hook into index refresh events to update stats
+    // Hook into index refresh events to update stats and generate embeddings
     this.indexRefreshManager.on("refresh:complete", () => {
       this.statsCollector.updateIndexRefreshTime(Date.now());
+      // Generate embeddings for any new tools added during refresh
+      if (this.config.operations.embeddings.enabled) {
+        void this.retriever.generateToolEmbeddings();
+      }
     });
 
     this.registerMetaTools(this.mcpServer);
@@ -363,6 +367,8 @@ export class McpSquaredServer {
                     query: result.query,
                     totalMatches: filteredTools.length,
                     detailLevel,
+                    searchMode: result.searchMode,
+                    embeddingsAvailable: this.retriever.hasEmbeddings(),
                     tools,
                     ...(suggestedTools && { suggestedTools }),
                   }),
@@ -962,6 +968,23 @@ export class McpSquaredServer {
 
     // Sync the tool index after connecting to upstreams
     this.syncIndex();
+
+    // Initialize embeddings if enabled in config
+    if (this.config.operations.embeddings.enabled) {
+      try {
+        await this.retriever.initializeEmbeddings();
+        const embeddingCount = await this.retriever.generateToolEmbeddings();
+        const toolCount = this.retriever.getIndexedToolCount();
+        console.error(
+          `[mcp²] Embeddings: initialized (${embeddingCount}/${toolCount} tools embedded). Search modes: semantic, hybrid available.`,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[mcp²] Embeddings: initialization failed — ${message}. Falling back to fast (FTS5) search.`,
+        );
+      }
+    }
 
     // Update index refresh time
     this.statsCollector.updateIndexRefreshTime(Date.now());

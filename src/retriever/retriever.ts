@@ -67,6 +67,8 @@ export interface RetrieveResult {
   query: string;
   /** Total number of matches found */
   totalMatches: number;
+  /** The actual search mode used (may differ from requested if fallback occurred) */
+  searchMode: SearchMode;
 }
 
 /**
@@ -226,6 +228,7 @@ export class Retriever {
         tools,
         query,
         totalMatches: allTools.length,
+        searchMode: mode,
       };
     }
 
@@ -261,6 +264,7 @@ export class Retriever {
       })),
       query,
       totalMatches,
+      searchMode: "fast",
     };
   }
 
@@ -276,7 +280,11 @@ export class Retriever {
     // Check if we have embeddings available
     if (!this.embeddingGenerator || this.indexStore.getEmbeddingCount() === 0) {
       // Fall back to fast search if embeddings not available
-      return this.searchFast(query, limit);
+      console.error(
+        "[mcp²] Semantic search requested but embeddings not available — falling back to fast (FTS5) mode.",
+      );
+      const result = this.searchFast(query, limit);
+      return { ...result, searchMode: "fast" };
     }
 
     // Generate query embedding
@@ -293,6 +301,7 @@ export class Retriever {
       })),
       query,
       totalMatches: results.length,
+      searchMode: "semantic",
     };
   }
 
@@ -308,7 +317,11 @@ export class Retriever {
     // Check if we have embeddings available
     if (!this.embeddingGenerator || this.indexStore.getEmbeddingCount() === 0) {
       // Fall back to fast search if embeddings not available
-      return this.searchFast(query, limit);
+      console.error(
+        "[mcp²] Hybrid search requested but embeddings not available — falling back to fast (FTS5) mode.",
+      );
+      const result = this.searchFast(query, limit);
+      return { ...result, searchMode: "fast" };
     }
 
     // Get more candidates from FTS5 than needed
@@ -316,7 +329,7 @@ export class Retriever {
     const ftsResults = this.indexStore.search(query, candidateLimit);
 
     if (ftsResults.length === 0) {
-      return { tools: [], query, totalMatches: 0 };
+      return { tools: [], query, totalMatches: 0, searchMode: "hybrid" };
     }
 
     // Generate query embedding
@@ -368,6 +381,7 @@ export class Retriever {
       })),
       query,
       totalMatches: ftsResults.length,
+      searchMode: "hybrid",
     };
   }
 
