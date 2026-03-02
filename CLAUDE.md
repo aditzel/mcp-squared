@@ -1,139 +1,52 @@
-# CLAUDE.md
+# Agent Instructions
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Package Manager
+Use `bun` exclusively. Never use `npm`, `pnpm`, or `yarn`.
 
-## Project Overview
+## Tool and Skill Usage
+Leverage all available tools, skills, and MCP integrations. Prefer tool-assisted approaches over manual ones.
 
-MCP² (Mercury Control Plane) is a local-first meta-server and proxy for the Model Context Protocol (MCP). It reduces tool context bloat by exposing a minimal surface area (`find_tools`, `describe_tools`, `execute`, plus supporting meta-tools) instead of loading all tool schemas into LLM context.
+## Leave It Better Than You Found It
+When running tests, linting, or building, fix pre-existing issues; do not ignore or suppress them.
 
-**Status**: Alpha (v0.1.x)
+## Context Window Hygiene
+When tool calls return large payloads, save results to markdown files instead of dumping them into the conversation.
 
-## Package Manager Policy
+## Test-Driven Development
+- **New features:** Write a failing test first, then implement until it passes.
+- **Bug fixes:** Write a test that reproduces the bug, fix the code, and verify the test passes.
 
-- ALWAYS use bun instead of npm or pnpm.
+## Coverage Requirements
+Every PR/patch must meet **>=80% line and branch coverage**. No exceptions.
 
-## Development Commands
+## Commit and PR Conventions
+- Use [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`, etc.
+- Every commit and PR description must end with a `Co-authored-by:` trailer identifying the agent that contributed.
+- Before committing, run and pass: `bun test && bun run build && bun run lint`.
 
-```bash
-# Development
-bun run dev              # Watch mode with hot reload
-bun run start            # Run server
+## Respect the Project
+Follow the project's existing conventions for test framework, language/runtime settings, file structure, and error handling patterns. Do not introduce new patterns that conflict with established ones. For brand-new projects with no conventions yet, ask the user before making these decisions.
 
-# Quality
-bun test                 # Run tests
-bun test --watch         # Watch mode
-bun run typecheck        # TypeScript type checking
-bun run lint             # Biome linting
-bun run lint:fix         # Auto-fix lint issues
-bun run format           # Format with Biome
+## DRY - Don't Repeat Yourself
+Extract shared logic into common functions and utilities. Componentize any visual element or pattern used more than once. If you find yourself duplicating code, refactor first.
 
-# Build
-bun run build            # Build to dist/
-bun run clean            # Remove dist/
-```
+## Changelog Discipline
+- Always update [CHANGELOG.md](CHANGELOG.md) in the same patch for user-visible changes (features, fixes, behavior changes, CLI/TUI UX changes, and docs that affect usage).
+- Add entries under `## [Unreleased]` using Keep a Changelog categories (`Added`, `Changed`, `Fixed`, `Security`, etc.).
+- Do not merge or release code changes without corresponding changelog updates.
 
-## Commit Rules
+## Model Name / ID Changes
+**NEVER change a model name or ID without explicit user approval.** Model identifiers (e.g., OpenRouter model IDs, image generation model names) are deliberate choices.
 
-You MUST NOT commit changes until all of these are clean:
+When suggesting a model change:
+1. **Query the provider first** to get the actual available model list. Examples:
+   - OpenRouter: query the OpenRouter API or docs for valid model IDs
+   - Wavespeed: use the `wavespeed-cli-mcp` `list_models` tool
+   - Any other provider: use their API/docs to verify valid model identifiers
+2. **Present the options** to the user with evidence from the provider.
+3. **Wait for explicit approval** before making any change.
+4. Never guess or assume a model ID based on training data; verify it.
 
-- `bun test`
-- `bun run build`
-- `bun run lint`
-
-This applies even when failures are pre-existing in the branch.
-
-### Running a Single Test
-
-```bash
-bun test tests/config.test.ts        # Run specific test file
-bun test -t "test name pattern"      # Filter by test name
-```
-
-## CLI Usage
-
-```bash
-mcp-squared                 # Start MCP server (stdio mode)
-mcp-squared config          # Launch config TUI
-mcp-squared test [name]     # Test upstream connection(s)
-mcp-squared auth <name>     # OAuth auth for SSE/HTTP upstream
-mcp-squared import          # Import MCP configs from other tools
-mcp-squared install         # Install MCP² into other MCP clients
-mcp-squared monitor         # Launch server monitor TUI
-```
-
-## Architecture
-
-MCP² sits between MCP clients (IDEs, agents) and upstream MCP servers:
-
-```
-MCP Client → MCP² Meta-Server → Upstream MCP Servers
-                   │
-            ┌──────┴──────┐
-            │ Local Index │
-            └─────────────┘
-```
-
-### Core Components
-
-- **`src/index.ts`** - Entry point; CLI argument handling and mode dispatch
-- **`src/server/`** - MCP server implementation using `@modelcontextprotocol/sdk`. Exposes meta-tools:
-  - `find_tools`, `describe_tools`, `execute`
-  - `list_namespaces`, `clear_selection_cache`
-- **`src/retriever/`** - Search and retrieval logic (FTS5, semantic, hybrid)
-- **`src/index/`** - SQLite index store (FTS5 + embeddings + co-occurrence)
-- **`src/embeddings/`** - Transformers.js embedding generation (BGE-small)
-- **`src/upstream/`** - Connectivity to upstream MCP servers (stdio + SSE/HTTP)
-- **`src/oauth/`** - OAuth 2.0 dynamic client registration + token storage
-- **`src/security/`** - Policy enforcement (allow/block/confirm) and sanitization
-- **`src/background/`** - Background index refresh + change detection
-- **`src/caching/`** - Selection cache tracking for co-occurrence suggestions
-- **`src/tui/`** - OpenTUI-based configuration and monitor UIs
-- **`src/import/`** - Import MCP configs from other tools
-- **`src/install/`** - Install MCP² into other MCP clients
-- **`src/cli/`** - Argument parsing and help output
-- **`src/utils/`** - Shared utility helpers
-
-### Configuration System
-
-Config is stored in TOML format with this discovery order:
-1. `$MCP_SQUARED_CONFIG` environment variable
-2. Project-local: `mcp-squared.toml` or `.mcp-squared/config.toml` (walks up directories)
-3. User-level: `~/.config/mcp-squared/config.toml` (Linux/macOS) or `%APPDATA%/mcp-squared/config.toml` (Windows)
-
-Schema is validated with Zod (`src/config/schema.ts`). Key sections:
-- `upstreams` - Map of named upstream servers (stdio or SSE/HTTP transport)
-- `security.tools` - Allow/block/confirm lists for tool access
-- `operations.findTools` - Default search mode, limits, and detail level
-- `operations.index` - Background refresh interval
-- `operations.selectionCache` - Co-occurrence suggestion settings
-- `operations.logging` - Log level
-
-### Upstream Configuration
-
-Two transport types supported in schema:
-- **stdio**: Launches subprocess with command/args/env
-- **sse**: HTTP streaming connection (Streamable HTTP transport)
-
-SSE upstreams can enable OAuth via `auth = true` (or an object with `callbackPort`/`clientName`). Tokens are stored under `~/.config/mcp-squared/tokens/<upstream>.json`.
-
-## Key Conventions
-
-- **Runtime**: Bun (not Node.js)
-- **Config format**: TOML with Zod validation (`smol-toml` parser)
-- **Linting**: Biome (not ESLint)
-- **TypeScript**: Strict mode with `noUncheckedIndexedAccess`
-- **Imports**: Use `.js` extension for local imports (ESM)
-- **Path alias**: `@/*` maps to `src/*`
-- **Embeddings**: Optional; semantic/hybrid search falls back to FTS5 if embeddings are missing
-
-## Issue Tracking
-
-This project uses GitHub Issues and pull requests for issue tracking. See `AGENTS.md` for workflow.
-
-## Key Dependencies
-
-- **@modelcontextprotocol/sdk** - Official MCP SDK for server and client
-- **@huggingface/transformers** - Local embedding generation
-- **@opentui/core** - Terminal UI framework for config/monitor
-- **smol-toml** - TOML parsing
-- **zod** - Schema validation
+## Documentation Hierarchy
+1. [AGENTS.md](AGENTS.md) / [CLAUDE.md](CLAUDE.md) - Agent coordination and quick reference (synced)
+2. [README.md](README.md) - User-facing documentation

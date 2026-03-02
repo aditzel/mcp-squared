@@ -1,66 +1,52 @@
 # Agent Instructions
 
-## Team & Ownership (Current)
-- Maintainer/Owner: Allan Ditzel (GitHub: `aditzel`, email: `allan@allanditzel.com`)
-- Additional maintainers: none. External contributions are reviewed and merged by the maintainer.
+## Package Manager
+Use `bun` exclusively. Never use `npm`, `pnpm`, or `yarn`.
 
-This project uses Linear for issue tracking and execution lifecycle management. GitHub pull requests are used for code review and merge.
+## Tool and Skill Usage
+Leverage all available tools, skills, and MCP integrations. Prefer tool-assisted approaches over manual ones.
 
-## Quick Reference
+## Leave It Better Than You Found It
+When running tests, linting, or building, fix pre-existing issues; do not ignore or suppress them.
 
-```bash
-# Linear (preferred via MCP tools):
-# - mcp__linear__list_issues
-# - mcp__linear__get_issue
-# - mcp__linear__create_issue
-# - mcp__linear__update_issue
-gh pr status                       # Review PR status
-```
+## Context Window Hygiene
+When tool calls return large payloads, save results to markdown files instead of dumping them into the conversation.
 
-## Package Manager Policy
+## Test-Driven Development
+- **New features:** Write a failing test first, then implement until it passes.
+- **Bug fixes:** Write a test that reproduces the bug, fix the code, and verify the test passes.
 
-- ALWAYS use bun instead of npm or pnpm.
+## Coverage Requirements
+Every PR/patch must meet **>=80% line and branch coverage**. No exceptions.
 
-## Linear Planning & Execution Discipline (MANDATORY)
+## Commit and PR Conventions
+- Use [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`, etc.
+- Every commit and PR description must end with a `Co-authored-by:` trailer identifying the agent that contributed.
+- Before committing, run and pass: `bun test && bun run build && bun run lint`.
 
-- If you create a plan, **every step in the plan MUST have a corresponding Linear issue** in the `MCP Squared` project.
-- Do not start implementation for a step until its Linear issue exists (create missing issues immediately).
-- Maintain a clear 1:1 mapping between plan steps and Linear issues whenever possible; if one issue covers multiple sub-steps, split it before execution.
-- When execution of an issue begins, move it to an active state (for example, `In Progress`).
-- During execution, continuously add detailed progress notes to the issue:
-  - discoveries, debugging findings, design decisions, scope changes, and concrete code/config changes
-  - references to related PRs/commits/files as applicable
-- Before closing an issue, record gating results directly in the issue, including commands run and outcomes.
-- Required default gates for code changes: `bun test && bun run build && bun run lint`.
-- An issue may be moved to a closed/done state **only** when:
-  - acceptance criteria are satisfied
-  - all required gates pass cleanly
-  - the issue contains sufficient implementation and verification notes for handoff/audit
-- If gates fail or work is partial, keep the issue open, document exact failures/blockers, and create follow-up issues as needed.
+## Respect the Project
+Follow the project's existing conventions for test framework, language/runtime settings, file structure, and error handling patterns. Do not introduce new patterns that conflict with established ones. For brand-new projects with no conventions yet, ask the user before making these decisions.
 
-## Landing the Plane (Session Completion)
+## DRY - Don't Repeat Yourself
+Extract shared logic into common functions and utilities. Componentize any visual element or pattern used more than once. If you find yourself duplicating code, refactor first.
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+## Changelog Discipline
+- Always update [CHANGELOG.md](CHANGELOG.md) in the same patch for user-visible changes (features, fixes, behavior changes, CLI/TUI UX changes, and docs that affect usage).
+- Add entries under `## [Unreleased]` using Keep a Changelog categories (`Added`, `Changed`, `Fixed`, `Security`, etc.).
+- Do not merge or release code changes without corresponding changelog updates.
 
-**MANDATORY WORKFLOW:**
+## Model Name / ID Changes
+**NEVER change a model name or ID without explicit user approval.** Model identifiers (e.g., OpenRouter model IDs, image generation model names) are deliberate choices.
 
-1. **File issues for remaining work** - Create Linear issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update Linear issue + PR status** - Ensure active issues are in the correct state, add implementation/gate notes, and close only after all criteria pass
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+When suggesting a model change:
+1. **Query the provider first** to get the actual available model list. Examples:
+   - OpenRouter: query the OpenRouter API or docs for valid model IDs
+   - Wavespeed: use the `wavespeed-cli-mcp` `list_models` tool
+   - Any other provider: use their API/docs to verify valid model identifiers
+2. **Present the options** to the user with evidence from the provider.
+3. **Wait for explicit approval** before making any change.
+4. Never guess or assume a model ID based on training data; verify it.
 
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-- **NEVER commit if test, build, and lint are not cleanly passing first**, even if issues pre-exist in the repository.
-  - Use this gate before commit: `bun test && bun run build && bun run lint`
+## Documentation Hierarchy
+1. [AGENTS.md](AGENTS.md) / [CLAUDE.md](CLAUDE.md) - Agent coordination and quick reference (synced)
+2. [README.md](README.md) - User-facing documentation
