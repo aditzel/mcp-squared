@@ -160,28 +160,48 @@ run_post_build_validations() {
     product_failures=$((product_failures + 1))
   fi
 
-  smoke_status="N/A"
+  version_smoke_status="N/A"
+  command_smoke_status="N/A"
   if [ -n "$NATIVE_TARGET" ] && [ "$target" = "$NATIVE_TARGET" ]; then
     tmpdir="$(mktemp -d)"
     binary_name="mcp-squared${suffix}"
+    version_log="$tmpdir/version-smoke.log"
+    command_log="$tmpdir/command-smoke.log"
     cp "$outfile" "$tmpdir/$binary_name"
     chmod +x "$tmpdir/$binary_name" 2>/dev/null || true
 
     if (
-      cd "$tmpdir" && run_in_clean_env "./$binary_name" --version >/dev/null 2>&1
+      cd "$tmpdir" &&
+        run_in_clean_env "./$binary_name" --version >"$version_log" 2>&1
     ); then
-      smoke_status="PASS"
+      version_smoke_status="PASS"
     else
-      smoke_status="FAIL"
+      version_smoke_status="FAIL"
       failures=$((failures + 1))
       product_failures=$((product_failures + 1))
+      echo "  --version smoke log: $version_log"
+      print_log_excerpt "$version_log" 8
+    fi
+
+    if (
+      cd "$tmpdir" &&
+        run_in_clean_env "./$binary_name" import --list --no-interactive >"$command_log" 2>&1
+    ); then
+      command_smoke_status="PASS"
+    else
+      command_smoke_status="FAIL"
+      failures=$((failures + 1))
+      product_failures=$((product_failures + 1))
+      echo "  command-path smoke log: $command_log"
+      print_log_excerpt "$command_log" 8
     fi
 
     rm -rf "$tmpdir"
   fi
 
   echo "  size: ${size_mb}MB ($size_status)"
-  echo "  no-runtime-deps smoke: $smoke_status"
+  echo "  --version smoke: $version_smoke_status"
+  echo "  command-path smoke (import --list): $command_smoke_status"
 }
 
 read -r -a TARGETS <<< "$TARGETS_INPUT"

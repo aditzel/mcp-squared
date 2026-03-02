@@ -12,7 +12,7 @@ This runs `scripts/compile-matrix.sh`, which validates:
 
 1. Compile success for target matrix (`bun-darwin-arm64`, `bun-darwin-x64`, `bun-linux-x64`, `bun-windows-x64`)
 2. Binary size threshold (`<120MB`)
-3. Native standalone runtime smoke test (`--version` with minimal environment)
+3. Native standalone runtime smoke tests (`--version` and `import --list --no-interactive` with minimal environment)
 4. Embeddings probe (`scripts/embedding-probe.ts`) compiled and executed as binary
 5. Failure classification (`PRODUCT` vs `INFRA/NETWORK`) with log excerpts
 6. One retry for infra/network-signature compile failures
@@ -26,17 +26,20 @@ This runs `scripts/compile-matrix.sh`, which validates:
 
 ## CI Strategy
 
-The CI workflow (`.github/workflows/test-and-coverage.yml`) validates compile behavior in two modes:
+The CI workflow (`.github/workflows/test-and-coverage.yml`) validates compile behavior in three modes:
 
 1. `ubuntu-latest` cross-target compile matrix:
    - `bun-darwin-arm64`
    - `bun-darwin-x64`
    - `bun-linux-x64`
    - `bun-windows-x64`
-2. `windows-latest` native compile/smoke path:
+2. `macos-latest` native compile/smoke path:
+   - `bun-darwin-arm64`
+   - `bun-darwin-x64`
+3. `windows-latest` native compile/smoke path:
    - `bun-windows-x64`
 
-This gives both broad cross-target compile signal and an explicit Windows-native execution check.
+This gives both broad cross-target compile signal and explicit macOS/Windows native execution checks.
 
 ## Criteria Status
 

@@ -94,6 +94,9 @@ jobs:
           - os: ubuntu-latest
             label: matrix-cross-target
             compileTargets: bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-windows-x64
+          - os: macos-latest
+            label: macos-native-smoke
+            compileTargets: bun-darwin-arm64 bun-darwin-x64
           - os: windows-latest
             label: windows-native-smoke
             compileTargets: bun-windows-x64
