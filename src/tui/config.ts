@@ -22,6 +22,13 @@ import {
 } from "../config/index.js";
 import { testUpstreamConnection } from "../upstream/index.js";
 import { VERSION } from "../version.js";
+import {
+  deleteUpstreamByName,
+  getUpstreamEditMenuOptions,
+  saveSseUpstreamFromForm,
+  saveStdioUpstreamFromForm,
+  stringifyKeyValuePairsInput,
+} from "./upstream-edit.js";
 
 const PROJECT_DESCRIPTION = "Mercury Control Plane";
 
@@ -339,37 +346,6 @@ class ConfigTuiApp {
     return `${upstream.sse.url}${envSuffix}`;
   }
 
-  private parseKeyValuePairsInput(input: string): Record<string, string> {
-    const result: Record<string, string> = {};
-    if (!input.trim()) return result;
-
-    const pairs = input
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    for (const pair of pairs) {
-      const eqIndex = pair.indexOf("=");
-      if (eqIndex > 0) {
-        const key = pair.substring(0, eqIndex).trim();
-        const value = pair.substring(eqIndex + 1).trim();
-        if (key) {
-          result[key] = value;
-        }
-      }
-    }
-    return result;
-  }
-
-  private stringifyKeyValuePairsInput(
-    pairs: Record<string, string> | undefined,
-  ): string {
-    const entries = Object.entries(pairs || {});
-    if (entries.length === 0) {
-      return "";
-    }
-    return entries.map(([key, value]) => `${key}=${value}`).join(", ");
-  }
-
   showAddUpstreamScreen(): void {
     this.state.currentScreen = "add-upstream";
     this.clearScreen();
@@ -550,7 +526,7 @@ class ConfigTuiApp {
       },
     });
     formBox.add(envInput);
-    envInput.value = this.stringifyKeyValuePairsInput(existingUpstream?.env);
+    envInput.value = stringifyKeyValuePairsInput(existingUpstream?.env);
 
     const submitOptions: SelectOption[] = [
       { name: "[ Save Upstream ]", description: "", value: "save" },
@@ -580,43 +556,28 @@ class ConfigTuiApp {
     };
 
     const saveUpstream = () => {
-      const trimmedName = nameInput.value?.trim() || "";
-      const trimmedCommand = commandInput.value?.trim() || "";
-
-      if (!trimmedName) {
-        nameInput.focus();
-        return;
-      }
-      if (!trimmedCommand) {
-        commandInput.focus();
-        return;
-      }
-
-      if (
-        isEditMode &&
-        existingName &&
-        trimmedName !== existingName &&
-        this.state.config.upstreams[trimmedName]
-      ) {
-        nameInput.focus();
-        return;
-      }
-
-      const envVars = this.parseKeyValuePairsInput(envInput.value || "");
-      const parts = trimmedCommand.split(/\s+/);
-      const command = parts[0] || "";
-      const args = parts.slice(1);
-
-      if (isEditMode && existingName && trimmedName !== existingName) {
-        delete this.state.config.upstreams[existingName];
+      const result = saveStdioUpstreamFromForm({
+        upstreams: this.state.config.upstreams,
+        name: nameInput.value || "",
+        commandLine: commandInput.value || "",
+        envInput: envInput.value || "",
+        existingName: isEditMode ? existingName : undefined,
+        existingUpstream,
+      });
+      if (!result.ok) {
+        switch (result.reason) {
+          case "name_required":
+          case "name_conflict":
+            nameInput.focus();
+            return;
+          case "command_required":
+            commandInput.focus();
+            return;
+          default:
+            return;
+        }
       }
 
-      this.state.config.upstreams[trimmedName] = {
-        transport: "stdio",
-        enabled: existingUpstream?.enabled ?? true,
-        env: envVars,
-        stdio: { command, args },
-      };
       this.state.isDirty = true;
       cleanup();
       this.showUpstreamsScreen();
@@ -763,7 +724,7 @@ class ConfigTuiApp {
       },
     });
     formBox.add(headersInput);
-    headersInput.value = this.stringifyKeyValuePairsInput(
+    headersInput.value = stringifyKeyValuePairsInput(
       existingUpstream?.sse.headers,
     );
 
@@ -828,7 +789,7 @@ class ConfigTuiApp {
       },
     });
     formBox.add(envInput);
-    envInput.value = this.stringifyKeyValuePairsInput(existingUpstream?.env);
+    envInput.value = stringifyKeyValuePairsInput(existingUpstream?.env);
 
     const submitOptions: SelectOption[] = [
       { name: "[ Save Upstream ]", description: "", value: "save" },
@@ -873,54 +834,31 @@ class ConfigTuiApp {
     );
 
     const saveUpstream = () => {
-      const trimmedName = nameInput.value?.trim() || "";
-      const trimmedUrl = urlInput.value?.trim() || "";
-
-      if (!trimmedName) {
-        nameInput.focus();
-        return;
-      }
-      if (!trimmedUrl) {
-        urlInput.focus();
-        return;
-      }
-
-      // Basic URL validation
-      try {
-        new URL(trimmedUrl);
-      } catch {
-        urlInput.focus();
-        return;
-      }
-
-      if (
-        isEditMode &&
-        existingName &&
-        trimmedName !== existingName &&
-        this.state.config.upstreams[trimmedName]
-      ) {
-        nameInput.focus();
-        return;
+      const result = saveSseUpstreamFromForm({
+        upstreams: this.state.config.upstreams,
+        name: nameInput.value || "",
+        url: urlInput.value || "",
+        headersInput: headersInput.value || "",
+        envInput: envInput.value || "",
+        authEnabled: selectedAuthValue === "enabled",
+        existingName: isEditMode ? existingName : undefined,
+        existingUpstream,
+      });
+      if (!result.ok) {
+        switch (result.reason) {
+          case "name_required":
+          case "name_conflict":
+            nameInput.focus();
+            return;
+          case "url_required":
+          case "invalid_url":
+            urlInput.focus();
+            return;
+          default:
+            return;
+        }
       }
 
-      const envVars = this.parseKeyValuePairsInput(envInput.value || "");
-      const headers = this.parseKeyValuePairsInput(headersInput.value || "");
-      const authEnabled = selectedAuthValue === "enabled";
-
-      if (isEditMode && existingName && trimmedName !== existingName) {
-        delete this.state.config.upstreams[existingName];
-      }
-
-      this.state.config.upstreams[trimmedName] = {
-        transport: "sse",
-        enabled: existingUpstream?.enabled ?? true,
-        env: envVars,
-        sse: {
-          url: trimmedUrl,
-          headers,
-          auth: authEnabled ? true : undefined,
-        },
-      };
       this.state.isDirty = true;
       cleanup();
       this.showUpstreamsScreen();
@@ -1083,35 +1021,7 @@ class ConfigTuiApp {
       menuBox.add(noEnvText);
     }
 
-    const options: SelectOption[] = [
-      {
-        name: "Edit Configuration",
-        description: "Update connection details and environment",
-        value: "edit",
-      },
-      {
-        name: "Test Connection",
-        description: "Connect and list available tools",
-        value: "test",
-      },
-      {
-        name: upstream.enabled ? "Disable" : "Enable",
-        description: upstream.enabled
-          ? "Stop using this upstream"
-          : "Start using this upstream",
-        value: "toggle",
-      },
-      {
-        name: "Delete",
-        description: "Remove this upstream configuration",
-        value: "delete",
-      },
-      {
-        name: "← Back",
-        description: "",
-        value: "back",
-      },
-    ];
+    const options: SelectOption[] = getUpstreamEditMenuOptions(upstream);
 
     const menu = new SelectRenderable(this.renderer, {
       id: "edit-menu",
@@ -1148,8 +1058,9 @@ class ConfigTuiApp {
             this.showEditUpstreamScreen(name);
             break;
           case "delete":
-            delete this.state.config.upstreams[name];
-            this.state.isDirty = true;
+            this.state.isDirty =
+              deleteUpstreamByName(this.state.config.upstreams, name) ||
+              this.state.isDirty;
             this.showUpstreamsScreen();
             break;
           case "back":
