@@ -59,9 +59,9 @@ defaultMode = "fast"
 defaultDetailLevel = "L1"
 
 [operations.findTools.preferredNamespacesByIntent]
-# Optional intent-aware namespace preference.
-# Example: codeSearch = ["auggie", "augment-code"]
-codeSearch = []
+# Default-on code-search namespace preference.
+# Adjust or clear if your stack uses different code indexers.
+codeSearch = ["auggie", "ctxdb"]
 
 [operations.embeddings]
 # Enable to use semantic or hybrid search modes.

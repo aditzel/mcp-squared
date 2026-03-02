@@ -260,6 +260,132 @@ describe("server runtime coverage", () => {
     expect(l2Tools[0]?.["inputSchema"]).toEqual({ type: "object" });
   });
 
+  test("code-search flow ranks preferred namespaces first and executes selected namespace", async () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      security: {
+        tools: {
+          allow: ["*:*"],
+          block: [],
+          confirm: [],
+        },
+      },
+      upstreams: {
+        auggie: {
+          transport: "stdio",
+          enabled: true,
+          env: {},
+          stdio: {
+            command: "auggie",
+            args: [],
+          },
+        },
+        ctxdb: {
+          transport: "stdio",
+          enabled: true,
+          env: {},
+          stdio: {
+            command: "ctxdb",
+            args: [],
+          },
+        },
+      },
+      operations: {
+        ...DEFAULT_CONFIG.operations,
+        findTools: {
+          ...DEFAULT_CONFIG.operations.findTools,
+          preferredNamespacesByIntent: {
+            codeSearch: ["auggie", "ctxdb"],
+          },
+        },
+      },
+    };
+
+    server = new McpSquaredServer({ config });
+
+    const indexStore = server.getRetriever().getIndexStore();
+    indexStore.indexTool({
+      name: "search_context",
+      description: "Search symbols and definitions in source code",
+      serverKey: "auggie",
+      inputSchema: { type: "object" },
+    });
+    indexStore.indexTool({
+      name: "search_context",
+      description: "Search repository context index",
+      serverKey: "ctxdb",
+      inputSchema: { type: "object" },
+    });
+    indexStore.indexTool({
+      name: "read_file",
+      description: "Read a file from local disk",
+      serverKey: "filesystem",
+      inputSchema: { type: "object" },
+    });
+
+    const findHandler = getHandler(server, "find_tools");
+    const findResult = await findHandler({
+      query: "find symbol definitions in the codebase",
+      limit: 5,
+    });
+    const findPayload = parsePayload(findResult);
+
+    const tools =
+      (findPayload["tools"] as Array<Record<string, unknown>>) ?? [];
+    expect(tools.length).toBeGreaterThanOrEqual(2);
+
+    const topNamespaces = tools
+      .slice(0, 2)
+      .map((tool) => tool["serverKey"] as string);
+    expect(topNamespaces).toEqual(["auggie", "ctxdb"]);
+
+    const selectedName = tools[0]?.["name"];
+    const selectedServerKey = tools[0]?.["serverKey"];
+
+    if (
+      typeof selectedName !== "string" ||
+      typeof selectedServerKey !== "string"
+    ) {
+      expect.unreachable("Expected ranked tool with name and serverKey");
+    }
+
+    const selectedQualifiedName = `${selectedServerKey}:${selectedName}`;
+
+    const cataloger = server.getCataloger();
+    spyOn(cataloger, "findTool").mockImplementation((name: string) => {
+      if (name !== selectedQualifiedName) {
+        return { tool: undefined, ambiguous: false, alternatives: [] };
+      }
+
+      return {
+        tool: {
+          name: selectedName,
+          description: "Search symbols and definitions in source code",
+          serverKey: selectedServerKey,
+          inputSchema: { type: "object" },
+        },
+        ambiguous: false,
+        alternatives: [],
+      };
+    });
+
+    const callToolSpy = spyOn(cataloger, "callTool").mockResolvedValue({
+      content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
+      isError: false,
+    });
+
+    const executeHandler = getHandler(server, "execute");
+    const executeResult = await executeHandler({
+      tool_name: selectedQualifiedName,
+      arguments: { query: "MySymbol" },
+    });
+
+    expect(executeResult.isError).toBe(false);
+    expect(callToolSpy).toHaveBeenCalledWith(selectedQualifiedName, {
+      query: "MySymbol",
+    });
+  });
+
   test("startCore is idempotent and handles embedding init failure", async () => {
     const config: McpSquaredConfig = {
       ...DEFAULT_CONFIG,

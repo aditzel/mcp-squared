@@ -162,12 +162,14 @@ auth = true
 
 Security policies (allow/block/confirm) live under `security.tools`. Confirmation flows return a short-lived token that must be provided to `execute` to proceed. OAuth tokens for SSE upstreams are stored under `~/.config/mcp-squared/tokens/<upstream>.json`.
 
-For codebase-centric workflows (for example with Augment/Auggie), set explicit namespace preferences so `find_tools` prioritizes those servers first:
+`mcp-squared init` now seeds code-search routing preferences so `find_tools` prioritizes common code indexers by default:
 
 ```toml
 [operations.findTools.preferredNamespacesByIntent]
 codeSearch = ["auggie", "ctxdb"]
 ```
+
+Tune this list (or set it to `[]`) if your environment uses different namespaces.
 
 ## Tool API (Meta-Tools)
 
