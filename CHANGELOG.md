@@ -7,12 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- No changes yet.
+
+## [0.3.0] - 2026-03-02
+
 ### Added
+- Explicit semantic/hybrid search behavior with more reliable fallback handling.
+- Hardened default security posture for work/enterprise usage.
+- Unified runtime version source of truth.
 - Dependency maintenance runbook at `docs/DEPENDENCY_MAINTENANCE.md` and exception register at `docs/DEPENDENCY_EXCEPTIONS.md`.
 
 ### Changed
 - CI and publish workflows now run `bun run audit` after dependency install.
 - `release:check` now includes dependency auditing (`bun run audit`).
+- Expanded cross-platform standalone compile validation, including a macOS native smoke leg.
+
+### Fixed
+- SSE auth import mapping now preserves/normalizes auth objects, including null and partial auth cases.
+- Hardened daemon IPC/auth handling (shared-secret handshake, mapped loopback/IPv4 handling, and registry file permissions).
+- Fixed monitor listener leak and execute policy normalization for qualified tool names.
 
 ### Security
 - Upgraded key dependencies (`@modelcontextprotocol/sdk`, `@opentui/core`, `@biomejs/biome`) and pinned patched transitive ranges for `ajv` and `hono` via overrides.

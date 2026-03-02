@@ -2,6 +2,11 @@
 
 This checklist is for maintainers publishing `mcp-squared` to npm.
 
+## Current release target
+
+- Version: `0.3.0`
+- Git tag: `v0.3.0`
+
 ## One-time local setup
 
 1. Fix npm cache permissions if needed:
@@ -23,11 +28,11 @@ This checklist is for maintainers publishing `mcp-squared` to npm.
    git pull --rebase
    ```
 2. Update changelog under a new version heading in `CHANGELOG.md`.
-3. Bump package version:
+3. Set package version for this release:
    ```bash
-   bun pm version patch
+   bun pm version 0.3.0
    ```
-   Use `minor` or `major` as appropriate.
+   This creates the release tag `v0.3.0`.
 4. Run release gates:
    ```bash
    bun run release:check
@@ -44,10 +49,14 @@ This checklist is for maintainers publishing `mcp-squared` to npm.
    npm publish --access public
    ```
    If your npm account enforces publish 2FA, enter the OTP when prompted.
-7. Push commit and tag:
+7. Push commit and the explicit release tag:
    ```bash
    git push
-   git push --tags
+   git push origin v0.3.0
+   ```
+   Verify the tag on the release commit:
+   ```bash
+   git tag --points-at HEAD | rg '^v0\\.3\\.0$'
    ```
 8. Verify on registry:
    ```bash
