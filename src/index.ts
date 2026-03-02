@@ -42,6 +42,7 @@ import { loadLiveDaemonRegistry } from "./daemon/registry.js";
 import { DaemonServer } from "./daemon/server.js";
 import { runImport } from "./import/runner.js";
 import { runInstall } from "./install/runner.js";
+import { runMigrate } from "./migrate/runner.js";
 import {
   McpOAuthProvider,
   OAuthCallbackServer,
@@ -1094,6 +1095,9 @@ export async function main(
       await runInit(args.init);
       break;
     }
+    case "migrate":
+      await runMigrate(args.migrate);
+      break;
     case "monitor":
       await runMonitor(args.monitor);
       break;

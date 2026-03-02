@@ -106,6 +106,7 @@ mcp-squared config          # Launch configuration TUI
 mcp-squared test [upstream] # Test upstream server connections
 mcp-squared auth <upstream> # OAuth auth for SSE/HTTP upstreams
 mcp-squared import          # Import MCP configs from other tools
+mcp-squared migrate         # Apply one-time config migrations
 mcp-squared install         # Install MCP² into other MCP clients
 mcp-squared monitor         # Launch server monitor TUI
 mcp-squared --help          # Full command reference
@@ -170,6 +171,14 @@ codeSearch = ["auggie", "ctxdb"]
 ```
 
 Tune this list (or set it to `[]`) if your environment uses different namespaces.
+
+For existing configs created before this default, run:
+
+```bash
+mcp-squared migrate
+```
+
+Use `mcp-squared migrate --dry-run` to preview without writing.
 
 ## Tool API (Meta-Tools)
 

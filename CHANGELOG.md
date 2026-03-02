@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `find_tools` responses now include a `guidance` block and apply intent-aware ranking boosts for codebase-search queries, preferring configured code-search namespaces (for example `auggie`) when available.
 - Added explicit config support for intent-based namespace preference at `operations.findTools.preferredNamespacesByIntent.codeSearch`, with heuristic fallback when not configured.
 - `mcp-squared init` now pre-populates `operations.findTools.preferredNamespacesByIntent.codeSearch` with `["auggie", "ctxdb"]` so code-search routing works out of the box.
+- Added `mcp-squared migrate` (with `--dry-run`) to apply one-time config migrations for existing files, including seeding code-search namespace defaults when unset.
 - Added a repeatable routing evaluation harness (`bun run eval:routing`) to measure first-choice namespace selection quality for code-search prompts.
 - CI now enforces a minimum line coverage threshold (`>=80%`) after generating LCOV coverage reports.
 - CI now runs strict routing evaluation (`bun run eval:routing --strict`) on PRs/pushes and publish builds.

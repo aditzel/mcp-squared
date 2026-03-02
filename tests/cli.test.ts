@@ -411,6 +411,24 @@ describe("parseArgs", () => {
     });
   });
 
+  describe("migrate command", () => {
+    test("parses 'migrate' command", () => {
+      const result = parseArgs(["migrate"]);
+      expect(result.mode).toBe("migrate");
+    });
+
+    test("has default migrate options", () => {
+      const result = parseArgs(["migrate"]);
+      expect(result.migrate.dryRun).toBe(false);
+    });
+
+    test("parses --dry-run for migrate", () => {
+      const result = parseArgs(["migrate", "--dry-run"]);
+      expect(result.mode).toBe("migrate");
+      expect(result.migrate.dryRun).toBe(true);
+    });
+  });
+
   describe("edge cases", () => {
     test("handles empty --source value", () => {
       const result = parseArgs(["import", "--source="]);
