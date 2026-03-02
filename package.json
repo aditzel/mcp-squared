@@ -35,7 +35,8 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "clean": "rm -rf dist",
-    "safety:sim": "bun run agent_safety_kit/cost_model/simulate.ts --tasks agent_safety_kit/cost_model/tasks.csv --pricing agent_safety_kit/cost_model/pricing.csv --out agent_safety_kit/cost_model/report.md"
+    "safety:sim": "bun run agent_safety_kit/cost_model/simulate.ts --tasks agent_safety_kit/cost_model/tasks.csv --pricing agent_safety_kit/cost_model/pricing.csv --out agent_safety_kit/cost_model/report.md",
+    "eval:routing": "bun run scripts/eval-tool-routing.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.4",

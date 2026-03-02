@@ -72,6 +72,9 @@ bun run build
 # Run tests
 bun test
 
+# Evaluate tool-routing behavior (discovery-first quality check)
+bun run eval:routing
+
 # Dependency audit
 bun run audit
 ```
@@ -167,6 +170,14 @@ MCP² exposes these tools to MCP clients:
 - `execute` - Call an upstream tool with policy enforcement
 - `list_namespaces` - List upstream namespaces (optionally with tool names)
 - `clear_selection_cache` - Reset co-occurrence based suggestions
+
+Recommended workflow for LLM clients:
+1. Call `find_tools` first to discover candidate tools for the task.
+2. Call `describe_tools` for selected candidates to confirm exact argument schemas.
+3. Call `execute` with a qualified tool name (`namespace:tool_name`).
+4. Use `list_namespaces` if tool names are ambiguous or you need namespace context.
+
+For codebase-search tasks, `find_tools` applies intent-aware ranking and may return namespace guidance (for example preferring configured code-search namespaces like `auggie`).
 
 ## Search Modes
 

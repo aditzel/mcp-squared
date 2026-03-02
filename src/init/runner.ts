@@ -58,6 +58,11 @@ maxLimit = 50
 defaultMode = "fast"
 defaultDetailLevel = "L1"
 
+[operations.findTools.preferredNamespacesByIntent]
+# Optional intent-aware namespace preference.
+# Example: codeSearch = ["auggie", "augment-code"]
+codeSearch = []
+
 [operations.embeddings]
 # Enable to use semantic or hybrid search modes.
 # Requires onnxruntime shared library on the system.

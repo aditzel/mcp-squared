@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No changes yet.
+### Changed
+- Added MCP `initialize` usage instructions that emphasize discovery-first tool routing (`find_tools` before local shell fallback) and surface configured code-search namespace hints when present.
+- Enhanced meta-tool registration metadata with explicit titles and tool annotations (`readOnlyHint`, `openWorldHint`, etc.) to better align with MCP tool-interface best practices.
+- `find_tools` responses now include a `guidance` block and apply intent-aware ranking boosts for codebase-search queries, preferring configured code-search namespaces (for example `auggie`) when available.
+- Added explicit config support for intent-based namespace preference at `operations.findTools.preferredNamespacesByIntent.codeSearch`, with heuristic fallback when not configured.
+- Added a repeatable routing evaluation harness (`bun run eval:routing`) to measure first-choice namespace selection quality for code-search prompts.
 
 ## [0.3.4] - 2026-03-02
 

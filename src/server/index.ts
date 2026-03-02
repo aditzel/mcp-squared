@@ -217,13 +217,146 @@ export class McpSquaredServer {
    */
   private createMcpServer(name: string, version: string): McpServer {
     return new McpServer(
-      { name, version },
+      {
+        name,
+        version,
+        title: "MCP² Meta Router",
+        description:
+          "Discover and execute tools across upstream MCP servers through a compact meta-tool interface.",
+      },
       {
         capabilities: {
           tools: {},
         },
+        instructions: this.buildServerInstructions(),
       },
     );
+  }
+
+  /**
+   * Builds server-level usage instructions returned during MCP initialize.
+   *
+   * Per MCP spec, clients may surface these instructions directly to the model
+   * (for example by appending them to the system prompt), so keep them concise
+   * and action-oriented.
+   */
+  private buildServerInstructions(): string {
+    const codeSearchNamespaces = this.getCodeSearchNamespaces();
+
+    const codeSearchHint =
+      codeSearchNamespaces.length > 0
+        ? ` Prefer these configured code-search namespaces when relevant: ${codeSearchNamespaces.join(", ")}.`
+        : "";
+
+    return [
+      "Use discovery-first workflow: call `find_tools` before defaulting to local shell discovery (for example `grep`/`rg`).",
+      `For codebase lookup tasks, start with \`find_tools\` queries such as "code search", "find symbol", or "references".${codeSearchHint}`,
+      "After choosing a candidate, call `describe_tools` to confirm schema, then call `execute` with a qualified tool name (`namespace:tool_name`).",
+      "If capabilities are unclear or a name is ambiguous, call `list_namespaces`.",
+    ].join(" ");
+  }
+
+  /**
+   * Returns namespace keys that likely provide code-search capabilities.
+   */
+  private getCodeSearchNamespaces(): string[] {
+    const configured =
+      this.config.operations.findTools.preferredNamespacesByIntent.codeSearch;
+    const upstreamKeys = Object.keys(this.config.upstreams);
+
+    if (configured.length > 0) {
+      const deduped = [...new Set(configured)];
+      const present = deduped.filter((ns) => upstreamKeys.includes(ns));
+      // Prefer only connected/configured namespaces when possible, but keep
+      // user-specified values if upstreams are not yet loaded.
+      return present.length > 0 ? present : deduped;
+    }
+
+    return upstreamKeys.filter((key) =>
+      /(auggie|augment|code|source|repo|search)/i.test(key),
+    );
+  }
+
+  /**
+   * Lightweight intent detector for codebase lookup queries.
+   */
+  private isCodeSearchQuery(query: string): boolean {
+    return (
+      /\b(codebase|source code|repository|repo)\b/i.test(query) ||
+      /\b(code search|search code|find symbol|symbol lookup|definition|references?|usages?)\b/i.test(
+        query,
+      )
+    );
+  }
+
+  /**
+   * Boosts likely code-search tools for codebase-oriented queries.
+   */
+  private rankToolsForQuery<
+    T extends ToolSummary & { description?: string | null },
+  >(tools: T[], query: string): T[] {
+    if (!this.isCodeSearchQuery(query) || tools.length < 2) {
+      return tools;
+    }
+
+    const preferredNamespaces = new Set(this.getCodeSearchNamespaces());
+
+    const scored = tools.map((tool, index) => {
+      const haystack =
+        `${tool.serverKey} ${tool.name} ${tool.description ?? ""}`.toLowerCase();
+
+      let score = 0;
+      if (preferredNamespaces.has(tool.serverKey)) score += 100;
+      if (/(auggie|augment)/i.test(tool.serverKey)) score += 40;
+      if (/\b(search|find|query|lookup)\b/.test(haystack)) score += 15;
+      if (
+        /\b(code|symbol|definition|reference|repo|repository|source)\b/.test(
+          haystack,
+        )
+      ) {
+        score += 20;
+      }
+
+      return { tool, index, score };
+    });
+
+    scored.sort((a, b) => {
+      if (a.score === b.score) {
+        return a.index - b.index;
+      }
+      return b.score - a.score;
+    });
+
+    return scored.map((entry) => entry.tool);
+  }
+
+  /**
+   * Builds lightweight guidance attached to find_tools responses.
+   */
+  private buildFindToolsGuidance(query: string): {
+    nextStep: string;
+    preferredNamespaces?: string[];
+    note?: string;
+  } {
+    const guidance: {
+      nextStep: string;
+      preferredNamespaces?: string[];
+      note?: string;
+    } = {
+      nextStep:
+        "Use describe_tools for selected candidates, then execute with a qualified name.",
+    };
+
+    if (this.isCodeSearchQuery(query)) {
+      const preferredNamespaces = this.getCodeSearchNamespaces();
+      if (preferredNamespaces.length > 0) {
+        guidance.preferredNamespaces = preferredNamespaces;
+        guidance.note =
+          "For codebase exploration, prefer these namespaces before local shell grep/rg.";
+      }
+    }
+
+    return guidance;
   }
 
   /**
@@ -290,12 +423,19 @@ export class McpSquaredServer {
     server.registerTool(
       "find_tools",
       {
+        title: "Discover Upstream Tools",
         description:
-          "Search for available tools across all connected upstream MCP servers. Returns a list of tool summaries matching the query.",
+          "Call this first for capability discovery. Search available tools across all connected upstream MCP servers and return ranked tool summaries matching the query.",
+        annotations: {
+          readOnlyHint: true,
+          openWorldHint: false,
+        },
         inputSchema: {
           query: z
             .string()
-            .describe("Natural language search query to find relevant tools"),
+            .describe(
+              'Natural language query describing the task (for example: "code search", "find symbol", "create issue")',
+            ),
           limit: z
             .number()
             .int()
@@ -325,14 +465,19 @@ export class McpSquaredServer {
 
             // Apply security policy filtering
             const filteredTools = this.filterToolsByPolicy(result.tools);
+            const rankedTools = this.rankToolsForQuery(
+              filteredTools,
+              args.query,
+            );
 
             const detailLevel: DetailLevel =
               args.detail_level ??
               this.config.operations.findTools.defaultDetailLevel;
             const tools = this.formatToolsForDetailLevel(
-              filteredTools,
+              rankedTools,
               detailLevel,
             );
+            const guidance = this.buildFindToolsGuidance(args.query);
 
             // Get bundle suggestions if selection caching is enabled
             const selectionCacheConfig = this.config.operations.selectionCache;
@@ -375,6 +520,7 @@ export class McpSquaredServer {
                     searchMode: result.searchMode,
                     embeddingsAvailable: this.retriever.hasEmbeddings(),
                     tools,
+                    guidance,
                     ...(suggestedTools && { suggestedTools }),
                   }),
                 },
@@ -396,8 +542,13 @@ export class McpSquaredServer {
     server.registerTool(
       "describe_tools",
       {
+        title: "Inspect Tool Schemas",
         description:
-          "Get full JSON schemas for the specified tools. Use this after find_tools to get detailed parameter information before calling a tool.",
+          "After find_tools, fetch full JSON schemas for selected tools to validate required arguments before execution.",
+        annotations: {
+          readOnlyHint: true,
+          openWorldHint: false,
+        },
         inputSchema: {
           tool_names: z
             .array(z.string())
@@ -482,8 +633,14 @@ export class McpSquaredServer {
     server.registerTool(
       "execute",
       {
+        title: "Execute Upstream Tool",
         description:
-          "Execute a tool on an upstream MCP server. The tool must exist and the arguments must match its schema.",
+          "Execute an upstream tool after find_tools/describe_tools selection. The tool must exist and the arguments must match its schema.",
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          openWorldHint: true,
+        },
         inputSchema: {
           tool_name: z.string().describe("Name of the tool to execute"),
           arguments: z
@@ -666,8 +823,15 @@ export class McpSquaredServer {
     server.registerTool(
       "clear_selection_cache",
       {
+        title: "Reset Selection Cache",
         description:
           "Clears all learned tool co-occurrence patterns. Use this to reset the selection cache if suggestions become stale or irrelevant.",
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
         inputSchema: {},
       },
       async () =>
@@ -711,8 +875,13 @@ export class McpSquaredServer {
     server.registerTool(
       "list_namespaces",
       {
+        title: "List Upstream Namespaces",
         description:
-          "Lists all available namespaces (upstream MCP servers). Use this to discover available servers and understand which namespaces are available when disambiguating tool names with qualified format (namespace:tool_name).",
+          "List available namespaces (upstream MCP servers) and optional tool names. Use this to discover routing options and disambiguate qualified names (namespace:tool_name).",
+        annotations: {
+          readOnlyHint: true,
+          openWorldHint: false,
+        },
         inputSchema: {
           include_tools: z
             .boolean()
