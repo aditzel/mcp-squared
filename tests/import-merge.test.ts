@@ -176,6 +176,72 @@ describe("import merge - field preservation", () => {
     }
   });
 
+  test("mergeWithStrategy normalizes callbackPort-only SSE auth objects with default clientName", () => {
+    const config = createEmptyConfig();
+    const server: ExternalServer = {
+      name: "sse-callback-only-server",
+      url: "https://api.example.com/mcp",
+      auth: {
+        callbackPort: 9321,
+      },
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const result = mergeWithStrategy(input, "skip");
+
+    const upstream = result.config.upstreams["sse-callback-only-server"];
+    expect(upstream?.transport).toBe("sse");
+    if (upstream?.transport === "sse") {
+      expect(upstream.sse.auth).toEqual({
+        callbackPort: 9321,
+        clientName: "MCP²",
+      });
+    }
+  });
+
+  test("mergeWithStrategy normalizes clientName-only SSE auth objects with default callbackPort", () => {
+    const config = createEmptyConfig();
+    const server: ExternalServer = {
+      name: "sse-client-only-server",
+      url: "https://api.example.com/mcp",
+      auth: {
+        clientName: "Acme Agent",
+      },
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const result = mergeWithStrategy(input, "skip");
+
+    const upstream = result.config.upstreams["sse-client-only-server"];
+    expect(upstream?.transport).toBe("sse");
+    if (upstream?.transport === "sse") {
+      expect(upstream.sse.auth).toEqual({
+        callbackPort: 8089,
+        clientName: "Acme Agent",
+      });
+    }
+  });
+
   test("mergeWithStrategy keeps SSE auth undefined when not provided", () => {
     const config = createEmptyConfig();
     const server: ExternalServer = {
