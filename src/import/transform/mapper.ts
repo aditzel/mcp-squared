@@ -115,7 +115,7 @@ function mapToSseServer(server: ExternalServer): MappedServer | undefined {
   };
 
   if (server.auth !== undefined) {
-    if (typeof server.auth === "object") {
+    if (server.auth && typeof server.auth === "object") {
       config.sse.auth = {
         callbackPort: server.auth.callbackPort ?? 8089,
         clientName: server.auth.clientName ?? "MCP²",

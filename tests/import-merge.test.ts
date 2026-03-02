@@ -272,6 +272,34 @@ describe("import merge - field preservation", () => {
     }
   });
 
+  test("mergeWithStrategy preserves null SSE auth via fallback without object-field reads", () => {
+    const config = createEmptyConfig();
+    const server: ExternalServer = {
+      name: "sse-null-auth-server",
+      url: "https://api.example.com/mcp",
+      auth: null as unknown as Exclude<ExternalServer["auth"], undefined>,
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const result = mergeWithStrategy(input, "skip");
+
+    const upstream = result.config.upstreams["sse-null-auth-server"];
+    expect(upstream?.transport).toBe("sse");
+    if (upstream?.transport === "sse") {
+      expect(upstream.sse.auth as unknown).toBeNull();
+    }
+  });
+
   test("mergeWithStrategy preserves SSE auth in mixed upstream sets", () => {
     const config = createEmptyConfig();
     const servers: ExternalServer[] = [
