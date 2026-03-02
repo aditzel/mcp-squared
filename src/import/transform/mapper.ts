@@ -114,6 +114,11 @@ function mapToSseServer(server: ExternalServer): MappedServer | undefined {
     },
   };
 
+  if (server.auth !== undefined) {
+    config.sse.auth =
+      typeof server.auth === "object" ? { ...server.auth } : server.auth;
+  }
+
   return {
     name: server.name,
     config,
