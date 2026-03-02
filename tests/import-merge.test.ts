@@ -139,6 +139,227 @@ describe("import merge - field preservation", () => {
     }
   });
 
+  test("mergeWithStrategy preserves SSE auth settings for non-conflicting servers", () => {
+    const config = createEmptyConfig();
+    const server: ExternalServer = {
+      name: "sse-server",
+      url: "https://api.example.com/mcp",
+      headers: {
+        Authorization: "Bearer token123",
+      },
+      auth: {
+        callbackPort: 9321,
+        clientName: "Acme Agent",
+      },
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const result = mergeWithStrategy(input, "skip");
+
+    const upstream = result.config.upstreams["sse-server"];
+    expect(upstream?.transport).toBe("sse");
+    if (upstream?.transport === "sse") {
+      expect(upstream.sse.auth).toEqual({
+        callbackPort: 9321,
+        clientName: "Acme Agent",
+      });
+    }
+  });
+
+  test("mergeWithStrategy normalizes callbackPort-only SSE auth objects with default clientName", () => {
+    const config = createEmptyConfig();
+    const server: ExternalServer = {
+      name: "sse-callback-only-server",
+      url: "https://api.example.com/mcp",
+      auth: {
+        callbackPort: 9321,
+      },
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const result = mergeWithStrategy(input, "skip");
+
+    const upstream = result.config.upstreams["sse-callback-only-server"];
+    expect(upstream?.transport).toBe("sse");
+    if (upstream?.transport === "sse") {
+      expect(upstream.sse.auth).toEqual({
+        callbackPort: 9321,
+        clientName: "MCP²",
+      });
+    }
+  });
+
+  test("mergeWithStrategy normalizes clientName-only SSE auth objects with default callbackPort", () => {
+    const config = createEmptyConfig();
+    const server: ExternalServer = {
+      name: "sse-client-only-server",
+      url: "https://api.example.com/mcp",
+      auth: {
+        clientName: "Acme Agent",
+      },
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const result = mergeWithStrategy(input, "skip");
+
+    const upstream = result.config.upstreams["sse-client-only-server"];
+    expect(upstream?.transport).toBe("sse");
+    if (upstream?.transport === "sse") {
+      expect(upstream.sse.auth).toEqual({
+        callbackPort: 8089,
+        clientName: "Acme Agent",
+      });
+    }
+  });
+
+  test("mergeWithStrategy keeps SSE auth undefined when not provided", () => {
+    const config = createEmptyConfig();
+    const server: ExternalServer = {
+      name: "sse-server",
+      url: "https://api.example.com/mcp",
+      headers: {
+        Authorization: "Bearer token123",
+      },
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const result = mergeWithStrategy(input, "skip");
+
+    const upstream = result.config.upstreams["sse-server"];
+    expect(upstream?.transport).toBe("sse");
+    if (upstream?.transport === "sse") {
+      expect(upstream.sse.auth).toBeUndefined();
+    }
+  });
+
+  test("mergeWithStrategy preserves null SSE auth via fallback without object-field reads", () => {
+    const config = createEmptyConfig();
+    const server: ExternalServer = {
+      name: "sse-null-auth-server",
+      url: "https://api.example.com/mcp",
+      auth: null as unknown as Exclude<ExternalServer["auth"], undefined>,
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const result = mergeWithStrategy(input, "skip");
+
+    const upstream = result.config.upstreams["sse-null-auth-server"];
+    expect(upstream?.transport).toBe("sse");
+    if (upstream?.transport === "sse") {
+      expect(upstream.sse.auth as unknown).toBeNull();
+    }
+  });
+
+  test("mergeWithStrategy preserves SSE auth in mixed upstream sets", () => {
+    const config = createEmptyConfig();
+    const servers: ExternalServer[] = [
+      {
+        name: "sse-auth-server",
+        url: "https://api.example.com/auth",
+        headers: { Authorization: "Bearer token123" },
+        auth: true,
+      },
+      {
+        name: "sse-no-auth-server",
+        url: "https://api.example.com/no-auth",
+        headers: { "X-Request-ID": "123" },
+      },
+      {
+        name: "stdio-server",
+        command: "npx",
+        args: ["-y", "some-package"],
+      },
+    ];
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers,
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const result = mergeWithStrategy(input, "skip");
+
+    const sseWithAuth = result.config.upstreams["sse-auth-server"];
+    expect(sseWithAuth?.transport).toBe("sse");
+    if (sseWithAuth?.transport === "sse") {
+      expect(sseWithAuth.sse.auth).toBe(true);
+      expect(sseWithAuth.sse.headers).toEqual({
+        Authorization: "Bearer token123",
+      });
+    }
+
+    const sseWithoutAuth = result.config.upstreams["sse-no-auth-server"];
+    expect(sseWithoutAuth?.transport).toBe("sse");
+    if (sseWithoutAuth?.transport === "sse") {
+      expect(sseWithoutAuth.sse.auth).toBeUndefined();
+      expect(sseWithoutAuth.sse.headers).toEqual({
+        "X-Request-ID": "123",
+      });
+    }
+
+    const stdio = result.config.upstreams["stdio-server"];
+    expect(stdio?.transport).toBe("stdio");
+    if (stdio?.transport === "stdio") {
+      expect(stdio.stdio.command).toBe("npx");
+      expect(stdio.stdio.args).toEqual(["-y", "some-package"]);
+    }
+  });
+
   test("mergeWithResolutions preserves args for non-conflicting servers", () => {
     const config = createEmptyConfig();
     const server: ExternalServer = {
@@ -378,6 +599,55 @@ describe("import merge - in-sync detection", () => {
 
     expect(detection.inSync).toHaveLength(1);
     expect(detection.inSync[0]?.serverName).toBe("sse-server");
+    expect(detection.conflicts).toHaveLength(0);
+  });
+
+  test("detects SSE configs with auth settings as in-sync when identical", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        "sse-auth-server": {
+          transport: "sse",
+          enabled: true,
+          label: "sse-auth-server",
+          env: {},
+          sse: {
+            url: "https://api.example.com/mcp",
+            headers: { Authorization: "Bearer token123" },
+            auth: {
+              callbackPort: 9321,
+              clientName: "Acme Agent",
+            },
+          },
+        },
+      },
+    };
+
+    const server: ExternalServer = {
+      name: "sse-auth-server",
+      url: "https://api.example.com/mcp",
+      headers: { Authorization: "Bearer token123" },
+      auth: {
+        callbackPort: 9321,
+        clientName: "Acme Agent",
+      },
+    };
+
+    const input: MergeInput = {
+      incoming: [
+        {
+          tool: "claude-code",
+          path: "/test/path",
+          servers: [server],
+        },
+      ],
+      existingConfig: config,
+    };
+
+    const detection = detectConflicts(input);
+
+    expect(detection.inSync).toHaveLength(1);
+    expect(detection.inSync[0]?.serverName).toBe("sse-auth-server");
     expect(detection.conflicts).toHaveLength(0);
   });
 
