@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No changes yet.
 
+## [0.3.3] - 2026-03-02
+
+### Fixed
+- Fixed packaged `config` and `monitor` CLI modes by shipping TUI runtime modules (`dist/tui/config.js`, `dist/tui/monitor.js`) and resolving loader imports to those paths.
+- Added a build artifact regression test to catch missing local dynamic-import targets in `dist/index.js`.
+
 ## [0.3.2] - 2026-03-02
 
 ### Fixed

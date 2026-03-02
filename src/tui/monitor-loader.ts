@@ -24,15 +24,10 @@ type MonitorLoaderModule = {
   runMonitorTui: (options?: MonitorTuiOptions) => Promise<void>;
 };
 
-function getMonitorModuleSpecifier(): string {
-  // Build the module path at runtime so Bun doesn't eagerly include the TUI module.
-  const modulePath = ["./", "monitor", ".js"].join("");
-  const baseUrl = new URL(".", import.meta.url);
-  return new URL(modulePath, baseUrl).href;
-}
+const MONITOR_MODULE_SPECIFIER = "./tui/monitor.js";
 
 async function loadMonitorModule(): Promise<MonitorLoaderModule> {
-  return import(getMonitorModuleSpecifier()) as Promise<MonitorLoaderModule>;
+  return import(MONITOR_MODULE_SPECIFIER) as Promise<MonitorLoaderModule>;
 }
 
 export async function runMonitorTui(

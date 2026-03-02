@@ -1,6 +1,6 @@
 {
   "name": "mcp-squared",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "MCP² (Mercury Control Plane) - A local-first meta-server and proxy for the Model Context Protocol",
   "author": "aditzel",
   "license": "Apache-2.0",
@@ -13,13 +13,14 @@
   "files": [
     "bin/mcp-squared",
     "dist/index.js",
+    "dist/tui/*.js",
     "dist/*.scm",
     "dist/*.wasm"
   ],
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun --packages=external",
+    "build": "bun build src/index.ts src/tui/config.ts src/tui/monitor.ts --outdir dist --target bun --packages=external",
     "build:compile": "bun build src/index.ts --compile --outfile dist/mcp-squared --external @opentui/core --external @opentui/core-darwin-arm64 --external @opentui/core-darwin-x64 --external @opentui/core-linux-arm64 --external @opentui/core-linux-x64 --external @opentui/core-win32-arm64 --external @opentui/core-win32-x64",
     "build:compile:matrix": "bash scripts/compile-matrix.sh",
     "prepack": "bun run build && bun run build:verify",
