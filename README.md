@@ -153,6 +153,16 @@ MCP² exposes these tools to MCP clients:
 - `list_namespaces` - List upstream namespaces (optionally with tool names)
 - `clear_selection_cache` - Reset co-occurrence based suggestions
 
+## Protocol Scope Contract
+
+Current MCP² protocol scope is **tools-only**.
+
+- Supported surface: the five meta-tools listed above.
+- Not currently mediated: MCP resources (`listResources`, `readResource`), prompts (`listPrompts`, `getPrompt`), and sampling/model-completion relay surfaces.
+- Adoption guidance: if your workflow depends on non-tool MCP surfaces, keep direct upstream client-server access for those surfaces and use MCP² for tool orchestration.
+
+See `docs/PROTOCOL-SCOPE.md` for the AD-91 decision record.
+
 ## Search Modes
 
 `find_tools` supports three search modes:

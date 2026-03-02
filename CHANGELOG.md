@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Dependency maintenance runbook at `docs/DEPENDENCY_MAINTENANCE.md` and exception register at `docs/DEPENDENCY_EXCEPTIONS.md`.
+- AD-91 protocol scope decision record at `docs/PROTOCOL-SCOPE.md` (tools-only contract and migration guidance).
 
 ### Changed
 - CI and publish workflows now run `bun run audit` after dependency install.

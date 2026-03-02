@@ -47,6 +47,15 @@ graph TD
 4. **Execution (`execute`)**: Execution requests are checked against allow/block/confirm rules. Confirm-required tools return a short-lived token that must be provided to proceed. Successful executions are tracked for selection caching.
 5. **Supporting Meta-Tools**: `list_namespaces` enumerates upstream servers and tools, and `clear_selection_cache` resets co-occurrence data.
 
+## Protocol Scope Contract
+
+Current MCP² scope is tools-only:
+- Implemented MCP²-facing handlers are registered via `registerTool` in `src/server/index.ts`.
+- Supported: `find_tools`, `describe_tools`, `execute`, `list_namespaces`, `clear_selection_cache`.
+- Not currently mediated by MCP²: resources (`listResources`, `readResource`), prompts (`listPrompts`, `getPrompt`), and sampling/model-completion relay surfaces.
+
+For environments that require non-tool surfaces, MCP² should be used alongside direct upstream MCP access for those surfaces.
+
 ## Indexing & Search
 
 - SQLite (via `bun:sqlite`) stores tool metadata and an FTS5 virtual table for fast text search.
