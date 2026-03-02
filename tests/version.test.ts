@@ -51,4 +51,24 @@ describe("resolveVersion", () => {
 
     expect(version).toBe("3.1.4");
   });
+
+  test("tries additional manifest URLs when the first one fails", () => {
+    const first = new URL("file:///missing/package.json");
+    const second = new URL("file:///available/package.json");
+
+    const version = resolveVersion({
+      manifestUrls: [first, second],
+      readManifest: (manifestUrl) => {
+        if (manifestUrl.href === second.href) {
+          return { version: "5.6.7" };
+        }
+        throw new Error("missing package.json");
+      },
+      readBundledManifest: () => ({}),
+      env: {},
+      fallbackVersion: "0.0.1",
+    });
+
+    expect(version).toBe("5.6.7");
+  });
 });

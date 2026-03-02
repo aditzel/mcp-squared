@@ -339,6 +339,37 @@ class ConfigTuiApp {
     return `${upstream.sse.url}${envSuffix}`;
   }
 
+  private parseKeyValuePairsInput(input: string): Record<string, string> {
+    const result: Record<string, string> = {};
+    if (!input.trim()) return result;
+
+    const pairs = input
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const pair of pairs) {
+      const eqIndex = pair.indexOf("=");
+      if (eqIndex > 0) {
+        const key = pair.substring(0, eqIndex).trim();
+        const value = pair.substring(eqIndex + 1).trim();
+        if (key) {
+          result[key] = value;
+        }
+      }
+    }
+    return result;
+  }
+
+  private stringifyKeyValuePairsInput(
+    pairs: Record<string, string> | undefined,
+  ): string {
+    const entries = Object.entries(pairs || {});
+    if (entries.length === 0) {
+      return "";
+    }
+    return entries.map(([key, value]) => `${key}=${value}`).join(", ");
+  }
+
   showAddUpstreamScreen(): void {
     this.state.currentScreen = "add-upstream";
     this.clearScreen();
@@ -422,11 +453,15 @@ class ConfigTuiApp {
     this.addInstructions("↑↓ Navigate | Enter Select | Esc Back");
   }
 
-  private showAddStdioScreen(): void {
+  private showAddStdioScreen(
+    existingName?: string,
+    existingUpstream?: Extract<UpstreamServerConfig, { transport: "stdio" }>,
+  ): void {
     this.state.currentScreen = "add-stdio";
     this.clearScreen();
     this.addHeader();
     if (!this.container) return;
+    const isEditMode = Boolean(existingName && existingUpstream);
 
     const formBox = new BoxRenderable(this.renderer, {
       id: "add-stdio-box",
@@ -435,7 +470,9 @@ class ConfigTuiApp {
       border: true,
       borderStyle: "single",
       borderColor: "#475569",
-      title: "Add Stdio Upstream",
+      title: isEditMode
+        ? `Edit Stdio Upstream: ${existingName}`
+        : "Add Stdio Upstream",
       titleAlignment: "center",
       backgroundColor: "#1e293b",
       flexDirection: "column",
@@ -464,6 +501,7 @@ class ConfigTuiApp {
       },
     });
     formBox.add(nameInput);
+    nameInput.value = existingName ?? "";
 
     const commandLabel = new TextRenderable(this.renderer, {
       id: "command-label",
@@ -485,6 +523,11 @@ class ConfigTuiApp {
       },
     });
     formBox.add(commandInput);
+    commandInput.value = existingUpstream
+      ? [existingUpstream.stdio.command, ...existingUpstream.stdio.args]
+          .filter(Boolean)
+          .join(" ")
+      : "";
 
     const envLabel = new TextRenderable(this.renderer, {
       id: "env-label",
@@ -507,6 +550,7 @@ class ConfigTuiApp {
       },
     });
     formBox.add(envInput);
+    envInput.value = this.stringifyKeyValuePairsInput(existingUpstream?.env);
 
     const submitOptions: SelectOption[] = [
       { name: "[ Save Upstream ]", description: "", value: "save" },
@@ -535,27 +579,6 @@ class ConfigTuiApp {
       if (field) field.focus();
     };
 
-    const parseEnvVars = (input: string): Record<string, string> => {
-      const env: Record<string, string> = {};
-      if (!input.trim()) return env;
-
-      const pairs = input
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      for (const pair of pairs) {
-        const eqIndex = pair.indexOf("=");
-        if (eqIndex > 0) {
-          const key = pair.substring(0, eqIndex).trim();
-          const value = pair.substring(eqIndex + 1).trim();
-          if (key) {
-            env[key] = value;
-          }
-        }
-      }
-      return env;
-    };
-
     const saveUpstream = () => {
       const trimmedName = nameInput.value?.trim() || "";
       const trimmedCommand = commandInput.value?.trim() || "";
@@ -569,14 +592,28 @@ class ConfigTuiApp {
         return;
       }
 
-      const envVars = parseEnvVars(envInput.value || "");
+      if (
+        isEditMode &&
+        existingName &&
+        trimmedName !== existingName &&
+        this.state.config.upstreams[trimmedName]
+      ) {
+        nameInput.focus();
+        return;
+      }
+
+      const envVars = this.parseKeyValuePairsInput(envInput.value || "");
       const parts = trimmedCommand.split(/\s+/);
       const command = parts[0] || "";
       const args = parts.slice(1);
 
+      if (isEditMode && existingName && trimmedName !== existingName) {
+        delete this.state.config.upstreams[existingName];
+      }
+
       this.state.config.upstreams[trimmedName] = {
         transport: "stdio",
-        enabled: true,
+        enabled: existingUpstream?.enabled ?? true,
         env: envVars,
         stdio: { command, args },
       };
@@ -592,7 +629,11 @@ class ConfigTuiApp {
           saveUpstream();
         } else {
           cleanup();
-          this.showAddUpstreamScreen();
+          if (isEditMode && existingName) {
+            this.showEditUpstreamScreen(existingName);
+          } else {
+            this.showAddUpstreamScreen();
+          }
         }
       },
     );
@@ -600,7 +641,11 @@ class ConfigTuiApp {
     const handleKeypress = (key: KeyEvent) => {
       if (key.name === "escape") {
         cleanup();
-        this.showAddUpstreamScreen();
+        if (isEditMode && existingName) {
+          this.showEditUpstreamScreen(existingName);
+        } else {
+          this.showAddUpstreamScreen();
+        }
         return;
       }
 
@@ -622,14 +667,18 @@ class ConfigTuiApp {
     this.renderer.keyInput.on("keypress", handleKeypress);
     focusField(0);
 
-    this.addInstructions("Tab: next field | Shift+Tab: prev | Esc: cancel");
+    this.addInstructions("Tab: next field | Shift+Tab: prev | Esc: back");
   }
 
-  private showAddSseScreen(): void {
+  private showAddSseScreen(
+    existingName?: string,
+    existingUpstream?: Extract<UpstreamServerConfig, { transport: "sse" }>,
+  ): void {
     this.state.currentScreen = "add-sse";
     this.clearScreen();
     this.addHeader();
     if (!this.container) return;
+    const isEditMode = Boolean(existingName && existingUpstream);
 
     const formBox = new BoxRenderable(this.renderer, {
       id: "add-sse-box",
@@ -638,7 +687,9 @@ class ConfigTuiApp {
       border: true,
       borderStyle: "single",
       borderColor: "#475569",
-      title: "Add HTTP/SSE Upstream",
+      title: isEditMode
+        ? `Edit HTTP/SSE Upstream: ${existingName}`
+        : "Add HTTP/SSE Upstream",
       titleAlignment: "center",
       backgroundColor: "#1e293b",
       flexDirection: "column",
@@ -667,6 +718,7 @@ class ConfigTuiApp {
       },
     });
     formBox.add(nameInput);
+    nameInput.value = existingName ?? "";
 
     const urlLabel = new TextRenderable(this.renderer, {
       id: "url-label",
@@ -688,6 +740,7 @@ class ConfigTuiApp {
       },
     });
     formBox.add(urlInput);
+    urlInput.value = existingUpstream?.sse.url ?? "";
 
     const headersLabel = new TextRenderable(this.renderer, {
       id: "headers-label",
@@ -710,6 +763,9 @@ class ConfigTuiApp {
       },
     });
     formBox.add(headersInput);
+    headersInput.value = this.stringifyKeyValuePairsInput(
+      existingUpstream?.sse.headers,
+    );
 
     const authLabel = new TextRenderable(this.renderer, {
       id: "auth-label",
@@ -719,14 +775,23 @@ class ConfigTuiApp {
     });
     formBox.add(authLabel);
 
-    const authOptions: SelectOption[] = [
-      { name: "Disabled", description: "", value: "disabled" },
-      {
-        name: "Enabled (default port 8089)",
-        description: "",
-        value: "enabled",
-      },
-    ];
+    const authOptions: SelectOption[] = existingUpstream?.sse.auth
+      ? [
+          {
+            name: "Enabled (default port 8089)",
+            description: "",
+            value: "enabled",
+          },
+          { name: "Disabled", description: "", value: "disabled" },
+        ]
+      : [
+          { name: "Disabled", description: "", value: "disabled" },
+          {
+            name: "Enabled (default port 8089)",
+            description: "",
+            value: "enabled",
+          },
+        ];
 
     const authSelect = new SelectRenderable(this.renderer, {
       id: "auth-select",
@@ -763,6 +828,7 @@ class ConfigTuiApp {
       },
     });
     formBox.add(envInput);
+    envInput.value = this.stringifyKeyValuePairsInput(existingUpstream?.env);
 
     const submitOptions: SelectOption[] = [
       { name: "[ Save Upstream ]", description: "", value: "save" },
@@ -791,7 +857,7 @@ class ConfigTuiApp {
       submitSelect,
     ] as const;
     let focusIndex = 0;
-    let selectedAuthIndex = 0;
+    let selectedAuthValue = String(authOptions[0]?.value ?? "disabled");
 
     const focusField = (index: number) => {
       focusIndex = index;
@@ -801,31 +867,10 @@ class ConfigTuiApp {
 
     authSelect.on(
       SelectRenderableEvents.ITEM_SELECTED,
-      (index: number, _opt: SelectOption) => {
-        selectedAuthIndex = index;
+      (_index: number, opt: SelectOption) => {
+        selectedAuthValue = String(opt.value);
       },
     );
-
-    const parseKeyValuePairs = (input: string): Record<string, string> => {
-      const result: Record<string, string> = {};
-      if (!input.trim()) return result;
-
-      const pairs = input
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      for (const pair of pairs) {
-        const eqIndex = pair.indexOf("=");
-        if (eqIndex > 0) {
-          const key = pair.substring(0, eqIndex).trim();
-          const value = pair.substring(eqIndex + 1).trim();
-          if (key) {
-            result[key] = value;
-          }
-        }
-      }
-      return result;
-    };
 
     const saveUpstream = () => {
       const trimmedName = nameInput.value?.trim() || "";
@@ -848,13 +893,27 @@ class ConfigTuiApp {
         return;
       }
 
-      const envVars = parseKeyValuePairs(envInput.value || "");
-      const headers = parseKeyValuePairs(headersInput.value || "");
-      const authEnabled = selectedAuthIndex === 1;
+      if (
+        isEditMode &&
+        existingName &&
+        trimmedName !== existingName &&
+        this.state.config.upstreams[trimmedName]
+      ) {
+        nameInput.focus();
+        return;
+      }
+
+      const envVars = this.parseKeyValuePairsInput(envInput.value || "");
+      const headers = this.parseKeyValuePairsInput(headersInput.value || "");
+      const authEnabled = selectedAuthValue === "enabled";
+
+      if (isEditMode && existingName && trimmedName !== existingName) {
+        delete this.state.config.upstreams[existingName];
+      }
 
       this.state.config.upstreams[trimmedName] = {
         transport: "sse",
-        enabled: true,
+        enabled: existingUpstream?.enabled ?? true,
         env: envVars,
         sse: {
           url: trimmedUrl,
@@ -874,7 +933,11 @@ class ConfigTuiApp {
           saveUpstream();
         } else {
           cleanup();
-          this.showAddUpstreamScreen();
+          if (isEditMode && existingName) {
+            this.showEditUpstreamScreen(existingName);
+          } else {
+            this.showAddUpstreamScreen();
+          }
         }
       },
     );
@@ -882,7 +945,11 @@ class ConfigTuiApp {
     const handleKeypress = (key: KeyEvent) => {
       if (key.name === "escape") {
         cleanup();
-        this.showAddUpstreamScreen();
+        if (isEditMode && existingName) {
+          this.showEditUpstreamScreen(existingName);
+        } else {
+          this.showAddUpstreamScreen();
+        }
         return;
       }
 
@@ -904,7 +971,7 @@ class ConfigTuiApp {
     this.renderer.keyInput.on("keypress", handleKeypress);
     focusField(0);
 
-    this.addInstructions("Tab: next field | Shift+Tab: prev | Esc: cancel");
+    this.addInstructions("Tab: next field | Shift+Tab: prev | Esc: back");
   }
 
   showEditUpstreamScreen(name: string): void {
@@ -1018,6 +1085,11 @@ class ConfigTuiApp {
 
     const options: SelectOption[] = [
       {
+        name: "Edit Configuration",
+        description: "Update connection details and environment",
+        value: "edit",
+      },
+      {
         name: "Test Connection",
         description: "Connect and list available tools",
         value: "test",
@@ -1060,6 +1132,13 @@ class ConfigTuiApp {
       SelectRenderableEvents.ITEM_SELECTED,
       (_index: number, option: SelectOption) => {
         switch (option.value) {
+          case "edit":
+            if (upstream.transport === "stdio") {
+              this.showAddStdioScreen(name, upstream);
+            } else {
+              this.showAddSseScreen(name, upstream);
+            }
+            break;
           case "test":
             this.showTestScreen(name, upstream);
             break;

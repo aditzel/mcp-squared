@@ -9,6 +9,7 @@ interface ResolveVersionOptions {
   env?: NodeJS.ProcessEnv;
   fallbackVersion?: string;
   manifestUrl?: URL;
+  manifestUrls?: URL[];
   readManifest?: (manifestUrl: URL) => PackageManifest;
   readBundledManifest?: () => PackageManifest;
 }
@@ -28,22 +29,44 @@ function readManifestFile(manifestUrl: URL): PackageManifest {
 
 function readBundledManifestFile(): PackageManifest {
   const require = createRequire(import.meta.url);
-  return require("../package.json") as PackageManifest;
+  const candidates = ["../package.json", "../../package.json"];
+
+  for (const candidate of candidates) {
+    try {
+      return require(candidate) as PackageManifest;
+    } catch {
+      // Try next candidate.
+    }
+  }
+
+  throw new Error("Unable to resolve bundled package.json");
+}
+
+function getDefaultManifestUrls(): URL[] {
+  return [
+    new URL("../package.json", import.meta.url),
+    new URL("../../package.json", import.meta.url),
+  ];
 }
 
 export function resolveVersion(options: ResolveVersionOptions = {}): string {
   const readManifest = options.readManifest ?? readManifestFile;
-  const manifestUrl =
-    options.manifestUrl ?? new URL("../package.json", import.meta.url);
+  const manifestUrls = options.manifestUrls
+    ? [...options.manifestUrls]
+    : options.manifestUrl
+      ? [options.manifestUrl]
+      : getDefaultManifestUrls();
 
-  try {
-    const manifest = readManifest(manifestUrl);
-    const manifestVersion = normalizeVersion(manifest.version);
-    if (manifestVersion) {
-      return manifestVersion;
+  for (const manifestUrl of manifestUrls) {
+    try {
+      const manifest = readManifest(manifestUrl);
+      const manifestVersion = normalizeVersion(manifest.version);
+      if (manifestVersion) {
+        return manifestVersion;
+      }
+    } catch {
+      // Fall back for constrained/runtime-compiled environments.
     }
-  } catch {
-    // Fall back for constrained/runtime-compiled environments.
   }
 
   const envVersion = normalizeVersion(
