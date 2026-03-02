@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No changes yet.
 
+## [0.3.2] - 2026-03-02
+
+### Fixed
+- Added a publish-time `dist/index.js` runtime import guard to fail builds if unresolved `@/...` aliases are emitted, preventing broken CLI installs.
+- Documented stale global-install troubleshooting for `Cannot find module '@/version.js'` failures (`mcp-squared@0.3.0` artifacts).
+
 ## [0.3.1] - 2026-03-02
 
 ### Fixed

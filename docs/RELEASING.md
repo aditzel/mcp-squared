@@ -4,8 +4,8 @@ This checklist is for maintainers publishing `mcp-squared` to npm.
 
 ## Current release target
 
-- Version: `0.3.1`
-- Git tag: `v0.3.1`
+- Version: `0.3.2`
+- Git tag: `v0.3.2`
 
 ## One-time local setup
 
@@ -30,14 +30,14 @@ This checklist is for maintainers publishing `mcp-squared` to npm.
 2. Update changelog under a new version heading in `CHANGELOG.md`.
 3. Set package version for this release:
    ```bash
-   bun pm version 0.3.1
+   bun pm version 0.3.2
    ```
-   This creates the release tag `v0.3.1`.
+   This creates the release tag `v0.3.2`.
 4. Run release gates:
    ```bash
    bun run release:check
    ```
-   This includes `bun run audit` as a hard gate.
+   This includes `bun run audit` as a hard gate and verifies `dist/index.js` has no unresolved `@/...` runtime imports.
    If an advisory is temporarily accepted, record it in `docs/DEPENDENCY_EXCEPTIONS.md` and link the tracking issue before proceeding.
 5. Confirm npm will accept the version:
    ```bash
@@ -52,11 +52,11 @@ This checklist is for maintainers publishing `mcp-squared` to npm.
 7. Push commit and the explicit release tag:
    ```bash
    git push
-   git push origin v0.3.1
+   git push origin v0.3.2
    ```
    Verify the tag on the release commit:
    ```bash
-   git tag --points-at HEAD | rg '^v0\\.3\\.1$'
+   git tag --points-at HEAD | rg '^v0\\.3\\.2$'
    ```
 8. Verify on registry:
    ```bash

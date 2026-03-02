@@ -27,6 +27,21 @@ npx mcp-squared --help
 npm exec --yes mcp-squared -- --help
 ```
 
+If you see `Cannot find module '@/version.js'`, check for a stale global install:
+
+```bash
+which mcp-squared
+npm ls -g --depth=0 mcp-squared
+```
+
+`mcp-squared@0.3.0` shipped unresolved `@/...` aliases in `dist/index.js`. Remove the old global package and re-run:
+
+```bash
+npm uninstall -g mcp-squared
+hash -r
+npx --yes mcp-squared@latest --help
+```
+
 ### Install globally
 
 ```bash
