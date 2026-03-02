@@ -30,3 +30,7 @@ MCP² does **not** currently mediate broader MCP surfaces such as:
 1. Treat MCP² as the tool orchestration layer in mixed environments.
 2. Keep existing direct upstream access where non-tool MCP surfaces are required.
 3. Gate daily-driver cutovers on whether your workflows are fully tool-surface compatible.
+
+## Follow-up Tracking
+- Primary tracking issue: https://linear.app/allan-ditzel/issue/AD-91
+- Prerequisite wave context and rollout gating: https://linear.app/allan-ditzel/issue/AD-88
