@@ -115,8 +115,14 @@ function mapToSseServer(server: ExternalServer): MappedServer | undefined {
   };
 
   if (server.auth !== undefined) {
-    config.sse.auth =
-      typeof server.auth === "object" ? { ...server.auth } : server.auth;
+    if (typeof server.auth === "object") {
+      config.sse.auth = {
+        callbackPort: server.auth.callbackPort ?? 8089,
+        clientName: server.auth.clientName ?? "MCP²",
+      };
+    } else {
+      config.sse.auth = server.auth;
+    }
   }
 
   return {
