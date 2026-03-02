@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- No changes yet.
+
+## [0.3.4] - 2026-03-02
+
 ### Added
 - TUI upstream edit flow now supports updating existing stdio and SSE upstream server configuration directly from the edit screen.
 - Added regression tests for TUI upstream edit/delete behavior and form parsing in `tests/tui-upstream-edit.test.ts`.
