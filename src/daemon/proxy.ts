@@ -7,12 +7,12 @@
 import { spawn } from "node:child_process";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { getDaemonSocketPath } from "@/config/paths.js";
+import { getDaemonSocketPath } from "../config/paths.js";
 import {
   type DaemonRegistryEntry,
   loadLiveDaemonRegistry,
-} from "@/daemon/registry.js";
-import { SocketClientTransport } from "@/daemon/transport.js";
+} from "./registry.js";
+import { SocketClientTransport } from "./transport.js";
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 5000;
 const HEARTBEAT_INTERVAL_MS = 5000;

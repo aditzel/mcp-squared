@@ -12,7 +12,6 @@ import {
   SelectRenderableEvents,
   TextRenderable,
 } from "@opentui/core";
-import { VERSION } from "@/version.js";
 import {
   DEFAULT_CONFIG,
   getDefaultConfigPath,
@@ -22,6 +21,7 @@ import {
   type UpstreamServerConfig,
 } from "../config/index.js";
 import { testUpstreamConnection } from "../upstream/index.js";
+import { VERSION } from "../version.js";
 
 const PROJECT_DESCRIPTION = "Mercury Control Plane";
 

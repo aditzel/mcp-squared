@@ -15,7 +15,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { VERSION } from "@/version.js";
 import {
   build_sink,
   Guard,
@@ -50,6 +49,7 @@ import {
   getToolVisibilityCompiled,
 } from "../security/index.js";
 import { Cataloger } from "../upstream/index.js";
+import { VERSION } from "../version.js";
 import { MonitorServer } from "./monitor-server.js";
 import { type ServerStats, StatsCollector, type ToolStats } from "./stats.js";
 

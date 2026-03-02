@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No changes yet.
 
+## [0.3.1] - 2026-03-02
+
+### Fixed
+- Replaced `@/...` path-alias imports in CLI runtime code paths with relative imports so published installs resolve `VERSION` and daemon modules correctly at runtime.
+
 ## [0.3.0] - 2026-03-02
 
 ### Added
