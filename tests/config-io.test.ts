@@ -137,11 +137,12 @@ describe("config load/save io", () => {
 
     const asyncResult = await loadConfig(cwd);
     const syncResult = loadConfigSync(cwd);
+    const expectedSuffix = join("mcp-squared", "config.toml");
 
     expect(asyncResult.source).toBe("user");
     expect(syncResult.source).toBe("user");
-    expect(asyncResult.path).toContain("mcp-squared/config.toml");
-    expect(syncResult.path).toContain("mcp-squared/config.toml");
+    expect(asyncResult.path.endsWith(expectedSuffix)).toBe(true);
+    expect(syncResult.path.endsWith(expectedSuffix)).toBe(true);
     expect(asyncResult.config).toEqual(DEFAULT_CONFIG);
     expect(syncResult.config).toEqual(DEFAULT_CONFIG);
   });

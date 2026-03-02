@@ -3,7 +3,7 @@ import {
   meetsLineCoverageThreshold,
   parseBunTextLineCoveragePercent,
   parseLcovLineCoverage,
-} from "../src/utils/coverage.js";
+} from "@/utils/coverage.js";
 
 describe("parseLcovLineCoverage", () => {
   test("aggregates LF and LH totals across multiple files", () => {

@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 
-import { DEFAULT_CONFIG, type McpSquaredConfig } from "../src/config/schema.js";
-import { McpSquaredServer } from "../src/server/index.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { DEFAULT_CONFIG, type McpSquaredConfig } from "@/config/schema.js";
+import { McpSquaredServer } from "@/server/index.js";
 
 type Scenario = {
   id: string;
@@ -17,18 +19,6 @@ type EvalRow = {
   firstNamespace: string;
   expected: string;
   pass: boolean;
-};
-
-type SessionWithTools = {
-  _registeredTools?: Record<
-    string,
-    {
-      handler?: (args?: Record<string, unknown>) => Promise<{
-        content?: Array<{ type: string; text: string }>;
-        isError?: boolean;
-      }>;
-    }
-  >;
 };
 
 const CODE_SEARCH_PREFS = ["auggie", "ctxdb"];
@@ -68,25 +58,39 @@ const SCENARIOS: Scenario[] = [
   },
 ];
 
-function getFindToolsHandler(
-  server: McpSquaredServer,
-): (
-  args?: Record<string, unknown>,
-) => Promise<{ content?: Array<{ type: string; text: string }> }> {
-  const session = server.createSessionServer() as unknown as SessionWithTools;
-  const handler = session._registeredTools?.["find_tools"]?.handler;
-  if (!handler) {
-    throw new Error("find_tools handler is not registered");
-  }
-  return handler;
-}
-
 function parseFirstNamespace(responseText: string | undefined): string {
   if (!responseText) return "(none)";
-  const payload = JSON.parse(responseText) as {
-    tools?: Array<{ serverKey?: string }>;
-  };
-  return payload.tools?.[0]?.serverKey ?? "(none)";
+  try {
+    const payload = JSON.parse(responseText) as {
+      tools?: Array<{ serverKey?: string }>;
+    };
+    return payload.tools?.[0]?.serverKey ?? "(none)";
+  } catch {
+    return "(none)";
+  }
+}
+
+function extractTextContent(
+  content: unknown[] | undefined,
+): string | undefined {
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+
+  for (const item of content) {
+    if (
+      typeof item === "object" &&
+      item !== null &&
+      "type" in item &&
+      "text" in item &&
+      (item as { type?: unknown }).type === "text" &&
+      typeof (item as { text?: unknown }).text === "string"
+    ) {
+      return (item as { text: string }).text;
+    }
+  }
+
+  return undefined;
 }
 
 function buildEvalServerConfig(): McpSquaredConfig {
@@ -204,18 +208,31 @@ async function main(): Promise<void> {
   const strict = process.argv.includes("--strict");
 
   const server = new McpSquaredServer({ config: buildEvalServerConfig() });
+  const sessionServer = server.createSessionServer();
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const client = new Client({
+    name: "routing-eval",
+    version: "0.0.0",
+  });
   try {
     seedTools(server);
-    const findTools = getFindToolsHandler(server);
+    await sessionServer.connect(serverTransport);
+    await client.connect(clientTransport);
 
     const rows: EvalRow[] = [];
 
     for (const scenario of SCENARIOS) {
-      const result = await findTools({
-        query: scenario.query,
-        limit: 5,
+      const result = await client.callTool({
+        name: "find_tools",
+        arguments: {
+          query: scenario.query,
+          limit: 5,
+        },
       });
-      const firstNamespace = parseFirstNamespace(result.content?.[0]?.text);
+      const firstNamespace = parseFirstNamespace(
+        extractTextContent(result.content as unknown[] | undefined),
+      );
       rows.push({
         id: scenario.id,
         intent: scenario.intent,
@@ -236,6 +253,8 @@ async function main(): Promise<void> {
       }
     }
   } finally {
+    await client.close().catch(() => {});
+    await sessionServer.close().catch(() => {});
     await server.stop();
   }
 }

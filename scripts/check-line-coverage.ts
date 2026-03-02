@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   meetsLineCoverageThreshold,
   parseBunTextLineCoveragePercent,
-} from "../src/utils/coverage.js";
+} from "@/utils/coverage.js";
 
 function parseThreshold(raw: string | undefined): number {
   const threshold = raw === undefined ? 80 : Number(raw);

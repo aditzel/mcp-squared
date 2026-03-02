@@ -108,6 +108,9 @@ describe("Cataloger", () => {
             maxLimit: 50,
             defaultMode: "fast",
             defaultDetailLevel: "L1",
+            preferredNamespacesByIntent: {
+              codeSearch: [],
+            },
           },
           index: { refreshIntervalMs: 30000 },
           logging: { level: "info" },
@@ -145,6 +148,9 @@ describe("Cataloger", () => {
             maxLimit: 50,
             defaultMode: "fast",
             defaultDetailLevel: "L1",
+            preferredNamespacesByIntent: {
+              codeSearch: [],
+            },
           },
           index: { refreshIntervalMs: 30000 },
           logging: { level: "info" },

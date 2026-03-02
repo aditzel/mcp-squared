@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI now enforces a minimum line coverage threshold (`>=80%`) after generating LCOV coverage reports.
 - CI now runs strict routing evaluation (`bun run eval:routing --strict`) on PRs/pushes and publish builds.
 
+### Fixed
+- `mcp-squared migrate` now preserves explicitly configured `codeSearch = []` and seeds defaults only when the key is unset.
+- Coverage workflows now create `coverage/` before teeing summary output, preventing CI failures on clean runners.
+
 ## [0.3.4] - 2026-03-02
 
 ### Added

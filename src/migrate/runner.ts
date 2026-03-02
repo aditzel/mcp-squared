@@ -6,6 +6,8 @@
  * @module migrate/runner
  */
 
+import { readFileSync } from "node:fs";
+import { parse as parseToml } from "smol-toml";
 import type { MigrateArgs } from "../cli/index.js";
 import {
   discoverConfigPath,
@@ -16,17 +18,48 @@ import {
 
 const DEFAULT_CODE_SEARCH_NAMESPACES = ["auggie", "ctxdb"] as const;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function hasOwn(obj: Record<string, unknown>, key: string): boolean {
+  return Object.hasOwn(obj, key);
+}
+
+function isCodeSearchExplicitlyConfigured(rawConfig: unknown): boolean {
+  if (!isRecord(rawConfig)) {
+    return false;
+  }
+
+  const operations = rawConfig["operations"];
+  if (!isRecord(operations)) {
+    return false;
+  }
+
+  const findTools = operations["findTools"];
+  if (!isRecord(findTools)) {
+    return false;
+  }
+
+  const preferredNamespacesByIntent = findTools["preferredNamespacesByIntent"];
+  if (!isRecord(preferredNamespacesByIntent)) {
+    return false;
+  }
+
+  return hasOwn(preferredNamespacesByIntent, "codeSearch");
+}
+
 /**
  * Applies code-search namespace defaults when none are configured.
  */
-export function applyCodeSearchPreferenceMigration(config: McpSquaredConfig): {
+export function applyCodeSearchPreferenceMigration(
+  config: McpSquaredConfig,
+  options: { codeSearchExplicitlyConfigured: boolean },
+): {
   config: McpSquaredConfig;
   changed: boolean;
 } {
-  const existing =
-    config.operations.findTools.preferredNamespacesByIntent.codeSearch;
-
-  if (existing.length > 0) {
+  if (options.codeSearchExplicitlyConfigured) {
     return { config, changed: false };
   }
 
@@ -61,12 +94,19 @@ export async function runMigrate(args: MigrateArgs): Promise<void> {
   }
 
   const loaded = await loadConfigFromPath(discovered.path, discovered.source);
+  const rawConfig = parseToml(
+    readFileSync(discovered.path, "utf-8"),
+  ) as unknown;
+  const codeSearchExplicitlyConfigured =
+    isCodeSearchExplicitlyConfigured(rawConfig);
   const { config: migratedConfig, changed } =
-    applyCodeSearchPreferenceMigration(loaded.config);
+    applyCodeSearchPreferenceMigration(loaded.config, {
+      codeSearchExplicitlyConfigured,
+    });
 
   if (!changed) {
     console.log(
-      `No migration needed: code-search preferences already set in ${discovered.path}`,
+      `No migration needed: code-search preferences already configured in ${discovered.path}`,
     );
     return;
   }

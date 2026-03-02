@@ -12,7 +12,7 @@ import {
 } from "@/config/instance-registry";
 import { getInstanceRegistryDir } from "@/config/paths";
 import * as pidModule from "@/config/pid";
-import { withTempConfigHome } from "./helpers/config-home";
+import { withTempConfigHome } from "./helpers/config-home.js";
 
 describe("instance registry", () => {
   let restoreConfigHome: (() => void) | null = null;
@@ -93,42 +93,46 @@ describe("instance registry", () => {
     );
 
     const tcpServer = createServer();
-    await new Promise<void>((resolve, reject) => {
-      tcpServer.once("error", reject);
-      tcpServer.listen(0, "127.0.0.1", () => resolve());
-    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        tcpServer.once("error", reject);
+        tcpServer.listen(0, "127.0.0.1", () => resolve());
+      });
 
-    const address = tcpServer.address();
-    if (!address || typeof address === "string") {
-      throw new Error("Expected TCP address");
+      const address = tcpServer.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Expected TCP address");
+      }
+
+      const connectedEntry: InstanceRegistryEntry = {
+        id: "connected",
+        pid: 1001,
+        socketPath: `tcp://127.0.0.1:${address.port}`,
+        startedAt: 200,
+        role: "server",
+      };
+      const proxyEntry: InstanceRegistryEntry = {
+        id: "proxy",
+        pid: 1002,
+        socketPath: "/does/not/need/socket",
+        startedAt: 300,
+        role: "proxy",
+      };
+
+      writeInstanceEntry(connectedEntry);
+      writeInstanceEntry(proxyEntry);
+
+      const active = await listActiveInstanceEntries({
+        prune: false,
+        timeoutMs: 200,
+      });
+
+      expect(active.map((entry) => entry.id)).toEqual(["proxy", "connected"]);
+    } finally {
+      if (tcpServer.listening) {
+        await new Promise<void>((resolve) => tcpServer.close(() => resolve()));
+      }
     }
-
-    const connectedEntry: InstanceRegistryEntry = {
-      id: "connected",
-      pid: 1001,
-      socketPath: `tcp://127.0.0.1:${address.port}`,
-      startedAt: 200,
-      role: "server",
-    };
-    const proxyEntry: InstanceRegistryEntry = {
-      id: "proxy",
-      pid: 1002,
-      socketPath: "/does/not/need/socket",
-      startedAt: 300,
-      role: "proxy",
-    };
-
-    writeInstanceEntry(connectedEntry);
-    writeInstanceEntry(proxyEntry);
-
-    const active = await listActiveInstanceEntries({
-      prune: false,
-      timeoutMs: 200,
-    });
-
-    expect(active.map((entry) => entry.id)).toEqual(["proxy", "connected"]);
-
-    await new Promise<void>((resolve) => tcpServer.close(() => resolve()));
   });
 
   test("listActiveInstanceEntries prunes stale entries when process is not running", async () => {

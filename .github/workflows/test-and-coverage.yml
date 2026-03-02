@@ -39,6 +39,7 @@ jobs:
 
       - name: Test with Coverage
         run: |
+          mkdir -p coverage
           set -o pipefail
           bun test --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir coverage |& tee coverage/coverage-summary.txt
 

@@ -6,8 +6,8 @@ import { parse as parseToml } from "smol-toml";
 import { runMigrate } from "@/migrate/runner.js";
 
 type EnvSnapshot = {
-  mcpSquaredConfig?: string;
-  xdgConfigHome?: string;
+  mcpSquaredConfig: string | undefined;
+  xdgConfigHome: string | undefined;
 };
 
 function setEnv(key: string, value: string | undefined): void {
@@ -54,13 +54,12 @@ describe("runMigrate", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test("seeds code-search defaults when preferences are empty", async () => {
+  test("seeds code-search defaults only when codeSearch is unset", async () => {
     writeFileSync(
       configPath,
       [
         "schemaVersion = 1",
         "[operations.findTools.preferredNamespacesByIntent]",
-        "codeSearch = []",
       ].join("\n"),
       "utf-8",
     );
@@ -78,6 +77,22 @@ describe("runMigrate", () => {
       unknown
     >;
     expect(preferences["codeSearch"]).toEqual(["auggie", "ctxdb"]);
+  });
+
+  test("does not overwrite explicitly empty code-search preferences", async () => {
+    const original = [
+      "schemaVersion = 1",
+      "[operations.findTools.preferredNamespacesByIntent]",
+      "codeSearch = []",
+    ].join("\n");
+    writeFileSync(configPath, original, "utf-8");
+
+    await runMigrate({ dryRun: false });
+
+    expect(readFileSync(configPath, "utf-8")).toBe(original);
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("No migration needed"),
+    );
   });
 
   test("skips migration when code-search preferences are already set", async () => {
@@ -100,7 +115,6 @@ describe("runMigrate", () => {
     const original = [
       "schemaVersion = 1",
       "[operations.findTools.preferredNamespacesByIntent]",
-      "codeSearch = []",
     ].join("\n");
     writeFileSync(configPath, original, "utf-8");
 
