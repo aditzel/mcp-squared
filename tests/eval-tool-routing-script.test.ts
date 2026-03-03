@@ -11,6 +11,6 @@ describe("eval-tool-routing strict failure behavior", () => {
     const source = readFileSync(evalRoutingScriptPath, "utf-8");
 
     expect(source).toContain("process.exitCode = 1");
-    expect(source).not.toContain("process.exit(1)");
+    expect(source).not.toContain("process.exit(");
   });
 });
