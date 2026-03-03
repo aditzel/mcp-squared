@@ -32,7 +32,26 @@ describe("ConfigSchema", () => {
     expect(result.security.tools.confirm).toEqual(["*:*"]);
     expect(result.operations.findTools.defaultLimit).toBe(5);
     expect(result.operations.findTools.defaultDetailLevel).toBe("L1");
+    expect(
+      result.operations.findTools.preferredNamespacesByIntent.codeSearch,
+    ).toEqual([]);
     expect(result.operations.logging.level).toBe("info");
+  });
+
+  test("parses explicit intent-based namespace preferences", () => {
+    const result = ConfigSchema.parse({
+      operations: {
+        findTools: {
+          preferredNamespacesByIntent: {
+            codeSearch: ["ctxdb", "auggie"],
+          },
+        },
+      },
+    });
+
+    expect(
+      result.operations.findTools.preferredNamespacesByIntent.codeSearch,
+    ).toEqual(["ctxdb", "auggie"]);
   });
 
   test("parses valid stdio upstream", () => {
@@ -106,6 +125,10 @@ describe("DEFAULT_CONFIG", () => {
     expect(DEFAULT_CONFIG.security.tools.confirm).toEqual(["*:*"]);
     expect(DEFAULT_CONFIG.operations.findTools.defaultLimit).toBe(5);
     expect(DEFAULT_CONFIG.operations.findTools.defaultDetailLevel).toBe("L1");
+    expect(
+      DEFAULT_CONFIG.operations.findTools.preferredNamespacesByIntent
+        .codeSearch,
+    ).toEqual([]);
   });
 });
 

@@ -45,6 +45,19 @@ describe("generateConfigToml", () => {
     expect(ops["logging"]?.["level"]).toBe("info");
   });
 
+  test("config enables default code-search namespace preferences", () => {
+    const toml = generateConfigToml("hardened");
+    const parsed = parseToml(toml) as Record<string, unknown>;
+    const operations = parsed["operations"] as Record<string, unknown>;
+    const findTools = operations["findTools"] as Record<string, unknown>;
+    const preferences = findTools["preferredNamespacesByIntent"] as Record<
+      string,
+      unknown
+    >;
+
+    expect(preferences["codeSearch"]).toEqual(["auggie", "ctxdb"]);
+  });
+
   test("hardened config contains explanatory comments", () => {
     const toml = generateConfigToml("hardened");
     expect(toml).toContain("# Hardened");

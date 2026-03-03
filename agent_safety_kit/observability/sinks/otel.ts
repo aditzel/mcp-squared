@@ -1,10 +1,10 @@
 import { createRequire } from "node:module";
 import {
+  compactAttributes,
   type ObsAttributes,
   type ObsSink,
   type ObsSpan,
   type SpanStatus,
-  compactAttributes,
 } from "./base.js";
 
 type OtelCounter = {

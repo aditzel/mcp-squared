@@ -1,9 +1,9 @@
 import {
+  compactAttributes,
   type ObsAttributes,
   type ObsSink,
   type ObsSpan,
   type SpanStatus,
-  compactAttributes,
 } from "./base.js";
 
 interface StdoutEnvelope {

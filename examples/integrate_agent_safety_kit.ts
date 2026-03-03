@@ -1,6 +1,6 @@
 import {
-  Guard,
   build_sink,
+  Guard,
   load_policy,
   readSafetyEnv,
   task_span,

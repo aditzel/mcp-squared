@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No changes yet.
+### Changed
+- Added MCP `initialize` usage instructions that emphasize discovery-first tool routing (`find_tools` before local shell fallback) and surface configured code-search namespace hints when present.
+- Enhanced meta-tool registration metadata with explicit titles and tool annotations (`readOnlyHint`, `openWorldHint`, etc.) to better align with MCP tool-interface best practices.
+- `find_tools` responses now include a `guidance` block and apply intent-aware ranking boosts for codebase-search queries, preferring configured code-search namespaces (for example `auggie`) when available.
+- Added explicit config support for intent-based namespace preference at `operations.findTools.preferredNamespacesByIntent.codeSearch`, with heuristic fallback when not configured.
+- `mcp-squared init` now pre-populates `operations.findTools.preferredNamespacesByIntent.codeSearch` with `["auggie", "ctxdb"]` so code-search routing works out of the box.
+- Added `mcp-squared migrate` (with `--dry-run`) to apply one-time config migrations for existing files, including seeding code-search namespace defaults when unset.
+- Added a repeatable routing evaluation harness (`bun run eval:routing`) to measure first-choice namespace selection quality for code-search prompts.
+- CI now enforces a minimum line coverage threshold (`>=80%`) after generating LCOV coverage reports.
+- CI now runs strict routing evaluation (`bun run eval:routing --strict`) on PRs/pushes and publish builds.
+
+### Fixed
+- `mcp-squared migrate` now preserves explicitly configured `codeSearch = []` and seeds defaults only when the key is unset.
+- Coverage workflows now create `coverage/` before teeing summary output, preventing CI failures on clean runners.
+- Routing eval summary now guards empty `codeSearch` scenario sets to avoid `NaN`/`Infinity` percentages in report output.
+- Routing eval strict-failure handling now sets `process.exitCode` instead of exiting synchronously, ensuring cleanup in `finally` always runs.
 
 ## [0.3.4] - 2026-03-02
 

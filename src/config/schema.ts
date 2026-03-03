@@ -151,11 +151,25 @@ export const DetailLevelSchema = z.enum(["L0", "L1", "L2"]);
 export type DetailLevel = z.infer<typeof DetailLevelSchema>;
 
 /** Schema for find_tools operation configuration */
+const PreferredNamespacesByIntentSchema = z.object({
+  /** Namespaces to prioritize for codebase search/retrieval intents */
+  codeSearch: z.array(z.string().min(1)).default([]),
+});
+
+/** Preferred namespaces grouped by retrieval intent */
+export type PreferredNamespacesByIntent = z.infer<
+  typeof PreferredNamespacesByIntentSchema
+>;
+
+/** Schema for find_tools operation configuration */
 export const FindToolsSchema = z.object({
   defaultLimit: z.number().int().min(1).default(5),
   maxLimit: z.number().int().min(1).max(200).default(50),
   defaultMode: SearchModeSchema.default("fast"),
   defaultDetailLevel: DetailLevelSchema.default("L1"),
+  preferredNamespacesByIntent: PreferredNamespacesByIntentSchema.default({
+    codeSearch: [],
+  }),
 });
 
 /** Schema for index refresh configuration */
@@ -207,6 +221,7 @@ export const OperationsSchema = z
       maxLimit: 50,
       defaultMode: "fast",
       defaultDetailLevel: "L1",
+      preferredNamespacesByIntent: { codeSearch: [] },
     }),
     index: IndexSchema.default({ refreshIntervalMs: 30_000 }),
     logging: LoggingSchema.default({ level: "info" }),
@@ -223,6 +238,7 @@ export const OperationsSchema = z
       maxLimit: 50,
       defaultMode: "fast",
       defaultDetailLevel: "L1",
+      preferredNamespacesByIntent: { codeSearch: [] },
     },
     index: { refreshIntervalMs: 30_000 },
     logging: { level: "info" },

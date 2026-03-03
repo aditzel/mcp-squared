@@ -14,7 +14,7 @@ import type { InstallMode, InstallScope } from "../install/types.js";
  * Parsed command-line arguments.
  */
 export interface CliArgs {
-  /** Operating mode: server, config TUI, test, import, auth, install, init, or monitor */
+  /** Operating mode: server, config TUI, test, import, auth, install, init, migrate, or monitor */
   mode:
     | "server"
     | "config"
@@ -23,6 +23,7 @@ export interface CliArgs {
     | "auth"
     | "install"
     | "init"
+    | "migrate"
     | "monitor"
     | "daemon"
     | "proxy";
@@ -46,6 +47,8 @@ export interface CliArgs {
   monitor: MonitorArgs;
   /** Init-specific options */
   init: InitArgs;
+  /** Migration-specific options */
+  migrate: MigrateArgs;
   /** Daemon-specific options */
   daemon: DaemonArgs;
   /** Proxy-specific options */
@@ -148,6 +151,14 @@ export interface InitArgs {
 }
 
 /**
+ * Migrate-specific command-line arguments.
+ */
+export interface MigrateArgs {
+  /** Preview migration changes without writing to disk */
+  dryRun: boolean;
+}
+
+/**
  * Checks if a string is a valid security profile.
  */
 function isValidSecurityProfile(value: string): value is SecurityProfile {
@@ -247,6 +258,9 @@ export function parseArgs(args: string[]): CliArgs {
       project: false,
       force: false,
     },
+    migrate: {
+      dryRun: false,
+    },
     install: {
       interactive: true,
       dryRun: false,
@@ -313,6 +327,10 @@ export function parseArgs(args: string[]): CliArgs {
         result.mode = "init";
         break;
 
+      case "migrate":
+        result.mode = "migrate";
+        break;
+
       case "monitor":
         result.mode = "monitor";
         break;
@@ -373,6 +391,7 @@ export function parseArgs(args: string[]): CliArgs {
       case "--dry-run":
         result.import.dryRun = true;
         result.install.dryRun = true;
+        result.migrate.dryRun = true;
         break;
 
       case "--no-interactive":
@@ -522,6 +541,7 @@ Usage:
   mcp-squared auth <upstream>   Authenticate with an OAuth-protected upstream
   mcp-squared import [options]  Import MCP configs from other tools
   mcp-squared init [options]    Generate a starter config file with security profile
+  mcp-squared migrate [options] Apply config migrations to existing config
   mcp-squared install [options] Install MCP² into other MCP clients
   mcp-squared monitor [options] Launch server monitor TUI
   mcp-squared daemon [options]  Start shared MCP² daemon
@@ -535,6 +555,7 @@ Commands:
   auth <name>                   Authenticate with an OAuth-protected upstream
   import                        Import MCP server configs from other tools
   init                          Generate a starter config with security profile
+  migrate                       Apply one-time config migrations to existing config
   install                       Install MCP² as a server in other MCP clients
   monitor                       Launch server monitor TUI
   daemon                        Start shared daemon for multiple clients
@@ -560,6 +581,9 @@ Init Options:
   --security=<profile>          Security profile: hardened (default) or permissive
   --project                     Write to project-local mcp-squared.toml (default: user-level)
   --force                       Overwrite existing config without prompting
+
+Migrate Options:
+  --dry-run                     Preview migration changes without writing
 
 Install Options:
   --tool=<tool>                 Target tool (skip selection prompt)
@@ -597,6 +621,8 @@ Examples:
   mcp-squared init              Generate hardened config (confirm-all by default)
   mcp-squared init --security=permissive  Generate permissive config (allow-all)
   mcp-squared init --project    Generate project-local config
+  mcp-squared migrate           Apply config migrations to current config file
+  mcp-squared migrate --dry-run Preview config migrations without writing
   mcp-squared import --list     List all discovered MCP configs
   mcp-squared import --dry-run  Preview import changes
   mcp-squared import            Import with interactive conflict resolution

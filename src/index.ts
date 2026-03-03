@@ -19,6 +19,7 @@ import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { runMigrate } from "@/migrate/runner.js";
 import type { DaemonArgs, ProxyArgs } from "./cli/index.js";
 import { type MonitorArgs, parseArgs, printHelp } from "./cli/index.js";
 import {
@@ -1094,6 +1095,9 @@ export async function main(
       await runInit(args.init);
       break;
     }
+    case "migrate":
+      await runMigrate(args.migrate);
+      break;
     case "monitor":
       await runMonitor(args.monitor);
       break;

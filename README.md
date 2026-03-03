@@ -72,6 +72,9 @@ bun run build
 # Run tests
 bun test
 
+# Evaluate tool-routing behavior (discovery-first quality check)
+bun run eval:routing
+
 # Dependency audit
 bun run audit
 ```
@@ -103,6 +106,7 @@ mcp-squared config          # Launch configuration TUI
 mcp-squared test [upstream] # Test upstream server connections
 mcp-squared auth <upstream> # OAuth auth for SSE/HTTP upstreams
 mcp-squared import          # Import MCP configs from other tools
+mcp-squared migrate         # Apply one-time config migrations
 mcp-squared install         # Install MCP² into other MCP clients
 mcp-squared monitor         # Launch server monitor TUI
 mcp-squared --help          # Full command reference
@@ -159,6 +163,23 @@ auth = true
 
 Security policies (allow/block/confirm) live under `security.tools`. Confirmation flows return a short-lived token that must be provided to `execute` to proceed. OAuth tokens for SSE upstreams are stored under `~/.config/mcp-squared/tokens/<upstream>.json`.
 
+`mcp-squared init` now seeds code-search routing preferences so `find_tools` prioritizes common code indexers by default:
+
+```toml
+[operations.findTools.preferredNamespacesByIntent]
+codeSearch = ["auggie", "ctxdb"]
+```
+
+Tune this list (or set it to `[]`) if your environment uses different namespaces.
+
+For existing configs created before this default, run:
+
+```bash
+mcp-squared migrate
+```
+
+Use `mcp-squared migrate --dry-run` to preview without writing.
+
 ## Tool API (Meta-Tools)
 
 MCP² exposes these tools to MCP clients:
@@ -167,6 +188,14 @@ MCP² exposes these tools to MCP clients:
 - `execute` - Call an upstream tool with policy enforcement
 - `list_namespaces` - List upstream namespaces (optionally with tool names)
 - `clear_selection_cache` - Reset co-occurrence based suggestions
+
+Recommended workflow for LLM clients:
+1. Call `find_tools` first to discover candidate tools for the task.
+2. Call `describe_tools` for selected candidates to confirm exact argument schemas.
+3. Call `execute` with a qualified tool name (`namespace:tool_name`).
+4. Use `list_namespaces` if tool names are ambiguous or you need namespace context.
+
+For codebase-search tasks, `find_tools` applies intent-aware ranking and may return namespace guidance (for example preferring configured code-search namespaces like `auggie`).
 
 ## Search Modes
 

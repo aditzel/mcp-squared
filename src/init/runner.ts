@@ -58,6 +58,11 @@ maxLimit = 50
 defaultMode = "fast"
 defaultDetailLevel = "L1"
 
+[operations.findTools.preferredNamespacesByIntent]
+# Default-on code-search namespace preference.
+# Adjust or clear if your stack uses different code indexers.
+codeSearch = ["auggie", "ctxdb"]
+
 [operations.embeddings]
 # Enable to use semantic or hybrid search modes.
 # Requires onnxruntime shared library on the system.
