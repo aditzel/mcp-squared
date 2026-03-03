@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-03
+
 ### Changed
 - Added MCP `initialize` usage instructions that emphasize discovery-first tool routing (`find_tools` before local shell fallback) and surface configured code-search namespace hints when present.
 - Enhanced meta-tool registration metadata with explicit titles and tool annotations (`readOnlyHint`, `openWorldHint`, etc.) to better align with MCP tool-interface best practices.
