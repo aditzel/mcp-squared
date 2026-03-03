@@ -250,7 +250,7 @@ async function main(): Promise<void> {
       const codeRows = rows.filter((r) => r.intent === "codeSearch");
       const codePassed = codeRows.filter((r) => r.pass).length;
       if (codePassed < codeRows.length) {
-        process.exit(1);
+        process.exitCode = 1;
       }
     }
   } finally {
