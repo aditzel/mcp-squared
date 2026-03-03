@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Coverage workflows now create `coverage/` before teeing summary output, preventing CI failures on clean runners.
 - Routing eval summary now guards empty `codeSearch` scenario sets to avoid `NaN`/`Infinity` percentages in report output.
 - Routing eval strict-failure handling now sets `process.exitCode` instead of exiting synchronously, ensuring cleanup in `finally` always runs.
+- Restored runtime-safe relative import for `runMigrate` in the CLI entrypoint so publish-time runtime import verification passes.
 
 ## [0.3.4] - 2026-03-02
 
