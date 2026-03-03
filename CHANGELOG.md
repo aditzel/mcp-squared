@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `mcp-squared migrate` now preserves explicitly configured `codeSearch = []` and seeds defaults only when the key is unset.
 - Coverage workflows now create `coverage/` before teeing summary output, preventing CI failures on clean runners.
+- Routing eval summary now guards empty `codeSearch` scenario sets to avoid `NaN`/`Infinity` percentages in report output.
 
 ## [0.3.4] - 2026-03-02
 

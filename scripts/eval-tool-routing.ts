@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { DEFAULT_CONFIG, type McpSquaredConfig } from "@/config/schema.js";
 import { McpSquaredServer } from "@/server/index.js";
+import { formatRatioPercent } from "@/utils/percent.js";
 
 type Scenario = {
   id: string;
@@ -197,10 +198,10 @@ function printReport(rows: EvalRow[]): void {
 
   console.log("\nSummary");
   console.log(
-    `- overall: ${passed}/${total} (${((passed / total) * 100).toFixed(1)}%)`,
+    `- overall: ${passed}/${total} (${formatRatioPercent(passed, total)}%)`,
   );
   console.log(
-    `- codeSearch intent: ${codePassed}/${codeRows.length} (${((codePassed / codeRows.length) * 100).toFixed(1)}%)`,
+    `- codeSearch intent: ${codePassed}/${codeRows.length} (${formatRatioPercent(codePassed, codeRows.length)}%)`,
   );
 }
 
