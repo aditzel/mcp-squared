@@ -121,8 +121,8 @@ describe("heuristic misclassification regression cases", () => {
     expect(capability).toBe("cms_content");
   });
 
-  test("shadcn: misclassified as design (should be docs)", () => {
-    // shadcn is a code component registry, not a visual design tool
+  test("shadcn: correctly classified as docs (fixed — was design)", () => {
+    // Fixed: shadcn is a code component registry → docs, not design
     const capability = inferNamespaceCapability("shadcn", [
       { name: "add_component", description: "Add a UI component to project" },
       {
@@ -130,7 +130,7 @@ describe("heuristic misclassification regression cases", () => {
         description: "List available shadcn/ui components",
       },
     ]);
-    expect(capability).toBe("design");
+    expect(capability).toBe("docs");
   });
 
   test("Supabase: misclassified as issue_tracking (taxonomy gap — no database category)", () => {

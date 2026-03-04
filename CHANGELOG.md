@@ -10,7 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added `hybrid` inference mode for capability classification: when `operations.dynamicToolSurface.inference = "hybrid"` and `operations.embeddings.enabled = true`, MCP² uses embedding-based semantic classification (BGE-small-en-v1.5) as a fallback for ambiguous namespaces. User config `capabilityOverrides` always take precedence. Controlled by `semanticConfidenceThreshold` (default: 0.45).
 - Added `SemanticCapabilityClassifier` module that reuses the existing `EmbeddingGenerator` to classify namespaces by cosine similarity against capability reference embeddings.
-- Added heuristic misclassification regression tests documenting 5 known failures (Notion, Sentry, Prisma, shadcn, Supabase).
+- Added heuristic misclassification regression tests documenting 4 known failures (Notion, Sentry, Prisma, Supabase).
+- Added component test for shadcn MCP server classification using real tool metadata from the official server (`npx shadcn@latest mcp`).
+
+### Fixed
+- Fixed shadcn heuristic misclassification: added `shadcn` to docs namespace hints and added component registry patterns (`registry`, `component`, `example`) to docs capability patterns. Previously classified as `code_search` (with real tools) or `design` (with simplified tools).
 - Added a capability-first public tool API that registers one router per non-empty capability at connect time (`code_search`, `docs`, `browser_automation`, `issue_tracking`, `cms_content`, `design`, `hosting_deploy`, `time_util`, `research`, `general`).
 - Added router introspection via reserved `action = "__describe_actions"` returning capability-local action catalogs and input schemas without upstream identifier leakage.
 - Added deterministic action ID generation/collision handling from upstream tools, including reserved-name rewriting and suffixing (`__2`, `__3`, ...).

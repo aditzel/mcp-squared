@@ -70,7 +70,7 @@ const NAMESPACE_HINTS: Array<{
   },
   {
     capability: "docs",
-    pattern: /(context7|ref|docs?|documentation)/i,
+    pattern: /(context7|ref|docs?|documentation|shadcn)/i,
     score: 18,
   },
   {
@@ -130,6 +130,9 @@ const CAPABILITY_PATTERNS: Record<CapabilityId, RegExp[]> = {
     /\breference\b/i,
     /\bmanual\b/i,
     /\bknowledge\b/i,
+    /\bregist(?:ry|ries)\b/i,
+    /\bcomponent(?:s)?\b/i,
+    /\bexample(?:s)?\b/i,
   ],
   browser_automation: [
     /\bbrowser\b/i,
