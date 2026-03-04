@@ -63,6 +63,15 @@ defaultDetailLevel = "L1"
 # Adjust or clear if your stack uses different code indexers.
 codeSearch = ["auggie", "ctxdb"]
 
+[operations.dynamicToolSurface]
+# Capability-first tool surface is always enabled.
+inference = "heuristic_with_overrides"
+refresh = "on_connect"
+
+[operations.dynamicToolSurface.capabilityOverrides]
+# Optional namespace -> capability pinning.
+# auggie = "code_search"
+
 [operations.embeddings]
 # Enable to use semantic or hybrid search modes.
 # Requires onnxruntime shared library on the system.

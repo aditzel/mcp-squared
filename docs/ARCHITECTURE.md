@@ -6,10 +6,11 @@
 graph TD
     Client["MCP Client (IDE/Agent)"]
 
-    subgraph "MCP² Meta-Server"
+    subgraph "MCP² Capability Router"
         API["MCP Tool API"]
         Security["Policy + Confirmation Gates"]
-        Retriever["Retriever (FTS5 / Semantic / Hybrid)"]
+        Router["Capability Routers"]
+        Retriever["Retriever (FTS5 / Semantic / Hybrid, internal)"]
         Index["SQLite Index (FTS5 + embeddings + co-occurrence)"]
         Embeddings["Embedding Generator (Transformers.js)"]
         Executor["Executor"]
@@ -25,10 +26,11 @@ graph TD
     end
 
     Client --> API
-    API --> Retriever
+    API --> Router
+    Router --> Retriever
     Retriever --> Index
     Retriever -. "query embeddings" .-> Embeddings
-    API --> Security
+    Router --> Security
     Security --> Executor
     Executor --> Cataloger
     Cataloger --> S1
@@ -42,10 +44,10 @@ graph TD
 ## Request Flow
 
 1. **Catalog & Index**: The Cataloger connects to all configured upstream servers and ingests their tool definitions. The Index Refresh Manager periodically refreshes upstreams, detects changes, and re-syncs the local index.
-2. **Tool Discovery (`find_tools`)**: The Retriever searches the local index using FTS5 or embedding-based search (semantic/hybrid). Results are filtered by security policy, formatted by detail level (L0/L1/L2), and optionally augmented with co-occurrence-based suggestions.
-3. **Schema Retrieval (`describe_tools`)**: Full JSON schemas are returned for requested tools, including confirmation requirements and ambiguity resolution when names collide.
-4. **Execution (`execute`)**: Execution requests are checked against allow/block/confirm rules. Confirm-required tools return a short-lived token that must be provided to proceed. Successful executions are tracked for selection caching.
-5. **Supporting Meta-Tools**: `list_namespaces` enumerates upstream servers and tools, and `clear_selection_cache` resets co-occurrence data.
+2. **Connect-Time Surface Build**: At session creation, MCP² infers namespace capabilities and registers one public tool per non-empty capability (`code_search`, `docs`, etc.). Upstream identifiers stay internal. In `hybrid` inference mode, embedding-based semantic classification runs during `startCore()` and pre-computes overrides that are merged before the sync routing chain executes (user config overrides always win).
+3. **Action Introspection (`action = "__describe_actions"`)**: Each capability router returns a capability-local action catalog with summaries, input schemas, and confirmation requirements.
+4. **Execution**: Capability/action requests are checked against allow/block/confirm rules (`capability:action`). Confirm-required actions return a short-lived token bound to that capability/action. Successful executions are tracked for selection caching.
+5. **Internal Dispatch**: Router actions resolve deterministically to upstream qualified tool calls, then execute through the cataloger.
 
 ## Indexing & Search
 
@@ -57,7 +59,7 @@ graph TD
 ## Safety & Policy
 
 - Tool descriptions are sanitized to mitigate prompt-injection attempts.
-- Policies use allow/block/confirm patterns with glob-style matching.
+- Policies use allow/block/confirm patterns with glob-style matching on `capability:action`.
 - Confirm-required tools return a short-lived token; execution is denied without it.
 
 ## Monitoring & Stats

@@ -10,8 +10,12 @@ import type { McpSquaredConfig } from "../config/schema.js";
 export type PolicyDecision = "allow" | "block" | "confirm";
 
 export interface PolicyContext {
-  serverKey: string;
-  toolName: string;
+  /** Preferred fields for capability-first routing. */
+  capability?: string;
+  action?: string;
+  /** Legacy aliases retained for compatibility with existing callers/tests. */
+  serverKey?: string;
+  toolName?: string;
   confirmationToken?: string | undefined;
 }
 
@@ -23,8 +27,8 @@ export interface PolicyResult {
 }
 
 interface PendingConfirmation {
-  serverKey: string;
-  toolName: string;
+  capability: string;
+  action: string;
   createdAt: number;
 }
 
@@ -34,12 +38,12 @@ const CONFIRMATION_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const pendingConfirmations = new Map<string, PendingConfirmation>();
 
 /**
- * Match a pattern against a server key and tool name.
+ * Match a pattern against a scope and action key.
  * Patterns use glob-style wildcards:
- * - "*:*" matches all tools on all servers
- * - "fs:*" matches all tools on server "fs"
- * - "*:file_write" matches tool "file_write" on any server
- * - "fs:file_write" matches exact tool on exact server
+ * - "*:*" matches all actions on all scopes
+ * - "code_search:*" matches all actions in the code_search capability
+ * - "*:codebase_retrieval" matches an action on any capability
+ * - "code_search:codebase_retrieval" matches exact capability+action
  */
 export function matchesPattern(
   pattern: string,
@@ -60,7 +64,7 @@ export function matchesPattern(
 }
 
 /**
- * Check if any pattern in the list matches the given server and tool.
+ * Check if any pattern in the list matches the given scope/action pair.
  */
 function matchesAnyPattern(
   patterns: string[],
@@ -100,8 +104,8 @@ function cleanupExpiredTokens(): void {
  */
 export function validateConfirmationToken(
   token: string,
-  serverKey: string,
-  toolName: string,
+  capability: string,
+  action: string,
 ): boolean {
   cleanupExpiredTokens();
 
@@ -112,8 +116,8 @@ export function validateConfirmationToken(
 
   // Check if token matches the expected context
   if (
-    confirmation.serverKey !== serverKey ||
-    confirmation.toolName !== toolName
+    confirmation.capability !== capability ||
+    confirmation.action !== action
   ) {
     return false;
   }
@@ -127,15 +131,15 @@ export function validateConfirmationToken(
  * Create a pending confirmation and return the token.
  */
 export function createConfirmationToken(
-  serverKey: string,
-  toolName: string,
+  capability: string,
+  action: string,
 ): string {
   cleanupExpiredTokens();
 
   const token = generateToken();
   pendingConfirmations.set(token, {
-    serverKey,
-    toolName,
+    capability,
+    action,
     createdAt: Date.now(),
   });
 
@@ -143,11 +147,11 @@ export function createConfirmationToken(
 }
 
 /**
- * Evaluate the execution policy for a tool.
+ * Evaluate the execution policy for a capability action.
  *
  * Precedence: Block > Allow > Confirm > Deny
  *
- * @param context - The execution context (server, tool, optional confirmation token)
+ * @param context - The execution context (capability/action + optional token)
  * @param config - The MCP² configuration
  * @returns Policy decision with reason
  */
@@ -155,43 +159,52 @@ export function evaluatePolicy(
   context: PolicyContext,
   config: McpSquaredConfig,
 ): PolicyResult {
-  const { serverKey, toolName, confirmationToken } = context;
+  const capability = context.capability ?? context.serverKey;
+  const action = context.action ?? context.toolName;
+  const confirmationToken = context.confirmationToken;
   const { block, confirm, allow } = config.security.tools;
 
-  // 1. Check block list (highest priority)
-  if (matchesAnyPattern(block, serverKey, toolName)) {
+  if (!capability || !action) {
     return {
       decision: "block",
-      reason: `Tool "${toolName}" on server "${serverKey}" is blocked by security policy`,
+      reason: "Missing capability/action in security policy context",
+    };
+  }
+
+  // 1. Check block list (highest priority)
+  if (matchesAnyPattern(block, capability, action)) {
+    return {
+      decision: "block",
+      reason: `Action "${action}" in capability "${capability}" is blocked by security policy`,
     };
   }
 
   // 2. Check allow list (explicitly allowed tools bypass confirmation)
-  if (matchesAnyPattern(allow, serverKey, toolName)) {
+  if (matchesAnyPattern(allow, capability, action)) {
     return {
       decision: "allow",
-      reason: `Tool "${toolName}" is allowed by security policy`,
+      reason: `Action "${action}" is allowed by security policy`,
     };
   }
 
   // 3. Check confirm list
-  if (matchesAnyPattern(confirm, serverKey, toolName)) {
+  if (matchesAnyPattern(confirm, capability, action)) {
     // If a valid confirmation token is provided, allow execution
     if (
       confirmationToken &&
-      validateConfirmationToken(confirmationToken, serverKey, toolName)
+      validateConfirmationToken(confirmationToken, capability, action)
     ) {
       return {
         decision: "allow",
-        reason: `Tool "${toolName}" confirmed with valid token`,
+        reason: `Action "${action}" confirmed with valid token`,
       };
     }
 
     // Generate a new confirmation token
-    const token = createConfirmationToken(serverKey, toolName);
+    const token = createConfirmationToken(capability, action);
     return {
       decision: "confirm",
-      reason: `Tool "${toolName}" on server "${serverKey}" requires confirmation`,
+      reason: `Action "${action}" in capability "${capability}" requires confirmation`,
       confirmationToken: token,
     };
   }
@@ -199,7 +212,7 @@ export function evaluatePolicy(
   // 4. Deny by default (not in allow or confirm list)
   return {
     decision: "block",
-    reason: `Tool "${toolName}" on server "${serverKey}" is not in the allow or confirm list`,
+    reason: `Action "${action}" in capability "${capability}" is not in the allow or confirm list`,
   };
 }
 
@@ -253,16 +266,16 @@ export function compilePolicy(config: McpSquaredConfig): CompiledPolicy {
 }
 
 /**
- * Get tool visibility for discovery operations.
+ * Get action visibility for router introspection operations.
  *
  * Unlike evaluatePolicy (which is for execution), this determines:
- * - Whether a tool should appear in find_tools/describe_tools results
- * - Whether the tool will require confirmation when executed
+ * - Whether an action should appear in `__describe_actions`
+ * - Whether the action will require confirmation when executed
  *
  * Precedence: Block > Allow > Confirm > Deny (implicit)
  *
- * @param serverKey - The upstream server key
- * @param toolName - The tool name
+ * @param serverKey - Scope key (typically capability ID)
+ * @param toolName - Action key
  * @param config - The MCP² configuration
  * @returns Visibility result with visible and requiresConfirmation flags
  */
@@ -282,10 +295,10 @@ export function getToolVisibility(
 }
 
 /**
- * Get tool visibility using pre-compiled policy (for batch operations).
+ * Get visibility using pre-compiled policy (for batch operations).
  *
- * @param serverKey - The upstream server key
- * @param toolName - The tool name
+ * @param serverKey - Scope key (typically capability ID)
+ * @param toolName - Action key
  * @param policy - Pre-compiled policy patterns
  * @returns Visibility result with visible and requiresConfirmation flags
  */

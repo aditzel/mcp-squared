@@ -456,6 +456,14 @@ export class Retriever {
   }
 
   /**
+   * Returns the embedding generator instance, or null if not initialized.
+   * Used by SemanticCapabilityClassifier to reuse the same model.
+   */
+  getEmbeddingGenerator(): EmbeddingGenerator | null {
+    return this.embeddingGenerator;
+  }
+
+  /**
    * Initializes the embedding generator for semantic search.
    * Must be called before using semantic or hybrid search modes.
    *

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createServer } from "node:net";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -9,6 +9,26 @@ import { deleteDaemonRegistry, writeDaemonRegistry } from "@/daemon/registry";
 import { DaemonServer } from "@/daemon/server";
 import { McpSquaredServer } from "@/server";
 import { withTempConfigHome } from "./helpers/config-home";
+
+function mockCapabilitySurface(runtime: McpSquaredServer): void {
+  const cataloger = runtime.getCataloger();
+  spyOn(cataloger, "getStatus").mockReturnValue(
+    new Map([["time", { status: "connected", error: undefined }]]),
+  );
+  spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
+    if (key === "time") {
+      return [
+        {
+          name: "convert_time",
+          description: "Convert time values",
+          serverKey: "time",
+          inputSchema: { type: "object" },
+        },
+      ];
+    }
+    return [];
+  });
+}
 
 const SOCKET_LISTEN_SUPPORTED = await new Promise<boolean>((resolve) => {
   const server = createServer();
@@ -38,6 +58,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         config: DEFAULT_CONFIG,
         monitorSocketPath: "tcp://127.0.0.1:0",
       });
+      mockCapabilitySurface(runtime);
       const daemon = new DaemonServer({
         runtime,
         socketPath: "tcp://127.0.0.1:0",
@@ -65,7 +86,8 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         await client.connect(clientTransport);
         const { tools } = await client.listTools();
         const toolNames = tools.map((tool) => tool.name);
-        expect(toolNames).toContain("find_tools");
+        expect(toolNames).toContain("time_util");
+        expect(toolNames).not.toContain("find_tools");
       } finally {
         await client.close().catch(() => {});
         await bridge.stop().catch(() => {});
@@ -79,6 +101,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         config: DEFAULT_CONFIG,
         monitorSocketPath: "tcp://127.0.0.1:0",
       });
+      mockCapabilitySurface(runtime);
       const daemon = new DaemonServer({
         runtime,
         socketPath: "tcp://127.0.0.1:0",
@@ -109,7 +132,8 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         await client.connect(clientTransport);
         const { tools } = await client.listTools();
         const toolNames = tools.map((tool) => tool.name);
-        expect(toolNames).toContain("find_tools");
+        expect(toolNames).toContain("time_util");
+        expect(toolNames).not.toContain("find_tools");
       } finally {
         await client.close().catch(() => {});
         await bridge.stop().catch(() => {});
@@ -123,6 +147,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         config: DEFAULT_CONFIG,
         monitorSocketPath: "tcp://127.0.0.1:0",
       });
+      mockCapabilitySurface(runtime);
       const daemon = new DaemonServer({
         runtime,
         socketPath: "tcp://127.0.0.1:0",
@@ -166,7 +191,8 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         const { tools } = await client.listTools();
         const toolNames = tools.map((tool) => tool.name);
         expect(spawnedSecret).toBe("spawn-secret");
-        expect(toolNames).toContain("find_tools");
+        expect(toolNames).toContain("time_util");
+        expect(toolNames).not.toContain("find_tools");
       } finally {
         await client.close().catch(() => {});
         await bridge.stop().catch(() => {});

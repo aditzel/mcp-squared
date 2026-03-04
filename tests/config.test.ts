@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,6 +36,13 @@ describe("ConfigSchema", () => {
       result.operations.findTools.preferredNamespacesByIntent.codeSearch,
     ).toEqual([]);
     expect(result.operations.logging.level).toBe("info");
+    expect(result.operations.dynamicToolSurface.inference).toBe(
+      "heuristic_with_overrides",
+    );
+    expect(result.operations.dynamicToolSurface.refresh).toBe("on_connect");
+    expect(result.operations.dynamicToolSurface.capabilityOverrides).toEqual(
+      {},
+    );
   });
 
   test("parses explicit intent-based namespace preferences", () => {
@@ -52,6 +59,96 @@ describe("ConfigSchema", () => {
     expect(
       result.operations.findTools.preferredNamespacesByIntent.codeSearch,
     ).toEqual(["ctxdb", "auggie"]);
+  });
+
+  test("parses explicit dynamic tool surface configuration", () => {
+    const result = ConfigSchema.parse({
+      operations: {
+        dynamicToolSurface: {
+          inference: "heuristic_with_overrides",
+          refresh: "on_connect",
+          capabilityOverrides: {
+            auggie: "code_search",
+          },
+        },
+      },
+    });
+
+    expect(result.operations.dynamicToolSurface.capabilityOverrides).toEqual({
+      auggie: "code_search",
+    });
+  });
+
+  test("accepts 'hybrid' inference mode", () => {
+    const result = ConfigSchema.parse({
+      operations: {
+        dynamicToolSurface: {
+          inference: "hybrid",
+        },
+      },
+    });
+    expect(result.operations.dynamicToolSurface.inference).toBe("hybrid");
+  });
+
+  test("defaults semanticConfidenceThreshold to 0.45", () => {
+    const result = ConfigSchema.parse({});
+    expect(
+      result.operations.dynamicToolSurface.semanticConfidenceThreshold,
+    ).toBe(0.45);
+  });
+
+  test("accepts custom semanticConfidenceThreshold", () => {
+    const result = ConfigSchema.parse({
+      operations: {
+        dynamicToolSurface: {
+          semanticConfidenceThreshold: 0.6,
+        },
+      },
+    });
+    expect(
+      result.operations.dynamicToolSurface.semanticConfidenceThreshold,
+    ).toBe(0.6);
+  });
+
+  test("rejects semanticConfidenceThreshold out of range", () => {
+    expect(() =>
+      ConfigSchema.parse({
+        operations: {
+          dynamicToolSurface: {
+            semanticConfidenceThreshold: 1.5,
+          },
+        },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      ConfigSchema.parse({
+        operations: {
+          dynamicToolSurface: {
+            semanticConfidenceThreshold: -0.1,
+          },
+        },
+      }),
+    ).toThrow();
+  });
+
+  test("ignores deprecated dynamic tool surface keys", () => {
+    const result = ConfigSchema.parse({
+      operations: {
+        dynamicToolSurface: {
+          // Legacy keys should be tolerated and stripped.
+          mode: "replace",
+          naming: "capability_namespace",
+          inference: "heuristic_with_overrides",
+          refresh: "on_connect",
+        },
+      },
+    });
+
+    expect(result.operations.dynamicToolSurface.inference).toBe(
+      "heuristic_with_overrides",
+    );
+    expect(result.operations.dynamicToolSurface.refresh).toBe("on_connect");
   });
 
   test("parses valid stdio upstream", () => {
@@ -129,6 +226,9 @@ describe("DEFAULT_CONFIG", () => {
       DEFAULT_CONFIG.operations.findTools.preferredNamespacesByIntent
         .codeSearch,
     ).toEqual([]);
+    expect(
+      DEFAULT_CONFIG.operations.dynamicToolSurface.capabilityOverrides,
+    ).toEqual({});
   });
 });
 
@@ -318,6 +418,40 @@ level = "debug"
     const result = await loadConfig(tempDir);
     expect(result.config.operations.logging.level).toBe("debug");
     expect(result.source).toBe("project");
+  });
+
+  test("warns and tolerates deprecated dynamic tool surface keys", async () => {
+    const configPath = join(tempDir, "mcp-squared.toml");
+    writeFileSync(
+      configPath,
+      `
+schemaVersion = 1
+
+[operations.dynamicToolSurface]
+mode = "replace"
+naming = "capability_namespace"
+inference = "heuristic_with_overrides"
+refresh = "on_connect"
+`,
+    );
+
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await loadConfig(tempDir);
+      expect(result.config.operations.dynamicToolSurface.inference).toBe(
+        "heuristic_with_overrides",
+      );
+      expect(result.config.operations.dynamicToolSurface.refresh).toBe(
+        "on_connect",
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "operations.dynamicToolSurface.mode, operations.dynamicToolSurface.naming",
+        ),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   test("throws on invalid TOML", async () => {

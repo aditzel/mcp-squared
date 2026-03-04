@@ -3,7 +3,7 @@
 MCP² (Mercury Control Plane) is a local-first meta-server and proxy for the Model Context Protocol (MCP). It addresses tool context bloat by enabling dynamic, progressive disclosure of tools to LLMs. Instead of flooding the model context with every available tool schema, MCP² exposes a stable, minimal surface area for tool discovery and execution.
 
 ## Status
-**Alpha (v0.1.x)** - Core functionality is implemented and tested; CLI and config details may evolve.
+**Alpha (v0.6.x)** - Core functionality is implemented and tested; CLI and config details may evolve.
 
 ## Install & Run
 
@@ -161,9 +161,9 @@ url = "https://example.com/mcp"
 auth = true
 ```
 
-Security policies (allow/block/confirm) live under `security.tools`. Confirmation flows return a short-lived token that must be provided to `execute` to proceed. OAuth tokens for SSE upstreams are stored under `~/.config/mcp-squared/tokens/<upstream>.json`.
+Security policies (allow/block/confirm) live under `security.tools` and are matched against `capability:action` patterns. Confirmation flows return a short-lived token that must be provided to the same capability/action call to proceed. OAuth tokens for SSE upstreams are stored under `~/.config/mcp-squared/tokens/<upstream>.json`.
 
-`mcp-squared init` now seeds code-search routing preferences so `find_tools` prioritizes common code indexers by default:
+`mcp-squared init` seeds code-search routing preferences so internal retrieval/routing heuristics prioritize common code indexers by default:
 
 ```toml
 [operations.findTools.preferredNamespacesByIntent]
@@ -171,6 +171,18 @@ codeSearch = ["auggie", "ctxdb"]
 ```
 
 Tune this list (or set it to `[]`) if your environment uses different namespaces.
+
+Capability-first connect-time tool surfacing is configurable via inference/override settings:
+
+```toml
+[operations.dynamicToolSurface]
+inference = "heuristic_with_overrides"
+refresh = "on_connect"
+
+[operations.dynamicToolSurface.capabilityOverrides]
+# Optional explicit namespace -> capability pinning.
+# auggie = "code_search"
+```
 
 For existing configs created before this default, run:
 
@@ -180,26 +192,45 @@ mcp-squared migrate
 
 Use `mcp-squared migrate --dry-run` to preview without writing.
 
-## Tool API (Meta-Tools)
+Migration note: capability-router mode is now the only public surface. `mcp-squared migrate` cleans legacy config keys and rewrites security patterns to capability/action form.
 
-MCP² exposes these tools to MCP clients:
-- `find_tools` - Search tools across upstream servers
-- `describe_tools` - Fetch full JSON schemas for selected tools
-- `execute` - Call an upstream tool with policy enforcement
-- `list_namespaces` - List upstream namespaces (optionally with tool names)
-- `clear_selection_cache` - Reset co-occurrence based suggestions
+Legacy keys `operations.dynamicToolSurface.mode` and `operations.dynamicToolSurface.naming` are accepted for compatibility, ignored at runtime, and warned on load. `mcp-squared migrate` removes them.
+
+## Tool API (Capability Routers)
+
+MCP² exposes one public tool per non-empty capability at connect time:
+- `code_search`
+- `docs`
+- `browser_automation`
+- `issue_tracking`
+- `cms_content`
+- `design`
+- `hosting_deploy`
+- `time_util`
+- `research`
+- `general`
+
+Each capability tool uses a thin router contract:
+
+```json
+{
+  "action": "string",
+  "arguments": {},
+  "confirmation_token": "optional string"
+}
+```
+
+Every capability tool supports `action = "__describe_actions"` for introspection. This returns capability-local action IDs, summaries, and input schemas without exposing upstream namespace/tool identifiers.
 
 Recommended workflow for LLM clients:
-1. Call `find_tools` first to discover candidate tools for the task.
-2. Call `describe_tools` for selected candidates to confirm exact argument schemas.
-3. Call `execute` with a qualified tool name (`namespace:tool_name`).
-4. Use `list_namespaces` if tool names are ambiguous or you need namespace context.
+1. Call the relevant capability (for example `code_search`) with `action = "__describe_actions"`.
+2. Select an action ID and call the same capability with `arguments`.
+3. If `requires_disambiguation` is returned, retry with one of the returned candidate action IDs.
+4. If `requires_confirmation` is returned, retry with `confirmation_token`.
 
-For codebase-search tasks, `find_tools` applies intent-aware ranking and may return namespace guidance (for example preferring configured code-search namespaces like `auggie`).
+## Internal Retrieval Modes
 
-## Search Modes
-
-`find_tools` supports three search modes:
+`operations.findTools.defaultMode` supports three retrieval modes used by MCP² internals and evaluation tooling:
 - `fast` (default): SQLite FTS5 full-text search
 - `semantic`: Embedding similarity search (falls back to `fast` if embeddings are missing)
 - `hybrid`: FTS5 + embedding rerank (falls back to `fast` if embeddings are missing)
@@ -216,11 +247,12 @@ MCP² can import or install MCP server configs for:
 ## Key Features
 - Multi-upstream support (stdio + SSE/HTTP)
 - OAuth 2.0 dynamic client registration for SSE upstreams
-- Hybrid search with optional local embeddings (FTS5 + Transformers.js)
-- Detail levels (L0/L1/L2) for progressive schema disclosure
+- Capability-first public API (one router tool per capability)
+- Action-level introspection via `__describe_actions`
+- Hybrid retrieval with optional local embeddings (FTS5 + Transformers.js)
 - Selection caching with co-occurrence suggestions
 - Background index refresh with change detection
-- Security policies (allow/block/confirm) with confirmation tokens
+- Security policies (allow/block/confirm) on `capability:action` patterns
 - Local-first architecture (SQLite index)
 - TUI interfaces for configuration and monitoring
 

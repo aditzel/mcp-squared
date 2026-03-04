@@ -1,13 +1,8 @@
 /**
- * MCP² Server module - The core MCP meta-server implementation.
+ * MCP² Server module - capability-first MCP router.
  *
- * This module implements the MCP server that exposes three meta-tools:
- * - find_tools: Search for tools across all upstream servers
- * - describe_tools: Get detailed schemas for specific tools
- * - execute: Execute tools on upstream servers with security policy enforcement
- *
- * The server acts as a proxy/gateway to multiple upstream MCP servers,
- * providing unified tool discovery and execution with security controls.
+ * Public tool surface is capability-oriented and generated at connect time.
+ * Upstream server/tool routing remains internal.
  *
  * @module server
  */
@@ -27,28 +22,20 @@ import {
 } from "../../agent_safety_kit/index.js";
 import { IndexRefreshManager } from "../background/index.js";
 import { SelectionTracker } from "../caching/index.js";
+import {
+  type CapabilityId,
+  groupNamespacesByCapability,
+} from "../capabilities/inference.js";
 import { ensureSocketDir, getSocketFilePath } from "../config/index.js";
-import {
-  DEFAULT_CONFIG,
-  type DetailLevel,
-  DetailLevelSchema,
-  type McpSquaredConfig,
-  SearchModeSchema,
-} from "../config/schema.js";
-import {
-  Retriever,
-  type ToolFullSchema,
-  type ToolIdentity,
-  type ToolResult,
-  type ToolSummary,
-} from "../retriever/index.js";
+import { DEFAULT_CONFIG, type McpSquaredConfig } from "../config/schema.js";
+import { Retriever } from "../retriever/index.js";
 import {
   type CompiledPolicy,
   compilePolicy,
   evaluatePolicy,
   getToolVisibilityCompiled,
 } from "../security/index.js";
-import { Cataloger } from "../upstream/index.js";
+import { Cataloger, type ToolInputSchema } from "../upstream/index.js";
 import { VERSION } from "../version.js";
 import { MonitorServer } from "./monitor-server.js";
 import { type ServerStats, StatsCollector, type ToolStats } from "./stats.js";
@@ -67,9 +54,9 @@ export interface McpSquaredServerOptions {
   config?: McpSquaredConfig;
   /** Path to the SQLite index database (default: in-memory) */
   indexDbPath?: string;
-  /** Default number of results for find_tools (default: 5) */
+  /** Default result limit for internal retrieval/index operations */
   defaultLimit?: number;
-  /** Maximum allowed results for find_tools (default: 50) */
+  /** Maximum result limit for internal retrieval/index operations */
   maxLimit?: number;
   /** Whether to enable detailed tool-level stats tracking (default: false) */
   enableToolStats?: boolean;
@@ -77,21 +64,34 @@ export interface McpSquaredServerOptions {
   monitorSocketPath?: string;
 }
 
+const DESCRIBE_ACTION = "__describe_actions";
+
+type CapabilityActionRoute = {
+  capability: CapabilityId;
+  action: string;
+  baseAction: string;
+  serverKey: string;
+  toolName: string;
+  qualifiedName: string;
+  inputSchema: ToolInputSchema;
+  summary: string;
+};
+
+type CapabilityRouter = {
+  capability: CapabilityId;
+  actions: CapabilityActionRoute[];
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
- * The main MCP² server class that implements the meta-server functionality.
- *
- * This server exposes three tools to MCP clients:
- * - `find_tools`: Natural language search for tools across upstream servers
- * - `describe_tools`: Get full JSON schemas for specific tools
- * - `execute`: Execute tools with security policy enforcement
+ * The main MCP² server class that exposes capability routers.
  *
  * @example
  * ```ts
- * const server = new McpSquaredServer({
- *   config: await loadConfig(),
- *   defaultLimit: 10,
- * });
- *
+ * const server = new McpSquaredServer({ config: await loadConfig() });
  * await server.start();
  * ```
  */
@@ -100,7 +100,6 @@ export class McpSquaredServer {
   private readonly cataloger: Cataloger;
   private readonly retriever: Retriever;
   private readonly config: McpSquaredConfig;
-  private readonly maxLimit: number;
   private transport: StdioServerTransport | null = null;
   private readonly ownsCataloger: boolean;
   private readonly selectionTracker: SelectionTracker;
@@ -114,6 +113,9 @@ export class McpSquaredServer {
   private readonly safetyAgent: string;
   private readonly obsSink: ObsSink;
   private readonly guard: Guard;
+  private baseToolsRegistered = false;
+  private computedCapabilityOverrides: Partial<Record<string, CapabilityId>> =
+    {};
 
   /**
    * Creates a new MCP² server instance.
@@ -139,11 +141,11 @@ export class McpSquaredServer {
 
     // Use config values for retriever limits, with options as overrides
     const findToolsConfig = this.config.operations.findTools;
-    this.maxLimit = options.maxLimit ?? findToolsConfig.maxLimit;
+    const retrieverMaxLimit = options.maxLimit ?? findToolsConfig.maxLimit;
     this.retriever = new Retriever(this.cataloger, {
       indexDbPath: options.indexDbPath,
       defaultLimit: options.defaultLimit ?? findToolsConfig.defaultLimit,
-      maxLimit: this.maxLimit,
+      maxLimit: retrieverMaxLimit,
       defaultMode: findToolsConfig.defaultMode,
     });
 
@@ -207,8 +209,6 @@ export class McpSquaredServer {
         });
       }
     });
-
-    this.registerMetaTools(this.mcpServer);
   }
 
   /**
@@ -220,9 +220,9 @@ export class McpSquaredServer {
       {
         name,
         version,
-        title: "MCP² Meta Router",
+        title: "MCP² Capability Router",
         description:
-          "Discover and execute tools across upstream MCP servers through a compact meta-tool interface.",
+          "Execute capability-first tools routed to connected upstream MCP servers.",
       },
       {
         capabilities: {
@@ -241,122 +241,12 @@ export class McpSquaredServer {
    * and action-oriented.
    */
   private buildServerInstructions(): string {
-    const codeSearchNamespaces = this.getCodeSearchNamespaces();
-
-    const codeSearchHint =
-      codeSearchNamespaces.length > 0
-        ? ` Prefer these configured code-search namespaces when relevant: ${codeSearchNamespaces.join(", ")}.`
-        : "";
-
     return [
-      "Use discovery-first workflow: call `find_tools` before defaulting to local shell discovery (for example `grep`/`rg`).",
-      `For codebase lookup tasks, start with \`find_tools\` queries such as "code search", "find symbol", or "references".${codeSearchHint}`,
-      "After choosing a candidate, call `describe_tools` to confirm schema, then call `execute` with a qualified tool name (`namespace:tool_name`).",
-      "If capabilities are unclear or a name is ambiguous, call `list_namespaces`.",
+      "Tool surface is generated at connect time from inferred upstream capabilities.",
+      "Each capability tool accepts `action`, `arguments`, and optional `confirmation_token`.",
+      'Call a capability tool with `action = "__describe_actions"` to inspect available actions and schemas.',
+      "Use returned action IDs for execution calls; if disambiguation is required, choose one candidate action and retry.",
     ].join(" ");
-  }
-
-  /**
-   * Returns namespace keys that likely provide code-search capabilities.
-   */
-  private getCodeSearchNamespaces(): string[] {
-    const configured =
-      this.config.operations.findTools.preferredNamespacesByIntent.codeSearch;
-    const upstreamKeys = Object.keys(this.config.upstreams);
-
-    if (configured.length > 0) {
-      const deduped = [...new Set(configured)];
-      const present = deduped.filter((ns) => upstreamKeys.includes(ns));
-      // Prefer only connected/configured namespaces when possible, but keep
-      // user-specified values if upstreams are not yet loaded.
-      return present.length > 0 ? present : deduped;
-    }
-
-    return upstreamKeys.filter((key) =>
-      /(auggie|augment|code|source|repo|search)/i.test(key),
-    );
-  }
-
-  /**
-   * Lightweight intent detector for codebase lookup queries.
-   */
-  private isCodeSearchQuery(query: string): boolean {
-    return (
-      /\b(codebase|source code|repository|repo)\b/i.test(query) ||
-      /\b(code search|search code|find symbol|symbol lookup|definition|references?|usages?)\b/i.test(
-        query,
-      )
-    );
-  }
-
-  /**
-   * Boosts likely code-search tools for codebase-oriented queries.
-   */
-  private rankToolsForQuery<
-    T extends ToolSummary & { description?: string | null },
-  >(tools: T[], query: string): T[] {
-    if (!this.isCodeSearchQuery(query) || tools.length < 2) {
-      return tools;
-    }
-
-    const preferredNamespaces = new Set(this.getCodeSearchNamespaces());
-
-    const scored = tools.map((tool, index) => {
-      const haystack =
-        `${tool.serverKey} ${tool.name} ${tool.description ?? ""}`.toLowerCase();
-
-      let score = 0;
-      if (preferredNamespaces.has(tool.serverKey)) score += 100;
-      if (/(auggie|augment)/i.test(tool.serverKey)) score += 40;
-      if (/\b(search|find|query|lookup)\b/.test(haystack)) score += 15;
-      if (
-        /\b(code|symbol|definition|reference|repo|repository|source)\b/.test(
-          haystack,
-        )
-      ) {
-        score += 20;
-      }
-
-      return { tool, index, score };
-    });
-
-    scored.sort((a, b) => {
-      if (a.score === b.score) {
-        return a.index - b.index;
-      }
-      return b.score - a.score;
-    });
-
-    return scored.map((entry) => entry.tool);
-  }
-
-  /**
-   * Builds lightweight guidance attached to find_tools responses.
-   */
-  private buildFindToolsGuidance(query: string): {
-    nextStep: string;
-    preferredNamespaces?: string[];
-    note?: string;
-  } {
-    const guidance: {
-      nextStep: string;
-      preferredNamespaces?: string[];
-      note?: string;
-    } = {
-      nextStep:
-        "Use describe_tools for selected candidates, then execute with a qualified name.",
-    };
-
-    if (this.isCodeSearchQuery(query)) {
-      const preferredNamespaces = this.getCodeSearchNamespaces();
-      if (preferredNamespaces.length > 0) {
-        guidance.preferredNamespaces = preferredNamespaces;
-        guidance.note =
-          "For codebase exploration, prefer these namespaces before local shell grep/rg.";
-      }
-    }
-
-    return guidance;
   }
 
   /**
@@ -365,8 +255,12 @@ export class McpSquaredServer {
    */
   createSessionServer(): McpServer {
     const server = this.createMcpServer(this.serverName, this.serverVersion);
-    this.registerMetaTools(server);
+    this.registerConfiguredToolSurface(server);
     return server;
+  }
+
+  private registerConfiguredToolSurface(server: McpServer): void {
+    this.registerCapabilityRouters(server);
   }
 
   private runTaskSpan<T>(
@@ -385,645 +279,444 @@ export class McpSquaredServer {
     );
   }
 
-  /**
-   * Filters tools based on security policy visibility.
-   * Removes blocked tools and marks confirm-required tools.
-   *
-   * @param tools - Array of tools to filter
-   * @returns Filtered array with requiresConfirmation flag added where applicable
-   * @internal
-   */
-  private filterToolsByPolicy<T extends { name: string; serverKey: string }>(
-    tools: T[],
-  ): Array<T & { requiresConfirmation?: boolean }> {
-    return tools
-      .map((tool) => {
-        const visibility = getToolVisibilityCompiled(
-          tool.serverKey,
-          tool.name,
-          this.compiledPolicy,
-        );
-        if (!visibility.visible) {
-          return null;
+  private toActionToken(value: string): string {
+    const normalized = value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .replace(/_+/g, "_");
+    return normalized.length > 0 ? normalized : "tool";
+  }
+
+  private capabilityTitle(capability: CapabilityId): string {
+    return capability
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }
+
+  private capabilitySummary(capability: CapabilityId): string {
+    switch (capability) {
+      case "code_search":
+        return "Search and retrieve source-code context.";
+      case "docs":
+        return "Query and read technical documentation.";
+      case "browser_automation":
+        return "Automate browser interactions and diagnostics.";
+      case "issue_tracking":
+        return "Work with issues, tickets, and project tracking.";
+      case "cms_content":
+        return "Manage content and CMS resources.";
+      case "design":
+        return "Create and inspect design artifacts and visuals.";
+      case "hosting_deploy":
+        return "Manage deployments, hosting, and infrastructure operations.";
+      case "time_util":
+        return "Resolve time, timezone, and date utilities.";
+      case "research":
+        return "Run web/research collection and synthesis operations.";
+      default:
+        return "Run general-purpose capability actions.";
+    }
+  }
+
+  private actionSummary(
+    description: string | null | undefined,
+    capability: CapabilityId,
+  ): string {
+    if (typeof description === "string") {
+      const singleLine = description.split(/\r?\n/, 1)[0]?.trim() ?? "";
+      if (singleLine.length > 0) {
+        return singleLine;
+      }
+    }
+    return `Execute ${this.capabilityTitle(capability)} action`;
+  }
+
+  private buildCapabilityRouters(): CapabilityRouter[] {
+    const status = this.cataloger.getStatus();
+    const inventories = [...status.entries()]
+      .filter(([, info]) => info.status === "connected")
+      .map(([namespace]) => ({
+        namespace,
+        tools: this.cataloger.getToolsForServer(namespace),
+      }))
+      .sort((a, b) => a.namespace.localeCompare(b.namespace));
+
+    if (inventories.length === 0) {
+      return [];
+    }
+
+    const overrides = {
+      ...this.computedCapabilityOverrides,
+      ...this.config.operations.dynamicToolSurface.capabilityOverrides,
+    };
+    const grouping = groupNamespacesByCapability(inventories, overrides);
+    const candidates: CapabilityActionRoute[] = [];
+    const reservedNormalized = this.toActionToken(DESCRIBE_ACTION);
+
+    for (const inventory of inventories) {
+      const capability = grouping.byNamespace[inventory.namespace] ?? "general";
+      const sortedTools = [...inventory.tools].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
+
+      for (const tool of sortedTools) {
+        let baseAction = this.toActionToken(tool.name);
+        if (
+          baseAction === DESCRIBE_ACTION ||
+          baseAction === reservedNormalized
+        ) {
+          baseAction = `${DESCRIBE_ACTION}__tool`;
         }
-        return visibility.requiresConfirmation
-          ? { ...tool, requiresConfirmation: true as const }
-          : tool;
-      })
-      .filter((t): t is T & { requiresConfirmation?: boolean } => t !== null);
+
+        candidates.push({
+          capability,
+          action: baseAction,
+          baseAction,
+          serverKey: inventory.namespace,
+          toolName: tool.name,
+          qualifiedName: `${inventory.namespace}:${tool.name}`,
+          inputSchema: tool.inputSchema,
+          summary: this.actionSummary(tool.description, capability),
+        });
+      }
+    }
+
+    const byCapabilityAction = new Map<string, CapabilityActionRoute[]>();
+    for (const candidate of candidates) {
+      const key = `${candidate.capability}:${candidate.baseAction}`;
+      const existing = byCapabilityAction.get(key) ?? [];
+      existing.push(candidate);
+      byCapabilityAction.set(key, existing);
+    }
+
+    const resolved: CapabilityActionRoute[] = [];
+    const sortedKeys = [...byCapabilityAction.keys()].sort((a, b) =>
+      a.localeCompare(b),
+    );
+
+    for (const key of sortedKeys) {
+      const records = (byCapabilityAction.get(key) ?? []).sort((a, b) =>
+        a.qualifiedName.localeCompare(b.qualifiedName),
+      );
+      records.forEach((record, index) => {
+        resolved.push({
+          ...record,
+          action:
+            index === 0
+              ? record.baseAction
+              : `${record.baseAction}__${index + 1}`,
+        });
+      });
+    }
+
+    const byCapability = new Map<CapabilityId, CapabilityActionRoute[]>();
+    for (const route of resolved) {
+      const existing = byCapability.get(route.capability) ?? [];
+      existing.push(route);
+      byCapability.set(route.capability, existing);
+    }
+
+    return [...byCapability.entries()]
+      .map(([capability, actions]) => ({
+        capability,
+        actions: actions.sort((a, b) => a.action.localeCompare(b.action)),
+      }))
+      .sort((a, b) => a.capability.localeCompare(b.capability));
   }
 
-  /**
-   * Registers the three meta-tools: find_tools, describe_tools, and execute.
-   * These tools provide the core functionality for tool discovery and execution.
-   *
-   * @internal
-   */
-  private registerMetaTools(server: McpServer): void {
-    server.registerTool(
-      "find_tools",
-      {
-        title: "Discover Upstream Tools",
-        description:
-          "Call this first for capability discovery. Search available tools across all connected upstream MCP servers and return ranked tool summaries matching the query.",
-        annotations: {
-          readOnlyHint: true,
-          openWorldHint: false,
-        },
-        inputSchema: {
-          query: z
-            .string()
-            .describe(
-              'Natural language query describing the task (for example: "code search", "find symbol", "create issue")',
-            ),
-          limit: z
-            .number()
-            .int()
-            .min(1)
-            .max(this.maxLimit)
-            .default(this.config.operations.findTools.defaultLimit)
-            .describe("Maximum number of results to return"),
-          mode: SearchModeSchema.optional().describe(
-            'Search mode: "fast" (FTS5), "semantic" (embeddings), or "hybrid" (FTS5 + rerank)',
-          ),
-          detail_level: DetailLevelSchema.optional().describe(
-            'Level of detail: "L0" (name only), "L1" (summary with description, default), "L2" (full schema)',
-          ),
-        },
-      },
-      async (args) =>
-        this.runTaskSpan("find_tools", async () => {
-          const requestId = this.statsCollector.startRequest();
-          const startTime = Date.now();
-          let success = false;
-
-          try {
-            const result = await this.retriever.search(args.query, {
-              limit: args.limit,
-              mode: args.mode,
-            });
-
-            // Apply security policy filtering
-            const filteredTools = this.filterToolsByPolicy(result.tools);
-            const rankedTools = this.rankToolsForQuery(
-              filteredTools,
-              args.query,
-            );
-
-            const detailLevel: DetailLevel =
-              args.detail_level ??
-              this.config.operations.findTools.defaultDetailLevel;
-            const tools = this.formatToolsForDetailLevel(
-              rankedTools,
-              detailLevel,
-            );
-            const guidance = this.buildFindToolsGuidance(args.query);
-
-            // Get bundle suggestions if selection caching is enabled
-            const selectionCacheConfig = this.config.operations.selectionCache;
-            let suggestedTools:
-              | Array<{ tools: string[]; frequency: number }>
-              | undefined;
-
-            if (
-              selectionCacheConfig.enabled &&
-              selectionCacheConfig.maxBundleSuggestions > 0
-            ) {
-              const toolKeys = filteredTools.map(
-                (t) => `${t.serverKey}:${t.name}`,
-              );
-              const suggestions = this.retriever
-                .getIndexStore()
-                .getSuggestedBundles(
-                  toolKeys,
-                  selectionCacheConfig.minCooccurrenceThreshold,
-                  selectionCacheConfig.maxBundleSuggestions,
-                );
-
-              if (suggestions.length > 0) {
-                suggestedTools = suggestions.map((s) => ({
-                  tools: [s.toolKey],
-                  frequency: s.count,
-                }));
-              }
-            }
-
-            success = true;
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    query: result.query,
-                    totalMatches: filteredTools.length,
-                    detailLevel,
-                    searchMode: result.searchMode,
-                    embeddingsAvailable: this.retriever.hasEmbeddings(),
-                    tools,
-                    guidance,
-                    ...(suggestedTools && { suggestedTools }),
-                  }),
-                },
-              ],
-            };
-          } finally {
-            const responseTime = Date.now() - startTime;
-            this.statsCollector.endRequest(
-              requestId,
-              success,
-              responseTime,
-              "find_tools",
-              "mcp-squared",
-            );
-          }
-        }),
-    );
-
-    server.registerTool(
-      "describe_tools",
-      {
-        title: "Inspect Tool Schemas",
-        description:
-          "After find_tools, fetch full JSON schemas for selected tools to validate required arguments before execution.",
-        annotations: {
-          readOnlyHint: true,
-          openWorldHint: false,
-        },
-        inputSchema: {
-          tool_names: z
-            .array(z.string())
-            .min(1)
-            .max(20)
-            .describe("List of tool names to get schemas for"),
-        },
-      },
-      async (args) =>
-        this.runTaskSpan("describe_tools", async () => {
-          const requestId = this.statsCollector.startRequest();
-          const startTime = Date.now();
-          let success = false;
-
-          try {
-            const result = this.retriever.getTools(args.tool_names);
-
-            // Apply security policy filtering
-            const filteredTools = this.filterToolsByPolicy(result.tools);
-
-            const schemas = filteredTools.map((tool) => ({
-              name: tool.name,
-              qualifiedName: `${tool.serverKey}:${tool.name}`,
-              description: tool.description,
-              serverKey: tool.serverKey,
-              inputSchema: tool.inputSchema,
-              ...(tool.requiresConfirmation && { requiresConfirmation: true }),
-            }));
-
-            const toolKey = (tool: {
-              serverKey: string;
-              name: string;
-            }): string => `${tool.serverKey}:${tool.name}`;
-
-            // Find blocked tools (requested but filtered out by policy)
-            const filteredKeys = new Set(filteredTools.map(toolKey));
-            const blocked = result.tools
-              .filter((tool) => !filteredKeys.has(toolKey(tool)))
-              .map(toolKey);
-
-            // Find names that weren't found (not in tools and not ambiguous)
-            const foundQualified = new Set(result.tools.map(toolKey));
-            const foundBare = new Set(result.tools.map((t) => t.name));
-            const ambiguousNames = new Set(result.ambiguous.map((a) => a.name));
-            const notFound = args.tool_names.filter(
-              (name) =>
-                !ambiguousNames.has(name) &&
-                !foundQualified.has(name) &&
-                !foundBare.has(name),
-            );
-
-            success = true;
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    schemas,
-                    ambiguous:
-                      result.ambiguous.length > 0
-                        ? result.ambiguous
-                        : undefined,
-                    notFound: notFound.length > 0 ? notFound : undefined,
-                    blocked: blocked.length > 0 ? blocked : undefined,
-                  }),
-                },
-              ],
-            };
-          } finally {
-            const responseTime = Date.now() - startTime;
-            this.statsCollector.endRequest(
-              requestId,
-              success,
-              responseTime,
-              "describe_tools",
-              "mcp-squared",
-            );
-          }
-        }),
-    );
-
-    server.registerTool(
-      "execute",
-      {
-        title: "Execute Upstream Tool",
-        description:
-          "Execute an upstream tool after find_tools/describe_tools selection. The tool must exist and the arguments must match its schema.",
-        annotations: {
-          readOnlyHint: false,
-          destructiveHint: false,
-          openWorldHint: true,
-        },
-        inputSchema: {
-          tool_name: z.string().describe("Name of the tool to execute"),
-          arguments: z
-            .record(z.string(), z.unknown())
-            .default({})
-            .describe("Arguments to pass to the tool"),
-          confirmation_token: z
-            .string()
-            .optional()
-            .describe(
-              "Optional confirmation token for tools that require explicit confirmation",
-            ),
-        },
-      },
-      async (args) =>
-        this.runTaskSpan("execute", async () => {
-          const requestId = this.statsCollector.startRequest();
-          const startTime = Date.now();
-          let success = false;
-          let toolName: string | undefined;
-          let serverKey: string | undefined;
-
-          try {
-            // Look up the tool to get its server key (supports qualified names)
-            const lookupResult = this.cataloger.findTool(args.tool_name);
-
-            if (lookupResult.ambiguous) {
-              return {
-                content: [
-                  {
-                    type: "text" as const,
-                    text: JSON.stringify({
-                      error: `Ambiguous tool name "${args.tool_name}". Use a qualified name.`,
-                      alternatives: lookupResult.alternatives,
-                    }),
-                  },
-                ],
-                isError: true,
-              };
-            }
-
-            if (!lookupResult.tool) {
-              return {
-                content: [
-                  {
-                    type: "text" as const,
-                    text: JSON.stringify({
-                      error: `Tool not found: ${args.tool_name}`,
-                    }),
-                  },
-                ],
-                isError: true,
-              };
-            }
-
-            const tool = lookupResult.tool;
-            toolName = tool.name;
-            serverKey = tool.serverKey;
-
-            // Evaluate security policy
-            const policyResult = evaluatePolicy(
-              {
-                serverKey: tool.serverKey,
-                toolName: tool.name,
-                confirmationToken: args.confirmation_token,
-              },
-              this.config,
-            );
-
-            // Handle policy decision
-            if (policyResult.decision === "block") {
-              return {
-                content: [
-                  {
-                    type: "text" as const,
-                    text: JSON.stringify({
-                      error: policyResult.reason,
-                      blocked: true,
-                    }),
-                  },
-                ],
-                isError: true,
-              };
-            }
-
-            if (policyResult.decision === "confirm") {
-              return {
-                content: [
-                  {
-                    type: "text" as const,
-                    text: JSON.stringify({
-                      requires_confirmation: true,
-                      confirmation_token: policyResult.confirmationToken,
-                      message: policyResult.reason,
-                    }),
-                  },
-                ],
-                isError: false,
-              };
-            }
-
-            const qualifiedToolName = `${tool.serverKey}:${tool.name}`;
-
-            this.guard.enforce({
-              agent: this.safetyAgent,
-              tool: qualifiedToolName,
-              action: "call",
-              params: args.arguments,
-            });
-
-            // Policy allows execution - proceed
-            const result = await tool_span(
-              this.obsSink,
-              {
-                agent: this.safetyAgent,
-                tool: qualifiedToolName,
-                action: "call",
-                playbook: this.guard.playbook,
-                env: this.guard.agentEnv,
-              },
-              () => this.cataloger.callTool(args.tool_name, args.arguments),
-            );
-
-            // Track tool usage for selection caching (only on success)
-            if (
-              !result.isError &&
-              this.config.operations.selectionCache.enabled
-            ) {
-              const toolKey = `${tool.serverKey}:${tool.name}`;
-              this.selectionTracker.trackToolUsage(toolKey);
-
-              // Flush co-occurrences if we have multiple tools in session
-              if (this.selectionTracker.getSessionToolCount() >= 2) {
-                this.selectionTracker.flushToStore(
-                  this.retriever.getIndexStore(),
-                );
-              }
-            }
-
-            success = !result.isError;
-            return {
-              content: result.content.map((c) => {
-                if (typeof c === "object" && c !== null && "type" in c) {
-                  return c as { type: "text"; text: string };
-                }
-                return {
-                  type: "text" as const,
-                  text: JSON.stringify(c),
-                };
-              }),
-              isError: result.isError,
-            };
-          } catch (err) {
-            const errorMessage =
-              err instanceof Error ? err.message : String(err);
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    error: errorMessage,
-                  }),
-                },
-              ],
-              isError: true,
-            };
-          } finally {
-            const responseTime = Date.now() - startTime;
-            this.statsCollector.endRequest(
-              requestId,
-              success,
-              responseTime,
-              toolName,
-              serverKey,
-            );
-          }
-        }),
-    );
-
-    server.registerTool(
-      "clear_selection_cache",
-      {
-        title: "Reset Selection Cache",
-        description:
-          "Clears all learned tool co-occurrence patterns. Use this to reset the selection cache if suggestions become stale or irrelevant.",
-        annotations: {
-          readOnlyHint: false,
-          destructiveHint: true,
-          idempotentHint: true,
-          openWorldHint: false,
-        },
-        inputSchema: {},
-      },
-      async () =>
-        this.runTaskSpan("clear_selection_cache", async () => {
-          const requestId = this.statsCollector.startRequest();
-          const startTime = Date.now();
-          let success = false;
-
-          try {
-            const countBefore = this.retriever
-              .getIndexStore()
-              .getCooccurrenceCount();
-            this.retriever.getIndexStore().clearCooccurrences();
-            this.selectionTracker.reset();
-
-            success = true;
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    message: "Selection cache cleared",
-                    patternsRemoved: countBefore,
-                  }),
-                },
-              ],
-            };
-          } finally {
-            const responseTime = Date.now() - startTime;
-            this.statsCollector.endRequest(
-              requestId,
-              success,
-              responseTime,
-              "clear_selection_cache",
-              "mcp-squared",
-            );
-          }
-        }),
-    );
-
-    server.registerTool(
-      "list_namespaces",
-      {
-        title: "List Upstream Namespaces",
-        description:
-          "List available namespaces (upstream MCP servers) and optional tool names. Use this to discover routing options and disambiguate qualified names (namespace:tool_name).",
-        annotations: {
-          readOnlyHint: true,
-          openWorldHint: false,
-        },
-        inputSchema: {
-          include_tools: z
-            .boolean()
-            .default(false)
-            .describe(
-              "If true, includes the list of tool names available in each namespace",
-            ),
-        },
-      },
-      async (args) =>
-        this.runTaskSpan("list_namespaces", async () => {
-          const requestId = this.statsCollector.startRequest();
-          const startTime = Date.now();
-          let success = false;
-
-          try {
-            const status = this.cataloger.getStatus();
-            const namespaces: Array<{
-              name: string;
-              status: string;
-              toolCount: number;
-              error?: string;
-              tools?: string[];
-            }> = [];
-
-            for (const [key, info] of status) {
-              const tools = this.cataloger.getToolsForServer(key);
-              const namespace: {
-                name: string;
-                status: string;
-                toolCount: number;
-                error?: string;
-                tools?: string[];
-              } = {
-                name: key,
-                status: info.status,
-                toolCount: tools.length,
-              };
-
-              if (info.error) {
-                namespace.error = info.error;
-              }
-
-              if (args.include_tools && tools.length > 0) {
-                namespace.tools = tools.map((t) => t.name);
-              }
-
-              namespaces.push(namespace);
-            }
-
-            // Also detect tool conflicts to help with disambiguation
-            const conflicts = this.cataloger.getConflictingTools();
-            const conflictingTools: Record<string, string[]> = {};
-            for (const [toolName, qualifiedNames] of conflicts) {
-              conflictingTools[toolName] = qualifiedNames;
-            }
-
-            success = true;
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: JSON.stringify({
-                    namespaces,
-                    totalNamespaces: namespaces.length,
-                    connectedCount: namespaces.filter(
-                      (n) => n.status === "connected",
-                    ).length,
-                    ...(Object.keys(conflictingTools).length > 0 && {
-                      conflictingTools,
-                      conflictNote:
-                        "These tools exist on multiple servers. Use qualified names (namespace:tool_name) to disambiguate.",
-                    }),
-                  }),
-                },
-              ],
-            };
-          } finally {
-            const responseTime = Date.now() - startTime;
-            this.statsCollector.endRequest(
-              requestId,
-              success,
-              responseTime,
-              "list_namespaces",
-              "mcp-squared",
-            );
-          }
-        }),
-    );
-  }
-
-  /**
-   * Formats tool results based on the requested detail level.
-   * Preserves the requiresConfirmation flag through formatting.
-   *
-   * @param tools - Array of tool summaries from search results (may include requiresConfirmation)
-   * @param level - Detail level (L0, L1, or L2)
-   * @returns Formatted tools at the requested detail level
-   * @internal
-   */
-  private formatToolsForDetailLevel(
-    tools: Array<ToolSummary & { requiresConfirmation?: boolean }>,
-    level: DetailLevel,
-  ): ToolResult[] {
-    switch (level) {
-      case "L0":
-        // Name only - minimal context footprint
-        return tools.map(
-          (t): ToolIdentity & { requiresConfirmation?: boolean } => ({
-            name: t.name,
-            serverKey: t.serverKey,
-            ...(t.requiresConfirmation && { requiresConfirmation: true }),
-          }),
-        );
-
-      case "L2": {
-        // Full schema - include inputSchema for immediate execution
-        return tools.map(
-          (t): ToolFullSchema & { requiresConfirmation?: boolean } => {
-            const { tool } = this.cataloger.findTool(
-              `${t.serverKey}:${t.name}`,
-            );
-            return {
-              name: t.name,
-              description: t.description,
-              serverKey: t.serverKey,
-              inputSchema: tool?.inputSchema ?? { type: "object" },
-              ...(t.requiresConfirmation && { requiresConfirmation: true }),
-            };
-          },
-        );
+  private registerCapabilityRouters(server: McpServer): void {
+    const routers = this.buildCapabilityRouters();
+    for (const router of routers) {
+      if (router.actions.length === 0) {
+        continue;
       }
 
-      default:
-        // L1: Summary (default) - name + description
-        return tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          serverKey: t.serverKey,
-          ...(t.requiresConfirmation && { requiresConfirmation: true }),
-        }));
+      server.registerTool(
+        router.capability,
+        {
+          title: this.capabilityTitle(router.capability),
+          description: this.capabilitySummary(router.capability),
+          annotations: {
+            readOnlyHint: false,
+            destructiveHint: false,
+            openWorldHint: true,
+          },
+          inputSchema: {
+            action: z
+              .string()
+              .describe(
+                `Action ID for ${router.capability}. Use "${DESCRIBE_ACTION}" to inspect available actions and schemas.`,
+              ),
+            arguments: z
+              .record(z.string(), z.unknown())
+              .default({})
+              .describe("Arguments for the selected capability action"),
+            confirmation_token: z
+              .string()
+              .optional()
+              .describe(
+                "Optional confirmation token for actions that require explicit confirmation",
+              ),
+          },
+        },
+        async (rawArgs) =>
+          this.runTaskSpan(router.capability, async () => {
+            const requestId = this.statsCollector.startRequest();
+            const startTime = Date.now();
+            let success = false;
+
+            try {
+              const parsedArgs = isRecord(rawArgs) ? { ...rawArgs } : {};
+              const action =
+                typeof parsedArgs["action"] === "string"
+                  ? parsedArgs["action"]
+                  : "";
+              const confirmationToken =
+                typeof parsedArgs["confirmation_token"] === "string"
+                  ? parsedArgs["confirmation_token"]
+                  : undefined;
+              const actionArgs = isRecord(parsedArgs["arguments"])
+                ? (parsedArgs["arguments"] as Record<string, unknown>)
+                : {};
+
+              if (action.length === 0) {
+                return {
+                  content: [
+                    {
+                      type: "text" as const,
+                      text: JSON.stringify({
+                        error: "Missing required action",
+                        capability: router.capability,
+                      }),
+                    },
+                  ],
+                  isError: true,
+                };
+              }
+
+              const visibleActions = router.actions
+                .map((route) => {
+                  const visibility = getToolVisibilityCompiled(
+                    router.capability,
+                    route.action,
+                    this.compiledPolicy,
+                  );
+                  if (!visibility.visible) {
+                    return null;
+                  }
+                  return {
+                    action: route.action,
+                    summary: route.summary,
+                    inputSchema: route.inputSchema,
+                    requiresConfirmation: visibility.requiresConfirmation,
+                  };
+                })
+                .filter(
+                  (
+                    entry,
+                  ): entry is {
+                    action: string;
+                    summary: string;
+                    inputSchema: ToolInputSchema;
+                    requiresConfirmation: boolean;
+                  } => entry !== null,
+                )
+                .sort((a, b) => a.action.localeCompare(b.action));
+
+              if (action === DESCRIBE_ACTION) {
+                success = true;
+                return {
+                  content: [
+                    {
+                      type: "text" as const,
+                      text: JSON.stringify({
+                        capability: router.capability,
+                        actions: visibleActions,
+                        totalActions: visibleActions.length,
+                      }),
+                    },
+                  ],
+                };
+              }
+
+              const ambiguousCandidates = router.actions
+                .filter((route) => route.baseAction === action)
+                .map((route) => route.action)
+                .sort((a, b) => a.localeCompare(b));
+
+              if (ambiguousCandidates.length > 1) {
+                return {
+                  content: [
+                    {
+                      type: "text" as const,
+                      text: JSON.stringify({
+                        requires_disambiguation: true,
+                        capability: router.capability,
+                        action,
+                        candidates: ambiguousCandidates,
+                      }),
+                    },
+                  ],
+                  isError: true,
+                };
+              }
+
+              const route = router.actions.find(
+                (entry) => entry.action === action,
+              );
+              if (!route) {
+                return {
+                  content: [
+                    {
+                      type: "text" as const,
+                      text: JSON.stringify({
+                        error: "Unknown action",
+                        capability: router.capability,
+                        action,
+                        availableActions: visibleActions.map((a) => a.action),
+                      }),
+                    },
+                  ],
+                  isError: true,
+                };
+              }
+
+              const callResult = await this.executeRoutedTool({
+                capability: router.capability,
+                action: route.action,
+                qualifiedToolName: route.qualifiedName,
+                toolNameForCall: route.qualifiedName,
+                args: actionArgs,
+                confirmationToken,
+              });
+              success = !callResult.isError;
+              return callResult;
+            } catch {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: JSON.stringify({
+                      error: "Action execution failed",
+                    }),
+                  },
+                ],
+                isError: true,
+              };
+            } finally {
+              const responseTime = Date.now() - startTime;
+              this.statsCollector.endRequest(
+                requestId,
+                success,
+                responseTime,
+                router.capability,
+                "capability",
+              );
+            }
+          }),
+      );
     }
+  }
+
+  private normalizeToolResultContent(content: unknown[]): Array<{
+    type: "text";
+    text: string;
+  }> {
+    return content.map((entry) => {
+      if (typeof entry === "object" && entry !== null && "type" in entry) {
+        return entry as { type: "text"; text: string };
+      }
+      return {
+        type: "text" as const,
+        text: JSON.stringify(entry),
+      };
+    });
+  }
+
+  private async executeRoutedTool(args: {
+    capability: CapabilityId;
+    action: string;
+    qualifiedToolName: string;
+    toolNameForCall: string;
+    args: Record<string, unknown>;
+    confirmationToken?: string;
+  }): Promise<{
+    content: Array<{ type: "text"; text: string }>;
+    isError: boolean;
+  }> {
+    const policyResult = evaluatePolicy(
+      {
+        capability: args.capability,
+        action: args.action,
+        confirmationToken: args.confirmationToken,
+      },
+      this.config,
+    );
+
+    if (policyResult.decision === "block") {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              error: "Action blocked by security policy",
+              blocked: true,
+            }),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    if (policyResult.decision === "confirm") {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              requires_confirmation: true,
+              confirmation_token: policyResult.confirmationToken,
+              message: "Action requires confirmation by security policy",
+            }),
+          },
+        ],
+        isError: false,
+      };
+    }
+
+    this.guard.enforce({
+      agent: this.safetyAgent,
+      tool: `${args.capability}:${args.action}`,
+      action: "call",
+      params: args.args,
+    });
+
+    const result = await tool_span(
+      this.obsSink,
+      {
+        agent: this.safetyAgent,
+        tool: `${args.capability}:${args.action}`,
+        action: "call",
+        playbook: this.guard.playbook,
+        env: this.guard.agentEnv,
+      },
+      () => this.cataloger.callTool(args.toolNameForCall, args.args),
+    );
+
+    if (!result.isError && this.config.operations.selectionCache.enabled) {
+      const toolKey = `${args.capability}:${args.action}`;
+      this.selectionTracker.trackToolUsage(toolKey);
+      if (this.selectionTracker.getSessionToolCount() >= 2) {
+        this.selectionTracker.flushToStore(this.retriever.getIndexStore());
+      }
+    }
+
+    return {
+      content: this.normalizeToolResultContent(result.content),
+      isError: result.isError ?? false,
+    };
   }
 
   /**
@@ -1092,6 +785,54 @@ export class McpSquaredServer {
   }
 
   /**
+   * Runs semantic capability classification using embeddings when hybrid mode
+   * is configured. Results are stored as computed overrides that feed into
+   * the existing capability routing system.
+   */
+  private async classifyNamespacesSemantic(): Promise<void> {
+    const generator = this.retriever.getEmbeddingGenerator();
+    if (!generator) {
+      console.error(
+        "[mcp²] Hybrid inference: embeddings not available, falling back to heuristic.",
+      );
+      return;
+    }
+
+    try {
+      const { SemanticCapabilityClassifier } = await import(
+        "../capabilities/semantic-classifier.js"
+      );
+      const threshold =
+        this.config.operations.dynamicToolSurface.semanticConfidenceThreshold;
+      const classifier = new SemanticCapabilityClassifier(generator, {
+        confidenceThreshold: threshold,
+      });
+      await classifier.initializeReferences();
+
+      const status = this.cataloger.getStatus();
+      const inventories = [...status.entries()]
+        .filter(([, info]) => info.status === "connected")
+        .map(([namespace]) => ({
+          namespace,
+          tools: this.cataloger.getToolsForServer(namespace),
+        }));
+
+      const result = await classifier.classifyBatch(inventories);
+      this.computedCapabilityOverrides = result.overrides;
+
+      const count = Object.keys(result.overrides).length;
+      console.error(
+        `[mcp²] Hybrid inference: classified ${count}/${inventories.length} namespaces semantically (${Math.round(result.inferenceMs)}ms).`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[mcp²] Hybrid inference: classification failed — ${message}. Falling back to heuristic.`,
+      );
+    }
+  }
+
+  /**
    * Starts the MCP server and begins listening for client connections via stdio.
    * Automatically connects to all enabled upstream servers and syncs the tool index.
    *
@@ -1099,6 +840,11 @@ export class McpSquaredServer {
    */
   async start(): Promise<void> {
     await this.startCore();
+
+    if (!this.baseToolsRegistered) {
+      this.registerConfiguredToolSurface(this.mcpServer);
+      this.baseToolsRegistered = true;
+    }
 
     // Start the MCP transport (stdio)
     this.transport = new StdioServerTransport();
@@ -1164,6 +910,11 @@ export class McpSquaredServer {
           `[mcp²] Embeddings: initialization failed — ${message}. Falling back to fast (FTS5) search.`,
         );
       }
+    }
+
+    // Run semantic classification if hybrid inference is configured
+    if (this.config.operations.dynamicToolSurface.inference === "hybrid") {
+      await this.classifyNamespacesSemantic();
     }
 
     // Update index refresh time

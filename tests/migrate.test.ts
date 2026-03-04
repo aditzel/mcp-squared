@@ -26,6 +26,7 @@ describe("runMigrate", () => {
   let originalEnv: EnvSnapshot;
   let logSpy: ReturnType<typeof spyOn>;
   let errorSpy: ReturnType<typeof spyOn>;
+  let warnSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     tmpDir = join(tmpdir(), `mcp2-migrate-test-${Date.now()}`);
@@ -42,11 +43,13 @@ describe("runMigrate", () => {
 
     logSpy = spyOn(console, "log").mockImplementation(() => {});
     errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    warnSpy = spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
     logSpy.mockRestore();
     errorSpy.mockRestore();
+    warnSpy.mockRestore();
 
     setEnv("MCP_SQUARED_CONFIG", originalEnv.mcpSquaredConfig);
     setEnv("XDG_CONFIG_HOME", originalEnv.xdgConfigHome);
@@ -123,6 +126,106 @@ describe("runMigrate", () => {
     expect(readFileSync(configPath, "utf-8")).toBe(original);
     expect(logSpy).toHaveBeenCalledWith(
       expect.stringContaining("[dry-run] Would update"),
+    );
+  });
+
+  test("translates legacy server:tool security patterns to capability:action", async () => {
+    writeFileSync(
+      configPath,
+      [
+        "schemaVersion = 1",
+        "[security.tools]",
+        'allow = ["auggie:codebase-retrieval", "time:*", "*:list-things"]',
+        "block = []",
+        'confirm = ["*:*"]',
+        "",
+        "[operations.findTools.preferredNamespacesByIntent]",
+        "codeSearch = []",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    await runMigrate({ dryRun: false });
+
+    const parsed = parseToml(readFileSync(configPath, "utf-8")) as Record<
+      string,
+      unknown
+    >;
+    const security = parsed["security"] as Record<string, unknown>;
+    const tools = security["tools"] as Record<string, unknown>;
+
+    expect(tools["allow"]).toEqual([
+      "code_search:codebase_retrieval",
+      "time_util:*",
+      "*:list_things",
+    ]);
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Translated security pattern: auggie:codebase-retrieval -> code_search:codebase_retrieval",
+      ),
+    );
+  });
+
+  test("removes deprecated dynamic tool surface keys during migration", async () => {
+    writeFileSync(
+      configPath,
+      [
+        "schemaVersion = 1",
+        "[operations.findTools.preferredNamespacesByIntent]",
+        "codeSearch = []",
+        "",
+        "[operations.dynamicToolSurface]",
+        'mode = "replace"',
+        'naming = "capability_namespace"',
+        'inference = "heuristic_with_overrides"',
+        'refresh = "on_connect"',
+      ].join("\n"),
+      "utf-8",
+    );
+
+    await runMigrate({ dryRun: false });
+
+    const parsed = parseToml(readFileSync(configPath, "utf-8")) as Record<
+      string,
+      unknown
+    >;
+    const operations = parsed["operations"] as Record<string, unknown>;
+    const dynamicToolSurface = operations["dynamicToolSurface"] as Record<
+      string,
+      unknown
+    >;
+
+    expect(dynamicToolSurface["mode"]).toBeUndefined();
+    expect(dynamicToolSurface["naming"]).toBeUndefined();
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Removed deprecated keys: operations.dynamicToolSurface.mode, operations.dynamicToolSurface.naming",
+      ),
+    );
+  });
+
+  test("reports unresolved legacy security patterns", async () => {
+    writeFileSync(
+      configPath,
+      [
+        "schemaVersion = 1",
+        "[security.tools]",
+        'allow = ["invalid-pattern-without-colon"]',
+        "block = []",
+        "confirm = []",
+        "",
+        "[operations.findTools.preferredNamespacesByIntent]",
+        "codeSearch = []",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    await runMigrate({ dryRun: true });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Unresolved security pattern 'invalid-pattern-without-colon': invalid pattern format",
+      ),
     );
   });
 

@@ -60,6 +60,8 @@ export {
 export {
   ConfigSchema,
   DEFAULT_CONFIG,
+  type DynamicToolSurfaceConfig,
+  DynamicToolSurfaceSchema,
   type EmbeddingsConfig,
   EmbeddingsSchema,
   LATEST_SCHEMA_VERSION,

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { DEFAULT_CONFIG, type McpSquaredConfig } from "@/config/schema";
 import { McpSquaredServer } from "@/server/index";
 
@@ -24,6 +24,13 @@ type SessionWithInternals = {
   };
 };
 
+function parsePayload(result: {
+  content?: Array<{ type: string; text: string }>;
+}): Record<string, unknown> {
+  const text = result.content?.[0]?.text ?? "{}";
+  return JSON.parse(text) as Record<string, unknown>;
+}
+
 describe("MCP metadata guidance", () => {
   let server: McpSquaredServer | null = null;
 
@@ -34,54 +41,51 @@ describe("MCP metadata guidance", () => {
     }
   });
 
-  test("server advertises discovery-first instructions", () => {
-    const config: McpSquaredConfig = {
-      ...DEFAULT_CONFIG,
-      upstreams: {
-        auggie: {
-          transport: "stdio",
-          enabled: true,
-          env: {},
-          stdio: {
-            command: "auggie",
-            args: [],
-          },
-        },
-      },
-    };
-
-    server = new McpSquaredServer({ config });
-
+  test("server advertises capability-first instructions", () => {
+    server = new McpSquaredServer();
     const session =
       server.createSessionServer() as unknown as SessionWithInternals;
     const instructions = session.server?._instructions;
 
     expect(instructions).toBeString();
-    expect(instructions).toContain("find_tools");
-    expect(instructions).toContain("code search");
-    expect(instructions).toContain("auggie");
+    expect(instructions).toContain("__describe_actions");
+    expect(instructions).toContain("action");
+    expect(instructions).not.toContain("find_tools");
   });
 
-  test("meta-tools expose intentful titles and annotations", () => {
+  test("capability routers expose capability-forward metadata", () => {
     server = new McpSquaredServer();
+    const cataloger = server.getCataloger();
+
+    spyOn(cataloger, "getStatus").mockReturnValue(
+      new Map([["auggie", { status: "connected", error: undefined }]]),
+    );
+    spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
+      if (key === "auggie") {
+        return [
+          {
+            name: "codebase-retrieval",
+            description: "Search code context",
+            serverKey: "auggie",
+            inputSchema: { type: "object" },
+          },
+        ];
+      }
+      return [];
+    });
+
     const session =
       server.createSessionServer() as unknown as SessionWithInternals;
     const tools = session._registeredTools;
 
-    expect(tools).toBeDefined();
-
-    const findTools = tools?.["find_tools"];
-    expect(findTools?.title).toBe("Discover Upstream Tools");
-    expect(findTools?.description).toContain("Call this first");
-    expect(findTools?.annotations?.readOnlyHint).toBe(true);
-    expect(findTools?.annotations?.openWorldHint).toBe(false);
-
-    const execute = tools?.["execute"];
-    expect(execute?.title).toBe("Execute Upstream Tool");
-    expect(execute?.description).toContain("after find_tools");
+    const codeSearch = tools?.["code_search"];
+    expect(codeSearch?.title).toBe("Code Search");
+    expect(codeSearch?.description).toContain("source-code");
+    expect(codeSearch?.description).not.toContain("Routes to");
+    expect(codeSearch?.annotations?.openWorldHint).toBe(true);
   });
 
-  test("find_tools prioritizes configured code-search namespaces", async () => {
+  test("code_search __describe_actions exposes action catalog without upstream names", async () => {
     const config: McpSquaredConfig = {
       ...DEFAULT_CONFIG,
       upstreams: {
@@ -98,100 +102,68 @@ describe("MCP metadata guidance", () => {
     };
 
     server = new McpSquaredServer({ config });
-    const indexStore = server.getRetriever().getIndexStore();
-    indexStore.indexTool({
-      name: "search_context",
-      description: "Search symbols and code across repositories",
-      serverKey: "auggie",
-      inputSchema: { type: "object" },
-    });
-    indexStore.indexTool({
-      name: "read_file",
-      description: "Read a file from the filesystem",
-      serverKey: "filesystem",
-      inputSchema: { type: "object" },
+    const cataloger = server.getCataloger();
+    spyOn(cataloger, "getStatus").mockReturnValue(
+      new Map([["auggie", { status: "connected", error: undefined }]]),
+    );
+    spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
+      if (key === "auggie") {
+        return [
+          {
+            name: "codebase-retrieval",
+            description: "Search source code and symbols",
+            serverKey: "auggie",
+            inputSchema: { type: "object" },
+          },
+        ];
+      }
+      return [];
     });
 
     const session =
       server.createSessionServer() as unknown as SessionWithInternals;
-    const findToolsHandler = session._registeredTools?.["find_tools"]?.handler;
+    const handler = session._registeredTools?.["code_search"]?.handler;
+    expect(handler).toBeDefined();
 
-    expect(findToolsHandler).toBeDefined();
-
-    const result = await findToolsHandler?.({
-      query: "search the codebase for a symbol",
-      limit: 5,
+    const result = await handler?.({
+      action: "__describe_actions",
+      arguments: {},
     });
-    const text = result?.content?.[0]?.text;
-    expect(text).toBeString();
-
-    const payload = JSON.parse(text ?? "{}") as {
-      tools?: Array<{ serverKey: string; name: string }>;
-      guidance?: { preferredNamespaces?: string[] };
-    };
-
-    expect(payload.tools?.[0]?.serverKey).toBe("auggie");
-    expect(payload.guidance?.preferredNamespaces).toContain("auggie");
+    const payload = parsePayload(result ?? {});
+    expect(payload["capability"]).toBe("code_search");
+    expect(payload["totalActions"]).toBe(1);
+    expect(JSON.stringify(payload)).not.toContain("auggie");
+    expect(JSON.stringify(payload)).not.toContain("codebase-retrieval");
   });
 
-  test("find_tools honors explicit code-search namespace preferences", async () => {
-    const config: McpSquaredConfig = {
-      ...DEFAULT_CONFIG,
-      upstreams: {
-        ctxdb: {
-          transport: "stdio",
-          enabled: true,
-          env: {},
-          stdio: {
-            command: "ctxdb",
-            args: [],
-          },
-        },
-      },
-      operations: {
-        ...DEFAULT_CONFIG.operations,
-        findTools: {
-          ...DEFAULT_CONFIG.operations.findTools,
-          preferredNamespacesByIntent: {
-            codeSearch: ["ctxdb"],
-          },
-        },
-      },
-    };
+  test("registers capability routers and omits legacy meta-tools", () => {
+    server = new McpSquaredServer();
+    const cataloger = server.getCataloger();
 
-    server = new McpSquaredServer({ config });
-    const indexStore = server.getRetriever().getIndexStore();
-    indexStore.indexTool({
-      name: "lookup",
-      description: "Lookup indexed entries from context storage",
-      serverKey: "ctxdb",
-      inputSchema: { type: "object" },
-    });
-    indexStore.indexTool({
-      name: "search_symbol",
-      description: "Find symbol definitions in source code",
-      serverKey: "filesystem",
-      inputSchema: { type: "object" },
+    spyOn(cataloger, "getStatus").mockReturnValue(
+      new Map([["time", { status: "connected", error: undefined }]]),
+    );
+    spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
+      if (key === "time") {
+        return [
+          {
+            name: "convert_time",
+            description: "Convert time values",
+            serverKey: "time",
+            inputSchema: { type: "object" },
+          },
+        ];
+      }
+      return [];
     });
 
     const session =
       server.createSessionServer() as unknown as SessionWithInternals;
-    const findToolsHandler = session._registeredTools?.["find_tools"]?.handler;
-    expect(findToolsHandler).toBeDefined();
+    const tools = session._registeredTools;
 
-    const result = await findToolsHandler?.({
-      query: "find symbol in codebase",
-      limit: 5,
-    });
-    const text = result?.content?.[0]?.text;
-    expect(text).toBeString();
-
-    const payload = JSON.parse(text ?? "{}") as {
-      tools?: Array<{ serverKey: string; name: string }>;
-      guidance?: { preferredNamespaces?: string[] };
-    };
-
-    expect(payload.tools?.[0]?.serverKey).toBe("ctxdb");
-    expect(payload.guidance?.preferredNamespaces).toContain("ctxdb");
+    expect(tools?.["find_tools"]).toBeUndefined();
+    expect(tools?.["describe_tools"]).toBeUndefined();
+    expect(tools?.["execute"]).toBeUndefined();
+    expect(tools?.["time_util"]).toBeDefined();
   });
 });

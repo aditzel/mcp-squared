@@ -22,6 +22,43 @@ import {
   type McpSquaredConfig,
 } from "./schema.js";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getDeprecatedDynamicToolSurfaceKeys(raw: RawConfig): string[] {
+  const operations = raw["operations"];
+  if (!isRecord(operations)) {
+    return [];
+  }
+
+  const dynamicToolSurface = operations["dynamicToolSurface"];
+  if (!isRecord(dynamicToolSurface)) {
+    return [];
+  }
+
+  const deprecated: string[] = [];
+  if ("mode" in dynamicToolSurface) {
+    deprecated.push("operations.dynamicToolSurface.mode");
+  }
+  if ("naming" in dynamicToolSurface) {
+    deprecated.push("operations.dynamicToolSurface.naming");
+  }
+  return deprecated;
+}
+
+function warnDeprecatedDynamicToolSurfaceKeys(
+  filePath: string,
+  keys: string[],
+): void {
+  if (keys.length === 0) {
+    return;
+  }
+  console.warn(
+    `[mcp²] Deprecated config keys in ${filePath}: ${keys.join(", ")}. Run 'mcp-squared migrate' to clean up legacy settings.`,
+  );
+}
+
 /**
  * Base error class for configuration-related errors.
  */
@@ -146,6 +183,10 @@ export async function loadConfigFromPath(
   } catch (err) {
     throw new ConfigParseError(filePath, err);
   }
+  warnDeprecatedDynamicToolSurfaceKeys(
+    filePath,
+    getDeprecatedDynamicToolSurfaceKeys(rawConfig),
+  );
 
   const migrated = migrateConfig(rawConfig);
 
@@ -215,6 +256,10 @@ export function loadConfigFromPathSync(
   } catch (err) {
     throw new ConfigParseError(filePath, err);
   }
+  warnDeprecatedDynamicToolSurfaceKeys(
+    filePath,
+    getDeprecatedDynamicToolSurfaceKeys(rawConfig),
+  );
 
   const migrated = migrateConfig(rawConfig);
 

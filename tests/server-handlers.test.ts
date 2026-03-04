@@ -1,12 +1,6 @@
 /**
- * Tests for McpSquaredServer meta-tool handlers.
- *
- * These tests verify the behavior of the server's meta-tools:
- * - find_tools: Search and filter tools
- * - describe_tools: Get tool schemas with policy filtering
- * - execute: Tool execution with security policy
- * - clear_selection_cache: Reset co-occurrence patterns
- * - list_namespaces: List upstream server information
+ * Tests for capability-router execution, policy normalization, and
+ * internal retrieval/index helpers.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
@@ -57,13 +51,13 @@ function indexTools(
   }
 }
 
-type ExecuteHandlerArgs = {
-  tool_name: string;
+type CapabilityHandlerArgs = {
+  action: string;
   arguments?: Record<string, unknown>;
   confirmation_token?: string;
 };
 
-type ExecuteHandlerResult = {
+type CapabilityHandlerResult = {
   content: Array<{ type: "text"; text: string }>;
   isError: boolean;
 };
@@ -71,24 +65,29 @@ type ExecuteHandlerResult = {
 type SessionWithRegisteredTools = {
   _registeredTools?: Record<
     string,
-    { handler?: (args: ExecuteHandlerArgs) => Promise<ExecuteHandlerResult> }
+    {
+      handler?: (
+        args: CapabilityHandlerArgs,
+      ) => Promise<CapabilityHandlerResult>;
+    }
   >;
 };
 
-function getExecuteHandler(
+function getCapabilityHandler(
   server: McpSquaredServer,
-): (args: ExecuteHandlerArgs) => Promise<ExecuteHandlerResult> {
+  capability = "general",
+): (args: CapabilityHandlerArgs) => Promise<CapabilityHandlerResult> {
   const session =
     server.createSessionServer() as unknown as SessionWithRegisteredTools;
-  const handler = session._registeredTools?.["execute"]?.handler;
+  const handler = session._registeredTools?.[capability]?.handler;
   if (!handler) {
-    throw new Error("execute handler is not registered");
+    throw new Error(`${capability} handler is not registered`);
   }
   return handler;
 }
 
 function parseExecutePayload(
-  result: ExecuteHandlerResult,
+  result: CapabilityHandlerResult,
 ): Record<string, unknown> {
   const text = result.content[0]?.text;
   return text ? (JSON.parse(text) as Record<string, unknown>) : {};
@@ -99,27 +98,33 @@ function mockCatalogerForSingleTool(server: McpSquaredServer): {
 } {
   const callToolRequests: string[] = [];
   const cataloger = server.getCataloger() as unknown as {
-    findTool: (toolName: string) => {
-      tool: { name: string; serverKey: string } | undefined;
-      ambiguous: boolean;
-      alternatives: string[];
-    };
+    getStatus: () => Map<string, { status: "connected"; error: undefined }>;
+    getToolsForServer: (key: string) => Array<{
+      name: string;
+      description: string;
+      serverKey: string;
+      inputSchema: { type: "object" };
+    }>;
     callTool: (
       toolName: string,
       args: Record<string, unknown>,
     ) => Promise<{ content: unknown[]; isError: boolean | undefined }>;
   };
 
-  cataloger.findTool = (toolName: string) => {
-    if (toolName === "delete_file" || toolName === "github:delete_file") {
-      return {
-        tool: { name: "delete_file", serverKey: "github" },
-        ambiguous: false,
-        alternatives: [],
-      };
+  cataloger.getStatus = () =>
+    new Map([["github", { status: "connected", error: undefined }]]);
+  cataloger.getToolsForServer = (key: string) => {
+    if (key === "github") {
+      return [
+        {
+          name: "delete_file",
+          description: "Delete file",
+          serverKey: "github",
+          inputSchema: { type: "object" },
+        },
+      ];
     }
-
-    return { tool: undefined, ambiguous: false, alternatives: [] };
+    return [];
   };
 
   cataloger.callTool = async (toolName: string) => {
@@ -147,18 +152,18 @@ describe("execute tool policy normalization", () => {
   test("applies block policy consistently to bare and qualified names", async () => {
     const config = createSecurityConfig({
       allow: ["*:*"],
-      block: ["github:delete_file"],
+      block: ["general:delete_file"],
     });
     server = new McpSquaredServer({ config });
     const { callToolRequests } = mockCatalogerForSingleTool(server);
-    const execute = getExecuteHandler(server);
+    const execute = getCapabilityHandler(server, "general");
 
     const bareResult = await execute({
-      tool_name: "delete_file",
+      action: "delete_file",
       arguments: {},
     });
     const qualifiedResult = await execute({
-      tool_name: "github:delete_file",
+      action: "delete_file",
       arguments: {},
     });
 
@@ -175,14 +180,14 @@ describe("execute tool policy normalization", () => {
   test("applies confirm policy consistently and accepts cross-form confirmation tokens", async () => {
     const config = createSecurityConfig({
       allow: [],
-      confirm: ["github:delete_file"],
+      confirm: ["general:delete_file"],
     });
     server = new McpSquaredServer({ config });
     const { callToolRequests } = mockCatalogerForSingleTool(server);
-    const execute = getExecuteHandler(server);
+    const execute = getCapabilityHandler(server, "general");
 
     const qualifiedConfirm = await execute({
-      tool_name: "github:delete_file",
+      action: "delete_file",
       arguments: {},
     });
     const qualifiedConfirmPayload = parseExecutePayload(qualifiedConfirm);
@@ -194,7 +199,7 @@ describe("execute tool policy normalization", () => {
     expect(callToolRequests).toEqual([]);
 
     const bareAllowed = await execute({
-      tool_name: "delete_file",
+      action: "delete_file",
       arguments: {},
       confirmation_token: token as string,
     });
@@ -202,23 +207,23 @@ describe("execute tool policy normalization", () => {
 
     expect(bareAllowed.isError).toBe(false);
     expect(bareAllowedPayload).toEqual({ ok: true });
-    expect(callToolRequests).toEqual(["delete_file"]);
+    expect(callToolRequests).toEqual(["github:delete_file"]);
   });
 
   test("applies allow policy consistently to bare and qualified names", async () => {
     const config = createSecurityConfig({
-      allow: ["github:delete_file"],
+      allow: ["general:delete_file"],
     });
     server = new McpSquaredServer({ config });
     const { callToolRequests } = mockCatalogerForSingleTool(server);
-    const execute = getExecuteHandler(server);
+    const execute = getCapabilityHandler(server, "general");
 
     const bareResult = await execute({
-      tool_name: "delete_file",
+      action: "delete_file",
       arguments: {},
     });
     const qualifiedResult = await execute({
-      tool_name: "github:delete_file",
+      action: "delete_file",
       arguments: {},
     });
 
@@ -229,7 +234,10 @@ describe("execute tool policy normalization", () => {
     expect(qualifiedResult.isError).toBe(false);
     expect(barePayload).toEqual({ ok: true });
     expect(qualifiedPayload).toEqual({ ok: true });
-    expect(callToolRequests).toEqual(["delete_file", "github:delete_file"]);
+    expect(callToolRequests).toEqual([
+      "github:delete_file",
+      "github:delete_file",
+    ]);
   });
 });
 
@@ -355,7 +363,7 @@ describe("Security policy filtering", () => {
   });
 });
 
-describe("find_tools search functionality", () => {
+describe("retriever search functionality", () => {
   let server: McpSquaredServer | null = null;
 
   afterEach(async () => {
@@ -419,7 +427,7 @@ describe("find_tools search functionality", () => {
   });
 });
 
-describe("describe_tools functionality", () => {
+describe("retriever getTools functionality", () => {
   let server: McpSquaredServer | null = null;
 
   afterEach(async () => {
@@ -466,7 +474,7 @@ describe("describe_tools functionality", () => {
   });
 });
 
-describe("clear_selection_cache functionality", () => {
+describe("co-occurrence cache primitives", () => {
   let server: McpSquaredServer | null = null;
 
   afterEach(async () => {
@@ -504,7 +512,7 @@ describe("clear_selection_cache functionality", () => {
   });
 });
 
-describe("list_namespaces functionality", () => {
+describe("catalog namespace/conflict primitives", () => {
   let server: McpSquaredServer | null = null;
 
   afterEach(async () => {

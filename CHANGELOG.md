@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added `hybrid` inference mode for capability classification: when `operations.dynamicToolSurface.inference = "hybrid"` and `operations.embeddings.enabled = true`, MCP² uses embedding-based semantic classification (BGE-small-en-v1.5) as a fallback for ambiguous namespaces. User config `capabilityOverrides` always take precedence. Controlled by `semanticConfidenceThreshold` (default: 0.45).
+- Added `SemanticCapabilityClassifier` module that reuses the existing `EmbeddingGenerator` to classify namespaces by cosine similarity against capability reference embeddings.
+- Added heuristic misclassification regression tests documenting 5 known failures (Notion, Sentry, Prisma, shadcn, Supabase).
+- Added a capability-first public tool API that registers one router per non-empty capability at connect time (`code_search`, `docs`, `browser_automation`, `issue_tracking`, `cms_content`, `design`, `hosting_deploy`, `time_util`, `research`, `general`).
+- Added router introspection via reserved `action = "__describe_actions"` returning capability-local action catalogs and input schemas without upstream identifier leakage.
+- Added deterministic action ID generation/collision handling from upstream tools, including reserved-name rewriting and suffixing (`__2`, `__3`, ...).
+- Added capability inference/grouping tests (including `auggie` => `code_search`) and capability-router API contract tests.
+- Added context-window budget tests for capability-router `tools/list` metadata footprint.
+
+### Changed
+- Replaced the mixed/legacy public API surface with capability routers only; public `find_tools` / `describe_tools` / `execute` / `list_namespaces` / `clear_selection_cache` are no longer registered.
+- Reinterpreted `security.tools` policy patterns as `capability:action` and bound confirmation tokens to capability/action context.
+- Simplified `operations.dynamicToolSurface` to inference/refresh/overrides fields; legacy `mode`/`naming` keys are now ignored with warnings.
+- Updated `mcp-squared migrate` to remove deprecated dynamic tool-surface keys and best-effort translate legacy `server:tool` security rules to capability/action patterns with unresolved reporting.
+- Updated `mcp-squared init` template and architecture/README docs to reflect capability-first routing as the only public mode.
+
 ## [0.4.0] - 2026-03-03
 
 ### Changed

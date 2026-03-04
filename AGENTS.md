@@ -50,3 +50,9 @@ When suggesting a model change:
 ## Documentation Hierarchy
 1. [AGENTS.md](AGENTS.md) / [CLAUDE.md](CLAUDE.md) - Agent coordination and quick reference (synced)
 2. [README.md](README.md) - User-facing documentation
+
+## MCP-Squared First Discovery
+After reading the project convention docs above, follow this order for every task:
+1. Always determine first whether an MCP server named `mcp-squared` is installed and working.
+2. If it is available, run discovery in `mcp-squared` (for example `find_tools`) and use a suitable `mcp-squared` tool before manual repository exploration.
+3. Use local search commands (`rg`, `grep`, `find`, etc.) only as a fallback when no suitable `mcp-squared` tool exists or the server is unavailable.

@@ -8,6 +8,7 @@
  */
 
 import { z } from "zod";
+import { CAPABILITY_IDS } from "../capabilities/inference.js";
 
 /** Current configuration schema version */
 export const LATEST_SCHEMA_VERSION = 1;
@@ -104,7 +105,7 @@ export type UpstreamSseServerConfig = z.infer<typeof UpstreamSseSchema>;
 
 /**
  * Schema for tool security policies (allow/block/confirm lists).
- * Patterns use glob-style matching: "serverKey:toolName" or "*:*"
+ * Patterns use glob-style matching: "capability:action" or "*:*"
  */
 export const SecurityToolsSchema = z.object({
   allow: z.array(z.string()).default([]),
@@ -129,28 +130,59 @@ export const SecuritySchema = z
   });
 
 /**
- * Search modes for find_tools operation.
+ * Search modes for internal retrieval operations.
  * - fast: FTS5 full-text search only (fastest, default)
  * - semantic: Vector similarity search only (requires embeddings)
  * - hybrid: FTS5 + rerank with embeddings (best quality)
  */
 export const SearchModeSchema = z.enum(["fast", "semantic", "hybrid"]);
 
-/** Available search modes for find_tools */
+/** Available internal retrieval search modes */
 export type SearchMode = z.infer<typeof SearchModeSchema>;
 
 /**
- * Detail levels for find_tools responses.
+ * Detail levels for internal retrieval projections.
  * - L0: Name only (minimal context footprint)
  * - L1: Summary with name + description (default)
  * - L2: Full schema with inputSchema included
  */
 export const DetailLevelSchema = z.enum(["L0", "L1", "L2"]);
 
-/** Available detail levels for find_tools responses */
+/** Available internal retrieval detail levels */
 export type DetailLevel = z.infer<typeof DetailLevelSchema>;
 
-/** Schema for find_tools operation configuration */
+/** Stable capability taxonomy IDs used by dynamic tool surfacing. */
+export const CapabilityIdSchema = z.enum(CAPABILITY_IDS);
+
+/** Capability identifier union */
+export type CapabilityId = z.infer<typeof CapabilityIdSchema>;
+
+/** Dynamic capability inference strategy. */
+export const DynamicToolSurfaceInferenceSchema = z.enum([
+  "heuristic_with_overrides",
+  "hybrid",
+]);
+
+/** Dynamic tool surface refresh policy. */
+export const DynamicToolSurfaceRefreshSchema = z.enum(["on_connect"]);
+
+/** Schema for capability-first connect-time tool surfacing. */
+export const DynamicToolSurfaceSchema = z.object({
+  inference: DynamicToolSurfaceInferenceSchema.default(
+    "heuristic_with_overrides",
+  ),
+  refresh: DynamicToolSurfaceRefreshSchema.default("on_connect"),
+  capabilityOverrides: z
+    .record(z.string().min(1), CapabilityIdSchema)
+    .default({}),
+  /** Minimum cosine similarity for ML classification to override heuristic (hybrid mode only) */
+  semanticConfidenceThreshold: z.number().min(0).max(1).default(0.45),
+});
+
+/** Dynamic tool surface configuration type. */
+export type DynamicToolSurfaceConfig = z.infer<typeof DynamicToolSurfaceSchema>;
+
+/** Schema for internal retrieval defaults */
 const PreferredNamespacesByIntentSchema = z.object({
   /** Namespaces to prioritize for codebase search/retrieval intents */
   codeSearch: z.array(z.string().min(1)).default([]),
@@ -161,7 +193,7 @@ export type PreferredNamespacesByIntent = z.infer<
   typeof PreferredNamespacesByIntentSchema
 >;
 
-/** Schema for find_tools operation configuration */
+/** Schema for internal retrieval settings */
 export const FindToolsSchema = z.object({
   defaultLimit: z.number().int().min(1).default(5),
   maxLimit: z.number().int().min(1).max(200).default(50),
@@ -203,7 +235,7 @@ export const SelectionCacheSchema = z.object({
   enabled: z.boolean().default(true),
   /** Minimum co-occurrence count before suggesting (default: 2) */
   minCooccurrenceThreshold: z.number().int().min(1).default(2),
-  /** Maximum bundle suggestions per find_tools response (default: 3) */
+  /** Maximum bundle suggestions returned by internal retrieval operations */
   maxBundleSuggestions: z.number().int().min(0).default(3),
 });
 
@@ -212,7 +244,7 @@ export type SelectionCacheConfig = z.infer<typeof SelectionCacheSchema>;
 
 /**
  * Schema for operations configuration section.
- * Contains settings for find_tools, indexing, logging, and selection caching.
+ * Contains settings for retrieval, indexing, logging, and selection caching.
  */
 export const OperationsSchema = z
   .object({
@@ -231,6 +263,12 @@ export const OperationsSchema = z
       minCooccurrenceThreshold: 2,
       maxBundleSuggestions: 3,
     }),
+    dynamicToolSurface: DynamicToolSurfaceSchema.default({
+      inference: "heuristic_with_overrides",
+      refresh: "on_connect",
+      capabilityOverrides: {},
+      semanticConfidenceThreshold: 0.45,
+    }),
   })
   .default({
     findTools: {
@@ -247,6 +285,12 @@ export const OperationsSchema = z
       enabled: true,
       minCooccurrenceThreshold: 2,
       maxBundleSuggestions: 3,
+    },
+    dynamicToolSurface: {
+      inference: "heuristic_with_overrides",
+      refresh: "on_connect",
+      capabilityOverrides: {},
+      semanticConfidenceThreshold: 0.45,
     },
   });
 
