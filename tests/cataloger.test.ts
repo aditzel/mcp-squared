@@ -119,6 +119,13 @@ describe("Cataloger", () => {
           index: { refreshIntervalMs: 30000 },
           logging: { level: "info" },
           embeddings: { enabled: false },
+          responseResource: {
+            enabled: false,
+            thresholdBytes: 51200,
+            maxInlineLines: 20,
+            maxResources: 100,
+            ttlMs: 600000,
+          },
           selectionCache: {
             enabled: true,
             minCooccurrenceThreshold: 2,
@@ -165,6 +172,13 @@ describe("Cataloger", () => {
           index: { refreshIntervalMs: 30000 },
           logging: { level: "info" },
           embeddings: { enabled: false },
+          responseResource: {
+            enabled: false,
+            thresholdBytes: 51200,
+            maxInlineLines: 20,
+            maxResources: 100,
+            ttlMs: 600000,
+          },
           selectionCache: {
             enabled: true,
             minCooccurrenceThreshold: 2,

@@ -10,29 +10,16 @@
  */
 
 import { randomBytes } from "node:crypto";
+import {
+  type ResponseResourceConfig,
+  ResponseResourceSchema,
+} from "../config/schema.js";
 
-/** Configuration for response resource offloading. */
-export interface ResponseResourceConfig {
-  /** Enable response resource offloading (default: false) */
-  enabled: boolean;
-  /** Byte threshold for offloading (default: 51200 = 50 KB) */
-  thresholdBytes: number;
-  /** Maximum lines to include inline as preview (default: 20) */
-  maxInlineLines: number;
-  /** Maximum number of stored resources before eviction (default: 100) */
-  maxResources: number;
-  /** Time-to-live for stored resources in milliseconds (default: 600000 = 10 minutes) */
-  ttlMs: number;
-}
+export type { ResponseResourceConfig };
 
-/** Default configuration (disabled). */
-export const DEFAULT_RESPONSE_RESOURCE_CONFIG: ResponseResourceConfig = {
-  enabled: false,
-  thresholdBytes: 51_200,
-  maxInlineLines: 20,
-  maxResources: 100,
-  ttlMs: 600_000,
-};
+/** Default configuration derived from the Zod schema defaults (single source of truth). */
+export const DEFAULT_RESPONSE_RESOURCE_CONFIG: ResponseResourceConfig =
+  ResponseResourceSchema.parse({});
 
 /** Context about the tool call that produced the response. */
 export interface OffloadContext {
@@ -74,6 +61,9 @@ interface ResourceEntry {
  * protocol, allowing integration with the McpServer's resource handlers.
  */
 export class ResponseResourceManager {
+  /** Maximum preview size in bytes to guard against single-line / long-line payloads. */
+  private static readonly MAX_PREVIEW_BYTES = 2048;
+
   private readonly config: ResponseResourceConfig;
   private readonly resources = new Map<string, ResourceEntry>();
   private readonly insertionOrder: string[] = [];
@@ -156,6 +146,13 @@ export class ResponseResourceManager {
       return null;
     }
 
+    // Promote to end of insertion order (LRU)
+    const idx = this.insertionOrder.indexOf(uri);
+    if (idx !== -1) {
+      this.insertionOrder.splice(idx, 1);
+      this.insertionOrder.push(uri);
+    }
+
     return {
       contents: [
         {
@@ -204,10 +201,23 @@ export class ResponseResourceManager {
 
   private buildPreview(fullText: string): string {
     const lines = fullText.split("\n");
+    let preview: string;
     if (lines.length <= this.config.maxInlineLines) {
-      return fullText;
+      preview = fullText;
+    } else {
+      preview = `${lines.slice(0, this.config.maxInlineLines).join("\n")}\n...`;
     }
-    return `${lines.slice(0, this.config.maxInlineLines).join("\n")}\n...`;
+    // Also cap by bytes for single-line or very long-line payloads
+    if (
+      Buffer.byteLength(preview, "utf8") >
+      ResponseResourceManager.MAX_PREVIEW_BYTES
+    ) {
+      const truncated = Buffer.from(preview, "utf8")
+        .subarray(0, ResponseResourceManager.MAX_PREVIEW_BYTES)
+        .toString("utf8");
+      return `${truncated}...`;
+    }
+    return preview;
   }
 
   private store(uri: string, entry: ResourceEntry): void {

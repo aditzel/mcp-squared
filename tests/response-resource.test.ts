@@ -243,6 +243,29 @@ describe("ResponseResourceManager", () => {
     });
   });
 
+  describe("preview byte cap", () => {
+    test("truncates single-line payloads by bytes", () => {
+      const mgr = new ResponseResourceManager(
+        makeConfig({ enabled: true, thresholdBytes: 10 }),
+      );
+      // A very long single-line string (5000 chars)
+      const content = makeTextContent("x".repeat(5000));
+      const result = mgr.offload(content, {
+        capability: "test",
+        action: "big_line",
+      });
+
+      const inlineText = (
+        result.inlineContent[0] as { type: "text"; text: string }
+      ).text;
+      const parsed = JSON.parse(inlineText);
+      // Preview should be much shorter than the full 5000 bytes
+      expect(Buffer.byteLength(parsed.preview, "utf8")).toBeLessThanOrEqual(
+        2048 + 3,
+      ); // +3 for "..."
+    });
+  });
+
   describe("multi-content-block responses", () => {
     test("handles multiple text blocks", () => {
       const mgr = new ResponseResourceManager(

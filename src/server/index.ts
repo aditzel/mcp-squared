@@ -586,6 +586,7 @@ export class McpSquaredServer {
   }): Promise<{
     content: Array<{ type: "text"; text: string }>;
     isError: boolean;
+    structuredContent?: Record<string, unknown>;
   }> {
     const policyResult = evaluatePolicy(
       {
@@ -662,19 +663,26 @@ export class McpSquaredServer {
       this.responseResourceManager.isEnabled() &&
       this.responseResourceManager.shouldOffload(normalizedContent)
     ) {
-      const offloaded = this.responseResourceManager.offload(
-        normalizedContent,
-        { capability: args.capability, action: args.action },
-      );
-      return {
-        content: offloaded.inlineContent,
-        isError: false,
-      };
+      try {
+        const offloaded = this.responseResourceManager.offload(
+          normalizedContent,
+          { capability: args.capability, action: args.action },
+        );
+        return {
+          content: offloaded.inlineContent,
+          isError: false,
+        };
+      } catch {
+        // Fall through to inline response on offload failure
+      }
     }
 
     return {
       content: normalizedContent,
       isError: result.isError ?? false,
+      ...(result.structuredContent != null
+        ? { structuredContent: result.structuredContent }
+        : {}),
     };
   }
 
