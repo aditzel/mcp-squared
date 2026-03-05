@@ -1,83 +1,130 @@
 #!/usr/bin/env bun
 
+/**
+ * Capability routing evaluation harness.
+ *
+ * Verifies that upstream tool inventories are grouped into the correct
+ * capability buckets and that the capability router API exposes them
+ * with expected action names.
+ *
+ * Usage: bun run eval:routing [--strict]
+ */
+
+import { spyOn } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { DEFAULT_CONFIG, type McpSquaredConfig } from "@/config/schema.js";
+import type { ConnectionStatus } from "@/config/schema.js";
 import { McpSquaredServer } from "@/server/index.js";
 import { formatRatioPercent } from "@/utils/percent.js";
 
 type Scenario = {
   id: string;
-  query: string;
-  intent: "codeSearch" | "generic";
-  expectedFirst?: string;
+  /** Upstream namespace + tool metadata to seed */
+  namespace: string;
+  tools: Array<{ name: string; description: string }>;
+  /** Expected capability bucket */
+  expectedCapability: string;
+  /** Expected action name(s) in that capability */
+  expectedActions: string[];
 };
 
 type EvalRow = {
   id: string;
-  intent: Scenario["intent"];
-  query: string;
-  firstNamespace: string;
-  expected: string;
+  namespace: string;
+  expectedCapability: string;
+  actualCapability: string | null;
+  expectedActions: string[];
+  actualActions: string[];
   pass: boolean;
 };
-
-const CODE_SEARCH_PREFS = ["auggie", "ctxdb"];
 
 const SCENARIOS: Scenario[] = [
   {
     id: "cs-01",
-    query: "search the codebase for auth middleware",
-    intent: "codeSearch",
+    namespace: "auggie",
+    tools: [
+      {
+        name: "search_context",
+        description: "Semantic code search over repositories and symbols",
+      },
+    ],
+    expectedCapability: "code_search",
+    expectedActions: ["search_context"],
   },
   {
     id: "cs-02",
-    query: "find symbol references for McpSquaredServer",
-    intent: "codeSearch",
+    namespace: "ctxdb",
+    tools: [
+      {
+        name: "lookup_index",
+        description: "Lookup source symbols in a precomputed context index",
+      },
+    ],
+    expectedCapability: "code_search",
+    expectedActions: ["lookup_index"],
   },
   {
-    id: "cs-03",
-    query: "where is configuration loaded in this repository",
-    intent: "codeSearch",
+    id: "it-01",
+    namespace: "github",
+    tools: [
+      {
+        name: "create_issue",
+        description: "Create an issue in GitHub",
+      },
+      {
+        name: "list_issues",
+        description: "List issues in a GitHub repository",
+      },
+    ],
+    expectedCapability: "issue_tracking",
+    expectedActions: ["create_issue", "list_issues"],
   },
   {
-    id: "cs-04",
-    query: "look up call sites for runImport",
-    intent: "codeSearch",
+    id: "tu-01",
+    namespace: "time-server",
+    tools: [
+      {
+        name: "convert_time",
+        description: "Convert time values between formats",
+      },
+    ],
+    expectedCapability: "time_util",
+    expectedActions: ["convert_time"],
   },
   {
-    id: "gen-01",
-    query: "create a GitHub issue",
-    intent: "generic",
-    expectedFirst: "github",
+    id: "doc-01",
+    namespace: "docs-server",
+    tools: [
+      {
+        name: "search_docs",
+        description: "Search documentation pages",
+      },
+    ],
+    expectedCapability: "docs",
+    expectedActions: ["search_docs"],
   },
   {
-    id: "gen-02",
-    query: "read a local file",
-    intent: "generic",
-    expectedFirst: "filesystem",
+    id: "ba-01",
+    namespace: "puppeteer",
+    tools: [
+      {
+        name: "navigate",
+        description: "Navigate to a URL in the browser",
+      },
+      {
+        name: "screenshot",
+        description: "Take a screenshot of the browser",
+      },
+    ],
+    expectedCapability: "browser_automation",
+    expectedActions: ["navigate", "screenshot"],
   },
 ];
-
-function parseFirstNamespace(responseText: string | undefined): string {
-  if (!responseText) return "(none)";
-  try {
-    const payload = JSON.parse(responseText) as {
-      tools?: Array<{ serverKey?: string }>;
-    };
-    return payload.tools?.[0]?.serverKey ?? "(none)";
-  } catch {
-    return "(none)";
-  }
-}
 
 function extractTextContent(
   content: unknown[] | undefined,
 ): string | undefined {
-  if (!Array.isArray(content)) {
-    return undefined;
-  }
-
+  if (!Array.isArray(content)) return undefined;
   for (const item of content) {
     if (
       typeof item === "object" &&
@@ -90,109 +137,23 @@ function extractTextContent(
       return (item as { text: string }).text;
     }
   }
-
   return undefined;
-}
-
-function buildEvalServerConfig(): McpSquaredConfig {
-  return {
-    ...DEFAULT_CONFIG,
-    upstreams: {
-      auggie: {
-        transport: "stdio",
-        enabled: true,
-        env: {},
-        stdio: { command: "auggie", args: [] },
-      },
-      ctxdb: {
-        transport: "stdio",
-        enabled: true,
-        env: {},
-        stdio: { command: "ctxdb", args: [] },
-      },
-      filesystem: {
-        transport: "stdio",
-        enabled: true,
-        env: {},
-        stdio: { command: "filesystem", args: [] },
-      },
-      github: {
-        transport: "stdio",
-        enabled: true,
-        env: {},
-        stdio: { command: "github", args: [] },
-      },
-    },
-    operations: {
-      ...DEFAULT_CONFIG.operations,
-      findTools: {
-        ...DEFAULT_CONFIG.operations.findTools,
-        preferredNamespacesByIntent: {
-          codeSearch: CODE_SEARCH_PREFS,
-        },
-      },
-    },
-  };
-}
-
-function seedTools(server: McpSquaredServer): void {
-  const indexStore = server.getRetriever().getIndexStore();
-
-  indexStore.indexTool({
-    name: "search_context",
-    description: "Semantic code search over repositories and symbols",
-    serverKey: "auggie",
-    inputSchema: { type: "object" },
-  });
-  indexStore.indexTool({
-    name: "lookup_index",
-    description: "Lookup source symbols in a precomputed context index",
-    serverKey: "ctxdb",
-    inputSchema: { type: "object" },
-  });
-  indexStore.indexTool({
-    name: "read_file",
-    description: "Read a file from local disk",
-    serverKey: "filesystem",
-    inputSchema: { type: "object" },
-  });
-  indexStore.indexTool({
-    name: "create_issue",
-    description: "Create an issue in GitHub",
-    serverKey: "github",
-    inputSchema: { type: "object" },
-  });
-}
-
-function expectedNamespaceForScenario(scenario: Scenario): string {
-  if (scenario.intent === "codeSearch") {
-    return CODE_SEARCH_PREFS.join("|");
-  }
-  return scenario.expectedFirst ?? "(unspecified)";
-}
-
-function isPass(scenario: Scenario, firstNamespace: string): boolean {
-  if (scenario.intent === "codeSearch") {
-    return CODE_SEARCH_PREFS.includes(firstNamespace);
-  }
-  if (!scenario.expectedFirst) {
-    return true;
-  }
-  return scenario.expectedFirst === firstNamespace;
 }
 
 function printReport(rows: EvalRow[]): void {
   const total = rows.length;
   const passed = rows.filter((r) => r.pass).length;
-  const codeRows = rows.filter((r) => r.intent === "codeSearch");
-  const codePassed = codeRows.filter((r) => r.pass).length;
 
-  console.log("\nTool Routing Eval\n");
-  console.log("| id | intent | first namespace | expected | pass |");
-  console.log("|---|---|---|---|---|");
+  console.log("\nCapability Routing Eval\n");
+  console.log(
+    "| id | namespace | expected capability | actual capability | actions match | pass |",
+  );
+  console.log("|---|---|---|---|---|---|");
   for (const row of rows) {
+    const actionsMatch =
+      JSON.stringify(row.expectedActions) === JSON.stringify(row.actualActions);
     console.log(
-      `| ${row.id} | ${row.intent} | ${row.firstNamespace} | ${row.expected} | ${row.pass ? "yes" : "no"} |`,
+      `| ${row.id} | ${row.namespace} | ${row.expectedCapability} | ${row.actualCapability ?? "(none)"} | ${actionsMatch ? "yes" : "no"} | ${row.pass ? "yes" : "no"} |`,
     );
   }
 
@@ -200,15 +161,49 @@ function printReport(rows: EvalRow[]): void {
   console.log(
     `- overall: ${passed}/${total} (${formatRatioPercent(passed, total)}%)`,
   );
-  console.log(
-    `- codeSearch intent: ${codePassed}/${codeRows.length} (${formatRatioPercent(codePassed, codeRows.length)}%)`,
-  );
 }
 
 async function main(): Promise<void> {
   const strict = process.argv.includes("--strict");
 
-  const server = new McpSquaredServer({ config: buildEvalServerConfig() });
+  const server = new McpSquaredServer();
+  const cataloger = server.getCataloger();
+
+  // Build the full status + tools maps from scenarios
+  const statusMap = new Map<
+    string,
+    { status: ConnectionStatus; error: string | undefined }
+  >();
+  const toolsByServer = new Map<
+    string,
+    Array<{
+      name: string;
+      description: string;
+      serverKey: string;
+      inputSchema: { type: "object" };
+    }>
+  >();
+
+  for (const scenario of SCENARIOS) {
+    statusMap.set(scenario.namespace, {
+      status: "connected",
+      error: undefined,
+    });
+    toolsByServer.set(
+      scenario.namespace,
+      scenario.tools.map((t) => ({
+        ...t,
+        serverKey: scenario.namespace,
+        inputSchema: { type: "object" as const },
+      })),
+    );
+  }
+
+  spyOn(cataloger, "getStatus").mockReturnValue(statusMap);
+  spyOn(cataloger, "getToolsForServer").mockImplementation(
+    (key: string) => toolsByServer.get(key) ?? [],
+  );
+
   const sessionServer = server.createSessionServer();
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
@@ -216,40 +211,64 @@ async function main(): Promise<void> {
     name: "routing-eval",
     version: "0.0.0",
   });
+
   try {
-    seedTools(server);
     await sessionServer.connect(serverTransport);
     await client.connect(clientTransport);
+
+    const listed = await client.listTools();
+    const toolNames = new Set(listed.tools.map((t) => t.name));
 
     const rows: EvalRow[] = [];
 
     for (const scenario of SCENARIOS) {
-      const result = await client.callTool({
-        name: "find_tools",
-        arguments: {
-          query: scenario.query,
-          limit: 5,
-        },
-      });
-      const firstNamespace = parseFirstNamespace(
-        extractTextContent(result.content as unknown[] | undefined),
-      );
+      const capabilityToolExists = toolNames.has(scenario.expectedCapability);
+
+      let actualActions: string[] = [];
+      let actualCapability: string | null = null;
+
+      if (capabilityToolExists) {
+        // Call __describe_actions to get the action catalog
+        const result = await client.callTool({
+          name: scenario.expectedCapability,
+          arguments: { action: "__describe_actions" },
+        });
+        const text = extractTextContent(result.content as unknown[]);
+        if (text) {
+          const payload = JSON.parse(text) as {
+            capability?: string;
+            actions?: Array<{ action: string }>;
+          };
+          actualCapability = payload.capability ?? null;
+          actualActions = (payload.actions ?? [])
+            .map((a) => a.action)
+            .filter((a) => scenario.expectedActions.includes(a))
+            .sort();
+        }
+      }
+
+      const expectedSorted = [...scenario.expectedActions].sort();
+      const pass =
+        actualCapability === scenario.expectedCapability &&
+        JSON.stringify(expectedSorted) === JSON.stringify(actualActions);
+
       rows.push({
         id: scenario.id,
-        intent: scenario.intent,
-        query: scenario.query,
-        firstNamespace,
-        expected: expectedNamespaceForScenario(scenario),
-        pass: isPass(scenario, firstNamespace),
+        namespace: scenario.namespace,
+        expectedCapability: scenario.expectedCapability,
+        actualCapability,
+        expectedActions: expectedSorted,
+        actualActions,
+        pass,
       });
     }
 
     printReport(rows);
 
     if (strict) {
-      const codeRows = rows.filter((r) => r.intent === "codeSearch");
-      const codePassed = codeRows.filter((r) => r.pass).length;
-      if (codePassed < codeRows.length) {
+      const failed = rows.filter((r) => !r.pass);
+      if (failed.length > 0) {
+        console.error(`\nStrict mode: ${failed.length} scenario(s) failed`);
         process.exitCode = 1;
       }
     }
