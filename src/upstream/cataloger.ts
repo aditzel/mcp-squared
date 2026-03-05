@@ -603,7 +603,11 @@ export class Cataloger {
   async callTool(
     toolName: string,
     args: Record<string, unknown>,
-  ): Promise<{ content: unknown[]; isError: boolean | undefined }> {
+  ): Promise<{
+    content: unknown[];
+    isError: boolean | undefined;
+    structuredContent?: Record<string, unknown>;
+  }> {
     const result = this.findTool(toolName);
 
     if (result.ambiguous) {
@@ -630,10 +634,22 @@ export class Cataloger {
       arguments: args,
     });
 
-    return {
+    const response: {
+      content: unknown[];
+      isError: boolean | undefined;
+      structuredContent?: Record<string, unknown>;
+    } = {
       content: callResult.content as unknown[],
       isError: callResult.isError as boolean | undefined,
     };
+
+    // Forward structuredContent when present (previously silently dropped)
+    const sc = (callResult as Record<string, unknown>)["structuredContent"];
+    if (sc != null && typeof sc === "object" && !Array.isArray(sc)) {
+      response.structuredContent = sc as Record<string, unknown>;
+    }
+
+    return response;
   }
 
   /**
