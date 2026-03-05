@@ -60,10 +60,13 @@
     "url": "https://github.com/aditzel/mcp-squared"
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.11",
     "@huggingface/transformers": "^3.8.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@opentui/core": "^0.1.82",
+    "hono": "^4.12.5",
     "smol-toml": "^1.6.0",
+    "tar": "^7.5.10",
     "yaml": "^2.8.2",
     "zod": "^4.3.6"
   },
@@ -72,10 +75,11 @@
     "@opentelemetry/sdk-trace-base": "^1.30.1"
   },
   "overrides": {
+    "@hono/node-server": "^1.19.11",
     "ajv": "^8.18.0",
     "diff": "8.0.3",
-    "hono": "^4.11.10",
+    "hono": "^4.12.5",
     "qs": "6.15.0",
-    "tar": "7.5.9"
+    "tar": "^7.5.10"
   }
 }

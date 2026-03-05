@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added heuristic misclassification regression tests documenting 4 known failures (Notion, Sentry, Prisma, Supabase).
 - Added component test for shadcn MCP server classification using real tool metadata from the official server (`npx shadcn@latest mcp`).
 
+### Security
+- Updated `tar` from 7.5.9 to 7.5.10 (fixes GHSA-qffp-2rhf-9h96: hardlink path traversal).
+- Updated `@hono/node-server` from 1.19.9 to 1.19.11 (fixes GHSA-wc8c-qw6v-h7f6: auth bypass via encoded slashes).
+- Updated `hono` from 4.11.x to 4.12.5 (fixes GHSA-5pq2-9x2x-5p6w, GHSA-p6xx-57qc-3wxr, GHSA-q5qw-h33p-qvwr: cookie injection, SSE injection, arbitrary file access).
+
 ### Fixed
 - Fixed TUI lazy loaders (`config-loader.ts`, `monitor-loader.ts`) failing in dev mode with `Cannot find module './tui/config.js'`. The hardcoded `./tui/config.js` specifier assumed bundled context (where the loader is inlined into `dist/index.js`); now dynamically resolves relative to `import.meta.url` to work in both source and bundled contexts.
 - Fixed shadcn heuristic misclassification: added `shadcn` to docs namespace hints and added component registry patterns (`registry`, `component`, `example`) to docs capability patterns. Previously classified as `code_search` (with real tools) or `design` (with simplified tools).
