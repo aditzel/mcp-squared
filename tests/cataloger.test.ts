@@ -1,8 +1,9 @@
 import { describe, expect, mock, test } from "bun:test";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
-import type {
-  McpSquaredConfig,
-  UpstreamSseServerConfig,
+import {
+  DEFAULT_CONFIG,
+  type McpSquaredConfig,
+  type UpstreamSseServerConfig,
 } from "../src/config/schema.js";
 import {
   Cataloger,
@@ -103,41 +104,9 @@ describe("Cataloger", () => {
     test("handles empty config", async () => {
       const cataloger = new Cataloger();
       const config: McpSquaredConfig = {
-        schemaVersion: 1,
+        ...DEFAULT_CONFIG,
         upstreams: {},
         security: { tools: { allow: ["*:*"], block: [], confirm: [] } },
-        operations: {
-          findTools: {
-            defaultLimit: 5,
-            maxLimit: 50,
-            defaultMode: "fast",
-            defaultDetailLevel: "L1",
-            preferredNamespacesByIntent: {
-              codeSearch: [],
-            },
-          },
-          index: { refreshIntervalMs: 30000 },
-          logging: { level: "info" },
-          embeddings: { enabled: false },
-          responseResource: {
-            enabled: false,
-            thresholdBytes: 51200,
-            maxInlineLines: 20,
-            maxResources: 100,
-            ttlMs: 600000,
-          },
-          selectionCache: {
-            enabled: true,
-            minCooccurrenceThreshold: 2,
-            maxBundleSuggestions: 3,
-          },
-          dynamicToolSurface: {
-            inference: "heuristic_with_overrides",
-            refresh: "on_connect",
-            capabilityOverrides: {},
-            semanticConfidenceThreshold: 0.45,
-          },
-        },
       };
       await cataloger.connectAll(config);
       expect(cataloger.hasConnections()).toBe(false);
@@ -146,7 +115,7 @@ describe("Cataloger", () => {
     test("skips disabled upstreams", async () => {
       const cataloger = new Cataloger({ connectTimeoutMs: 100 });
       const config: McpSquaredConfig = {
-        schemaVersion: 1,
+        ...DEFAULT_CONFIG,
         upstreams: {
           disabled: {
             transport: "stdio",
@@ -159,38 +128,6 @@ describe("Cataloger", () => {
           },
         },
         security: { tools: { allow: ["*:*"], block: [], confirm: [] } },
-        operations: {
-          findTools: {
-            defaultLimit: 5,
-            maxLimit: 50,
-            defaultMode: "fast",
-            defaultDetailLevel: "L1",
-            preferredNamespacesByIntent: {
-              codeSearch: [],
-            },
-          },
-          index: { refreshIntervalMs: 30000 },
-          logging: { level: "info" },
-          embeddings: { enabled: false },
-          responseResource: {
-            enabled: false,
-            thresholdBytes: 51200,
-            maxInlineLines: 20,
-            maxResources: 100,
-            ttlMs: 600000,
-          },
-          selectionCache: {
-            enabled: true,
-            minCooccurrenceThreshold: 2,
-            maxBundleSuggestions: 3,
-          },
-          dynamicToolSurface: {
-            inference: "heuristic_with_overrides",
-            refresh: "on_connect",
-            capabilityOverrides: {},
-            semanticConfidenceThreshold: 0.45,
-          },
-        },
       };
       await cataloger.connectAll(config);
       // Should not attempt to connect to disabled upstream

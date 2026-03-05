@@ -91,14 +91,18 @@ describe("ResponseResourceManager", () => {
     });
 
     test("returns false for exactly threshold bytes", () => {
-      const mgr = new ResponseResourceManager(
-        makeConfig({ enabled: true, thresholdBytes: 100 }),
+      const content = makeTextContent("hello world");
+      const exactSize = Buffer.byteLength(JSON.stringify(content), "utf8");
+      // At exact threshold: should NOT offload (uses > not >=)
+      const mgrExact = new ResponseResourceManager(
+        makeConfig({ enabled: true, thresholdBytes: exactSize }),
       );
-      // Need to account for JSON serialization overhead: [{"type":"text","text":"..."}]
-      // Create content that serializes to exactly the threshold
-      const content = makeTextContent("x");
-      // Small content should never trigger
-      expect(mgr.shouldOffload(content)).toBe(false);
+      expect(mgrExact.shouldOffload(content)).toBe(false);
+      // One byte below threshold: SHOULD offload
+      const mgrBelow = new ResponseResourceManager(
+        makeConfig({ enabled: true, thresholdBytes: exactSize - 1 }),
+      );
+      expect(mgrBelow.shouldOffload(content)).toBe(true);
     });
   });
 

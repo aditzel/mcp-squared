@@ -656,6 +656,7 @@ export class McpSquaredServer {
     }
 
     const normalizedContent = this.normalizeToolResultContent(result.content);
+    const structuredContent = result.structuredContent;
 
     // Offload large responses to MCP Resources when enabled
     if (
@@ -671,6 +672,7 @@ export class McpSquaredServer {
         return {
           content: offloaded.inlineContent,
           isError: false,
+          ...(structuredContent != null ? { structuredContent } : {}),
         };
       } catch {
         // Fall through to inline response on offload failure
@@ -680,9 +682,7 @@ export class McpSquaredServer {
     return {
       content: normalizedContent,
       isError: result.isError ?? false,
-      ...(result.structuredContent != null
-        ? { structuredContent: result.structuredContent }
-        : {}),
+      ...(structuredContent != null ? { structuredContent } : {}),
     };
   }
 
