@@ -46,6 +46,10 @@ import {
 } from "../utils/capability-meta.js";
 import { VERSION } from "../version.js";
 import { MonitorServer } from "./monitor-server.js";
+import {
+  DEFAULT_RESPONSE_RESOURCE_CONFIG,
+  ResponseResourceManager,
+} from "./response-resource.js";
 import { type ServerStats, StatsCollector, type ToolStats } from "./stats.js";
 
 /**
@@ -98,6 +102,7 @@ export class McpSquaredServer {
   private readonly compiledPolicy: CompiledPolicy;
   private readonly indexRefreshManager: IndexRefreshManager;
   private readonly statsCollector: StatsCollector;
+  private readonly responseResourceManager: ResponseResourceManager;
   private readonly monitorServer: MonitorServer;
   private isCoreStarted = false;
   private readonly serverName: string;
@@ -164,6 +169,12 @@ export class McpSquaredServer {
       sink: this.obsSink,
     });
 
+    // Initialize response resource manager (before createMcpServer which checks isEnabled)
+    const rrConfig =
+      this.config.operations.responseResource ??
+      DEFAULT_RESPONSE_RESOURCE_CONFIG;
+    this.responseResourceManager = new ResponseResourceManager(rrConfig);
+
     this.mcpServer = this.createMcpServer(name, version);
 
     this.selectionTracker = new SelectionTracker();
@@ -219,6 +230,9 @@ export class McpSquaredServer {
       {
         capabilities: {
           tools: {},
+          ...(this.responseResourceManager.isEnabled()
+            ? { resources: {} }
+            : {}),
         },
         instructions: this.buildServerInstructions(),
       },
@@ -253,6 +267,40 @@ export class McpSquaredServer {
 
   private registerConfiguredToolSurface(server: McpServer): void {
     this.registerCapabilityRouters(server);
+    if (this.responseResourceManager.isEnabled()) {
+      this.registerResponseResources(server);
+    }
+  }
+
+  private registerResponseResources(server: McpServer): void {
+    const mgr = this.responseResourceManager;
+
+    server.registerResource(
+      "response-resources",
+      "mcp2://response/{capability}/{id}",
+      {
+        description:
+          "Temporary resources containing full tool responses that exceeded the inline size threshold.",
+        mimeType: "text/plain",
+      },
+      async (uri) => {
+        const result = mgr.readResource(uri.href);
+        if (!result) {
+          return {
+            contents: [
+              {
+                uri: uri.href,
+                mimeType: "text/plain",
+                text: JSON.stringify({
+                  error: "Resource not found or expired",
+                }),
+              },
+            ],
+          };
+        }
+        return result;
+      },
+    );
   }
 
   private runTaskSpan<T>(
@@ -606,8 +654,26 @@ export class McpSquaredServer {
       }
     }
 
+    const normalizedContent = this.normalizeToolResultContent(result.content);
+
+    // Offload large responses to MCP Resources when enabled
+    if (
+      !result.isError &&
+      this.responseResourceManager.isEnabled() &&
+      this.responseResourceManager.shouldOffload(normalizedContent)
+    ) {
+      const offloaded = this.responseResourceManager.offload(
+        normalizedContent,
+        { capability: args.capability, action: args.action },
+      );
+      return {
+        content: offloaded.inlineContent,
+        isError: false,
+      };
+    }
+
     return {
-      content: this.normalizeToolResultContent(result.content),
+      content: normalizedContent,
       isError: result.isError ?? false,
     };
   }

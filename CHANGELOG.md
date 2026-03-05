@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Added **response resource offloading**: when enabled, large upstream tool responses are stored as temporary MCP Resources instead of being returned inline. Clients receive a truncated preview with the resource URI and can fetch the full content via `resources/read`. Configurable via `operations.responseResource` with threshold, TTL, max inline lines, and eviction settings. Disabled by default.
+
+### Fixed
+- Fixed `cataloger.callTool()` silently dropping `structuredContent` from upstream MCP `CallToolResult` responses. The field is now forwarded through the response chain.
 - `status --verbose` now shows a **Context Savings** section estimating token savings from capability routing: tokens without MCP² (raw upstream tools), tokens with MCP² (capability tools), total saved tokens, and savings percentage.
 - Added `ai_media_generation` capability (11th capability) for AI image/video generation tools (wavespeed, stability, replicate, runway, midjourney, etc.), preventing misclassification as `design`. Includes namespace hints, tool signal patterns, semantic reference text, and component tests with real wavespeed-cli-mcp tool metadata.
 - Added `mcp-squared status` command that shows upstream server connection status and the full capability routing table (which upstream tools map to which capability actions). Supports `--verbose` for schema parameter details.

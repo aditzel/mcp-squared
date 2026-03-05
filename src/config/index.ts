@@ -70,6 +70,8 @@ export {
   type McpSquaredConfig,
   OAuthConfigSchema,
   PERMISSIVE_SECURITY,
+  type ResponseResourceConfig,
+  ResponseResourceSchema,
   type SelectionCacheConfig,
   SelectionCacheSchema,
   type UpstreamServerConfig,
