@@ -14,7 +14,7 @@ import type { InstallMode, InstallScope } from "../install/types.js";
  * Parsed command-line arguments.
  */
 export interface CliArgs {
-  /** Operating mode: server, config TUI, test, import, auth, install, init, migrate, or monitor */
+  /** Operating mode: server, config TUI, test, import, auth, install, init, migrate, monitor, status, or daemon/proxy */
   mode:
     | "server"
     | "config"
@@ -25,6 +25,7 @@ export interface CliArgs {
     | "init"
     | "migrate"
     | "monitor"
+    | "status"
     | "daemon"
     | "proxy";
   /** Force stdio server mode */
@@ -335,6 +336,10 @@ export function parseArgs(args: string[]): CliArgs {
         result.mode = "monitor";
         break;
 
+      case "status":
+        result.mode = "status";
+        break;
+
       case "daemon":
         result.mode = "daemon";
         break;
@@ -543,6 +548,7 @@ Usage:
   mcp-squared init [options]    Generate a starter config file with security profile
   mcp-squared migrate [options] Apply config migrations to existing config
   mcp-squared install [options] Install MCP² into other MCP clients
+  mcp-squared status [options]  Show upstream server status and capability routing
   mcp-squared monitor [options] Launch server monitor TUI
   mcp-squared daemon [options]  Start shared MCP² daemon
   mcp-squared proxy [options]   Start stdio proxy (connects to daemon)
@@ -557,6 +563,7 @@ Commands:
   init                          Generate a starter config with security profile
   migrate                       Apply one-time config migrations to existing config
   install                       Install MCP² as a server in other MCP clients
+  status                        Show upstream status and capability routing
   monitor                       Launch server monitor TUI
   daemon                        Start shared daemon for multiple clients
   proxy                         Start stdio proxy for daemon
@@ -596,6 +603,9 @@ Install Options:
   --dry-run                     Preview changes without writing
   --no-interactive              Disable interactive prompts
 
+Status Options:
+  --verbose, -V                 Show schema parameters and extra detail
+
 Monitor Options:
   (daemon-first; attaches to shared daemon monitor by default)
   --refresh-interval=<ms>       Auto-refresh interval in milliseconds (default: 2000)
@@ -615,6 +625,8 @@ Supported Tools:
   ${VALID_TOOL_IDS.join(", ")}
 
 Examples:
+  mcp-squared status            Show upstream status and capability routing table
+  mcp-squared status --verbose  Show status with schema parameters
   mcp-squared test github       Test connection to 'github' upstream
   mcp-squared test              Test all configured upstreams
   mcp-squared auth vercel-mcp   Authenticate with 'vercel-mcp' upstream (OAuth)

@@ -8,12 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `status --verbose` now shows a **Context Savings** section estimating token savings from capability routing: tokens without MCP² (raw upstream tools), tokens with MCP² (capability tools), total saved tokens, and savings percentage.
+- Added `ai_media_generation` capability (11th capability) for AI image/video generation tools (wavespeed, stability, replicate, runway, midjourney, etc.), preventing misclassification as `design`. Includes namespace hints, tool signal patterns, semantic reference text, and component tests with real wavespeed-cli-mcp tool metadata.
+- Added `mcp-squared status` command that shows upstream server connection status and the full capability routing table (which upstream tools map to which capability actions). Supports `--verbose` for schema parameter details.
+- Extracted action routing logic into shared `src/capabilities/routing.ts` module so both the server and CLI commands share the same deterministic routing computation.
 - Added `hybrid` inference mode for capability classification: when `operations.dynamicToolSurface.inference = "hybrid"` and `operations.embeddings.enabled = true`, MCP² uses embedding-based semantic classification (BGE-small-en-v1.5) as a fallback for ambiguous namespaces. User config `capabilityOverrides` always take precedence. Controlled by `semanticConfidenceThreshold` (default: 0.45).
 - Added `SemanticCapabilityClassifier` module that reuses the existing `EmbeddingGenerator` to classify namespaces by cosine similarity against capability reference embeddings.
 - Added heuristic misclassification regression tests documenting 4 known failures (Notion, Sentry, Prisma, Supabase).
 - Added component test for shadcn MCP server classification using real tool metadata from the official server (`npx shadcn@latest mcp`).
 
 ### Fixed
+- Fixed TUI lazy loaders (`config-loader.ts`, `monitor-loader.ts`) failing in dev mode with `Cannot find module './tui/config.js'`. The hardcoded `./tui/config.js` specifier assumed bundled context (where the loader is inlined into `dist/index.js`); now dynamically resolves relative to `import.meta.url` to work in both source and bundled contexts.
 - Fixed shadcn heuristic misclassification: added `shadcn` to docs namespace hints and added component registry patterns (`registry`, `component`, `example`) to docs capability patterns. Previously classified as `code_search` (with real tools) or `design` (with simplified tools).
 - Added a capability-first public tool API that registers one router per non-empty capability at connect time (`code_search`, `docs`, `browser_automation`, `issue_tracking`, `cms_content`, `design`, `hosting_deploy`, `time_util`, `research`, `general`).
 - Added router introspection via reserved `action = "__describe_actions"` returning capability-local action catalogs and input schemas without upstream identifier leakage.
@@ -22,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added context-window budget tests for capability-router `tools/list` metadata footprint.
 
 ### Changed
+- Authentication errors (invalid tokens, missing API keys, unauthorized access) are now shown as `⚠ needs auth` (yellow) in `mcp-squared status` instead of the generic `✗ error` (red), making it easier to distinguish credential issues from connection failures.
 - Replaced the mixed/legacy public API surface with capability routers only; public `find_tools` / `describe_tools` / `execute` / `list_namespaces` / `clear_selection_cache` are no longer registered.
 - Reinterpreted `security.tools` policy patterns as `capability:action` and bound confirmation tokens to capability/action context.
 - Simplified `operations.dynamicToolSurface` to inference/refresh/overrides fields; legacy `mode`/`naming` keys are now ignored with warnings.

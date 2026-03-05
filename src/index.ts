@@ -51,6 +51,7 @@ import {
   TokenStorage,
 } from "./oauth/index.js";
 import { McpSquaredServer } from "./server/index.js";
+import { runStatus } from "./status/runner.js";
 import { type TestResult, testUpstreamConnection } from "./upstream/index.js";
 import { VERSION } from "./version.js";
 
@@ -1100,6 +1101,9 @@ export async function main(
       break;
     case "monitor":
       await runMonitor(args.monitor);
+      break;
+    case "status":
+      await runStatus({ verbose: args.testVerbose });
       break;
     case "daemon":
       await runDaemon(args.daemon);

@@ -3,8 +3,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { DEFAULT_CONFIG } from "@/config/schema";
 import { McpSquaredServer } from "@/server";
+import { estimateTokens } from "@/utils/context-stats";
 
-const CHARS_PER_TOKEN_ESTIMATE = 4;
 const CAPABILITY_TOOL_BUDGET_BASELINE = {
   minifiedChars: 1564,
   estimatedTokens: 391,
@@ -19,10 +19,6 @@ const CAPABILITY_TOOL_BUDGET_BASELINE = {
     }
   >,
 };
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / CHARS_PER_TOKEN_ESTIMATE);
-}
 
 async function getCapabilityToolPayload(): Promise<{
   tools: Array<{

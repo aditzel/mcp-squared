@@ -26,6 +26,10 @@ import {
   type CapabilityId,
   groupNamespacesByCapability,
 } from "../capabilities/inference.js";
+import {
+  buildCapabilityRouters as buildRouters,
+  type CapabilityRouter,
+} from "../capabilities/routing.js";
 import { ensureSocketDir, getSocketFilePath } from "../config/index.js";
 import { DEFAULT_CONFIG, type McpSquaredConfig } from "../config/schema.js";
 import { Retriever } from "../retriever/index.js";
@@ -36,6 +40,10 @@ import {
   getToolVisibilityCompiled,
 } from "../security/index.js";
 import { Cataloger, type ToolInputSchema } from "../upstream/index.js";
+import {
+  capabilitySummary as sharedCapabilitySummary,
+  capabilityTitle as sharedCapabilityTitle,
+} from "../utils/capability-meta.js";
 import { VERSION } from "../version.js";
 import { MonitorServer } from "./monitor-server.js";
 import { type ServerStats, StatsCollector, type ToolStats } from "./stats.js";
@@ -65,22 +73,6 @@ export interface McpSquaredServerOptions {
 }
 
 const DESCRIBE_ACTION = "__describe_actions";
-
-type CapabilityActionRoute = {
-  capability: CapabilityId;
-  action: string;
-  baseAction: string;
-  serverKey: string;
-  toolName: string;
-  qualifiedName: string;
-  inputSchema: ToolInputSchema;
-  summary: string;
-};
-
-type CapabilityRouter = {
-  capability: CapabilityId;
-  actions: CapabilityActionRoute[];
-};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -279,45 +271,12 @@ export class McpSquaredServer {
     );
   }
 
-  private toActionToken(value: string): string {
-    const normalized = value
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "")
-      .replace(/_+/g, "_");
-    return normalized.length > 0 ? normalized : "tool";
-  }
-
   private capabilityTitle(capability: CapabilityId): string {
-    return capability
-      .split("_")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
+    return sharedCapabilityTitle(capability);
   }
 
   private capabilitySummary(capability: CapabilityId): string {
-    switch (capability) {
-      case "code_search":
-        return "Search and retrieve source-code context.";
-      case "docs":
-        return "Query and read technical documentation.";
-      case "browser_automation":
-        return "Automate browser interactions and diagnostics.";
-      case "issue_tracking":
-        return "Work with issues, tickets, and project tracking.";
-      case "cms_content":
-        return "Manage content and CMS resources.";
-      case "design":
-        return "Create and inspect design artifacts and visuals.";
-      case "hosting_deploy":
-        return "Manage deployments, hosting, and infrastructure operations.";
-      case "time_util":
-        return "Resolve time, timezone, and date utilities.";
-      case "research":
-        return "Run web/research collection and synthesis operations.";
-      default:
-        return "Run general-purpose capability actions.";
-    }
+    return sharedCapabilitySummary(capability);
   }
 
   private actionSummary(
@@ -352,78 +311,10 @@ export class McpSquaredServer {
       ...this.config.operations.dynamicToolSurface.capabilityOverrides,
     };
     const grouping = groupNamespacesByCapability(inventories, overrides);
-    const candidates: CapabilityActionRoute[] = [];
-    const reservedNormalized = this.toActionToken(DESCRIBE_ACTION);
 
-    for (const inventory of inventories) {
-      const capability = grouping.byNamespace[inventory.namespace] ?? "general";
-      const sortedTools = [...inventory.tools].sort((a, b) =>
-        a.name.localeCompare(b.name),
-      );
-
-      for (const tool of sortedTools) {
-        let baseAction = this.toActionToken(tool.name);
-        if (
-          baseAction === DESCRIBE_ACTION ||
-          baseAction === reservedNormalized
-        ) {
-          baseAction = `${DESCRIBE_ACTION}__tool`;
-        }
-
-        candidates.push({
-          capability,
-          action: baseAction,
-          baseAction,
-          serverKey: inventory.namespace,
-          toolName: tool.name,
-          qualifiedName: `${inventory.namespace}:${tool.name}`,
-          inputSchema: tool.inputSchema,
-          summary: this.actionSummary(tool.description, capability),
-        });
-      }
-    }
-
-    const byCapabilityAction = new Map<string, CapabilityActionRoute[]>();
-    for (const candidate of candidates) {
-      const key = `${candidate.capability}:${candidate.baseAction}`;
-      const existing = byCapabilityAction.get(key) ?? [];
-      existing.push(candidate);
-      byCapabilityAction.set(key, existing);
-    }
-
-    const resolved: CapabilityActionRoute[] = [];
-    const sortedKeys = [...byCapabilityAction.keys()].sort((a, b) =>
-      a.localeCompare(b),
+    return buildRouters(inventories, grouping, (desc, cap) =>
+      this.actionSummary(desc, cap),
     );
-
-    for (const key of sortedKeys) {
-      const records = (byCapabilityAction.get(key) ?? []).sort((a, b) =>
-        a.qualifiedName.localeCompare(b.qualifiedName),
-      );
-      records.forEach((record, index) => {
-        resolved.push({
-          ...record,
-          action:
-            index === 0
-              ? record.baseAction
-              : `${record.baseAction}__${index + 1}`,
-        });
-      });
-    }
-
-    const byCapability = new Map<CapabilityId, CapabilityActionRoute[]>();
-    for (const route of resolved) {
-      const existing = byCapability.get(route.capability) ?? [];
-      existing.push(route);
-      byCapability.set(route.capability, existing);
-    }
-
-    return [...byCapability.entries()]
-      .map(([capability, actions]) => ({
-        capability,
-        actions: actions.sort((a, b) => a.action.localeCompare(b.action)),
-      }))
-      .sort((a, b) => a.capability.localeCompare(b.capability));
   }
 
   private registerCapabilityRouters(server: McpServer): void {
