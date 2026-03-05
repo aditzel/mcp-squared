@@ -46,6 +46,12 @@ function createConfig(security: {
         minCooccurrenceThreshold: 2,
         maxBundleSuggestions: 3,
       },
+      dynamicToolSurface: {
+        inference: "heuristic_with_overrides",
+        refresh: "on_connect",
+        capabilityOverrides: {},
+        semanticConfidenceThreshold: 0.45,
+      },
     },
   };
 }

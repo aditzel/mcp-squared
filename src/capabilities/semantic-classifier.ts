@@ -58,7 +58,7 @@ export interface SemanticClassificationResult {
   /** Inference time in milliseconds */
   inferenceMs: number;
   /** Second-best match for diagnostics */
-  runnerUp?: { capability: CapabilityId; confidence: number };
+  runnerUp?: { capability: CapabilityId; confidence: number } | undefined;
 }
 
 /** Single classification entry within a batch result. */
@@ -94,7 +94,7 @@ export class SemanticCapabilityClassifier {
 
   constructor(
     generator: EmbeddingGenerator,
-    options?: { confidenceThreshold?: number },
+    options?: { confidenceThreshold?: number | undefined },
   ) {
     this.generator = generator;
     this.confidenceThreshold = options?.confidenceThreshold ?? 0.45;

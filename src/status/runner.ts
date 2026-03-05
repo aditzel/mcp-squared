@@ -36,10 +36,10 @@ export interface UpstreamStatus {
   name: string;
   enabled: boolean;
   status: ConnectionStatus;
-  error?: string;
+  error?: string | undefined;
   toolCount: number;
-  serverName?: string;
-  serverVersion?: string;
+  serverName?: string | undefined;
+  serverVersion?: string | undefined;
 }
 
 /** Result of the status command (for testing). */

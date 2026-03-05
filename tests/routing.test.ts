@@ -98,7 +98,7 @@ describe("buildCapabilityRouters", () => {
     const generalRouter = routers.find((r) => r.capability === "general");
     expect(generalRouter).toBeDefined();
 
-    const actions = generalRouter?.actions;
+    const actions = generalRouter?.actions ?? [];
     expect(actions.length).toBe(2);
 
     // One should be "do_search", the other "do_search__2"

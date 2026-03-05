@@ -127,7 +127,7 @@ export function buildCapabilityRouters(
         toolName: tool.name,
         qualifiedName: `${inventory.namespace}:${tool.name}`,
         inputSchema: tool.inputSchema ?? { type: "object" },
-        summary: resolveSummary(tool.description, capability),
+        summary: resolveSummary(tool.description ?? undefined, capability),
       });
     }
   }

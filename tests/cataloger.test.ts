@@ -124,6 +124,12 @@ describe("Cataloger", () => {
             minCooccurrenceThreshold: 2,
             maxBundleSuggestions: 3,
           },
+          dynamicToolSurface: {
+            inference: "heuristic_with_overrides",
+            refresh: "on_connect",
+            capabilityOverrides: {},
+            semanticConfidenceThreshold: 0.45,
+          },
         },
       };
       await cataloger.connectAll(config);
@@ -163,6 +169,12 @@ describe("Cataloger", () => {
             enabled: true,
             minCooccurrenceThreshold: 2,
             maxBundleSuggestions: 3,
+          },
+          dynamicToolSurface: {
+            inference: "heuristic_with_overrides",
+            refresh: "on_connect",
+            capabilityOverrides: {},
+            semanticConfidenceThreshold: 0.45,
           },
         },
       };

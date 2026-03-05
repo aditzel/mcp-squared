@@ -359,7 +359,9 @@ export class McpSquaredServer {
             let success = false;
 
             try {
-              const parsedArgs = isRecord(rawArgs) ? { ...rawArgs } : {};
+              const parsedArgs: Record<string, unknown> = isRecord(rawArgs)
+                ? { ...rawArgs }
+                : {};
               const action =
                 typeof parsedArgs["action"] === "string"
                   ? parsedArgs["action"]
@@ -480,7 +482,7 @@ export class McpSquaredServer {
                 qualifiedToolName: route.qualifiedName,
                 toolNameForCall: route.qualifiedName,
                 args: actionArgs,
-                confirmationToken,
+                ...(confirmationToken != null ? { confirmationToken } : {}),
               });
               success = !callResult.isError;
               return callResult;

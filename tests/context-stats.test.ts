@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { CapabilityId } from "@/capabilities/inference";
 import type { CapabilityRouter } from "@/capabilities/routing";
 import type { CatalogedTool } from "@/upstream/cataloger";
 import {
@@ -46,7 +47,7 @@ describe("computeContextStats", () => {
   }
 
   function makeRouter(
-    capability: string,
+    capability: CapabilityId,
     actionNames: string[],
   ): CapabilityRouter {
     return {
@@ -105,7 +106,7 @@ describe("computeContextStats", () => {
     ];
     const routers = [
       makeRouter("code_search", ["search"]),
-      makeRouter("empty_cap", []),
+      makeRouter("general", []),
     ];
 
     const stats = computeContextStats(tools, routers);
@@ -204,7 +205,7 @@ describe("computeContextStats", () => {
     // Percentage should be rounded to 1 decimal
     const decimalStr = stats.savedPercent.toString();
     const parts = decimalStr.split(".");
-    if (parts.length > 1) {
+    if (parts.length > 1 && parts[1] != null) {
       expect(parts[1].length).toBeLessThanOrEqual(1);
     }
   });

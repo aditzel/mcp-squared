@@ -87,14 +87,24 @@ async function getCapabilityToolPayload(): Promise<{
   try {
     const listed = await client.listTools();
     return {
-      tools: listed.tools.map((tool) => ({
-        name: tool.name,
-        title: tool.title,
-        description: tool.description,
-        inputSchema: tool.inputSchema,
-        annotations: tool.annotations,
-        execution: tool.execution,
-      })),
+      tools: listed.tools.map((tool) => {
+        const entry: {
+          name: string;
+          title?: string;
+          description?: string;
+          inputSchema?: unknown;
+          annotations?: unknown;
+          execution?: unknown;
+        } = {
+          name: tool.name,
+        };
+        if (tool.title != null) entry.title = tool.title;
+        if (tool.description != null) entry.description = tool.description;
+        if (tool.inputSchema != null) entry.inputSchema = tool.inputSchema;
+        if (tool.annotations != null) entry.annotations = tool.annotations;
+        if (tool.execution != null) entry.execution = tool.execution;
+        return entry;
+      }),
     };
   } finally {
     await client.close().catch(() => {});

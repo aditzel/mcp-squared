@@ -153,7 +153,7 @@ describe("shadcn classification — heuristic path", () => {
       {},
     );
 
-    expect(groups.byNamespace.shadcn).not.toBe("code_search");
+    expect(groups.byNamespace["shadcn"]).not.toBe("code_search");
     expect(groups.grouped.code_search ?? []).not.toContain("shadcn");
   });
 
@@ -246,7 +246,7 @@ describe("shadcn classification — semantic classifier path", () => {
       { namespace: "shadcn", tools: SHADCN_TOOLS },
     ]);
 
-    expect(result.overrides.shadcn).not.toBe("code_search");
+    expect(result.overrides["shadcn"]).not.toBe("code_search");
     // Full classification details should also not pick code_search
     const shadcnEntry = result.classifications.find(
       (c) => c.namespace === "shadcn",

@@ -174,7 +174,15 @@ describe("server runtime coverage", () => {
     const cataloger = server.getCataloger();
 
     spyOn(cataloger, "getStatus").mockReturnValue(
-      new Map([["auggie", { status: "connected", error: undefined }]]),
+      new Map([
+        [
+          "auggie",
+          {
+            status: "connected" as const,
+            error: undefined as string | undefined,
+          },
+        ],
+      ]),
     );
     spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
       if (key === "auggie") {
@@ -223,7 +231,15 @@ describe("server runtime coverage", () => {
     const cataloger = server.getCataloger();
 
     spyOn(cataloger, "getStatus").mockReturnValue(
-      new Map([["auggie", { status: "connected", error: undefined }]]),
+      new Map([
+        [
+          "auggie",
+          {
+            status: "connected" as const,
+            error: undefined as string | undefined,
+          },
+        ],
+      ]),
     );
     spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
       if (key === "auggie") {
@@ -257,7 +273,15 @@ describe("server runtime coverage", () => {
     const cataloger = server.getCataloger();
 
     spyOn(cataloger, "getStatus").mockReturnValue(
-      new Map([["time", { status: "connected", error: undefined }]]),
+      new Map([
+        [
+          "time",
+          {
+            status: "connected" as const,
+            error: undefined as string | undefined,
+          },
+        ],
+      ]),
     );
     spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
       if (key === "time") {
@@ -290,7 +314,15 @@ describe("server runtime coverage", () => {
     const cataloger = server.getCataloger();
 
     spyOn(cataloger, "getStatus").mockReturnValue(
-      new Map([["misc", { status: "connected", error: undefined }]]),
+      new Map([
+        [
+          "misc",
+          {
+            status: "connected" as const,
+            error: undefined as string | undefined,
+          },
+        ],
+      ]),
     );
     spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
       if (key === "misc") {
@@ -340,7 +372,15 @@ describe("server runtime coverage", () => {
     const cataloger = server.getCataloger();
 
     spyOn(cataloger, "getStatus").mockReturnValue(
-      new Map([["auggie", { status: "connected", error: undefined }]]),
+      new Map([
+        [
+          "auggie",
+          {
+            status: "connected" as const,
+            error: undefined as string | undefined,
+          },
+        ],
+      ]),
     );
     spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
       if (key === "auggie") {
@@ -402,7 +442,15 @@ describe("server runtime coverage", () => {
     const cataloger = server.getCataloger();
 
     spyOn(cataloger, "getStatus").mockReturnValue(
-      new Map([["misc", { status: "connected", error: undefined }]]),
+      new Map([
+        [
+          "misc",
+          {
+            status: "connected" as const,
+            error: undefined as string | undefined,
+          },
+        ],
+      ]),
     );
     spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
       if (key === "misc") {
@@ -436,8 +484,20 @@ describe("server runtime coverage", () => {
 
     spyOn(cataloger, "getStatus").mockReturnValue(
       new Map([
-        ["auggie", { status: "connected", error: undefined }],
-        ["time", { status: "connected", error: undefined }],
+        [
+          "auggie",
+          {
+            status: "connected" as const,
+            error: undefined as string | undefined,
+          },
+        ],
+        [
+          "time",
+          {
+            status: "connected" as const,
+            error: undefined as string | undefined,
+          },
+        ],
       ]),
     );
     spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
@@ -513,7 +573,9 @@ describe("server runtime coverage", () => {
     spyOn(retriever, "getEmbeddingGenerator").mockReturnValue(null);
 
     spyOn(anyServer.cataloger, "getStatus").mockReturnValue(
-      new Map([["time", { status: "connected", error: undefined }]]),
+      new Map<string, { status: string; error?: string }>([
+        ["time", { status: "connected" }],
+      ]),
     );
     spyOn(anyServer.cataloger, "getToolsForServer").mockReturnValue([]);
 
@@ -599,7 +661,15 @@ describe("server runtime coverage", () => {
     };
 
     spyOn(cataloger, "getStatus").mockReturnValue(
-      new Map([["notion", { status: "connected", error: undefined }]]),
+      new Map([
+        [
+          "notion",
+          {
+            status: "connected" as const,
+            error: undefined as string | undefined,
+          },
+        ],
+      ]),
     );
     spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
       if (key === "notion") {

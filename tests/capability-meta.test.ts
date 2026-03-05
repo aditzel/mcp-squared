@@ -31,7 +31,7 @@ describe("capabilityTitle", () => {
       expect(title.length).toBeGreaterThan(0);
       // First character of each word should be uppercase
       for (const word of title.split(" ")) {
-        expect(word[0]).toBe(word[0].toUpperCase());
+        expect(word[0]).toBe(word[0]?.toUpperCase());
       }
     }
   });
