@@ -152,4 +152,24 @@ describe("heuristic misclassification regression cases", () => {
     ]);
     expect(capability).toBe("issue_tracking");
   });
+
+  test("wavespeed-cli-mcp: correctly classified as ai_media_generation (fixed — was design)", () => {
+    // Fixed: wavespeed is an AI image generation service, not a design tool.
+    // The word "image" in tool descriptions was triggering design's /\bimage\b/ pattern.
+    const capability = inferNamespaceCapability("wavespeed-cli-mcp", [
+      {
+        name: "generate",
+        description: "Generate images from text prompts using Wavespeed AI",
+      },
+      {
+        name: "edit",
+        description: "Edit images using text prompts with Wavespeed AI",
+      },
+      {
+        name: "list_models",
+        description: "List available Wavespeed AI models",
+      },
+    ]);
+    expect(capability).toBe("ai_media_generation");
+  });
 });

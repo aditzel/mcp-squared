@@ -37,6 +37,8 @@ const CAPABILITY_REFERENCE_TEXTS: Record<CapabilityId, string> = {
     "Manage wiki pages, knowledge base articles, content documents, blog posts, editorial workflows, and structured content. Create and organize content in systems like Notion, Confluence, and Sanity.",
   design:
     "Create and inspect visual design artifacts, UI mockups, wireframes, and design system components. Work with design tools like Figma, Sketch, and Pencil for visual layout and styling.",
+  ai_media_generation:
+    "Generate and edit images, videos, and visual media using AI models. Create images from text prompts, edit existing images with AI, upscale resolution, apply style transfer, inpaint or outpaint regions, and generate sequential or consistent media. Supports text-to-image, image-to-image, and AI-powered visual content creation.",
   hosting_deploy:
     "Manage server deployments, cloud infrastructure, hosting configurations, CI/CD pipelines, containers, databases, DNS records, and domain management.",
   time_util:

@@ -17,6 +17,7 @@ export const CAPABILITY_IDS = [
   "issue_tracking",
   "cms_content",
   "design",
+  "ai_media_generation",
   "hosting_deploy",
   "time_util",
   "research",
@@ -52,6 +53,7 @@ const CAPABILITY_PRIORITY: CapabilityId[] = [
   "issue_tracking",
   "cms_content",
   "design",
+  "ai_media_generation",
   "hosting_deploy",
   "time_util",
   "research",
@@ -102,6 +104,12 @@ const NAMESPACE_HINTS: Array<{
     capability: "time_util",
     pattern: /(time|timezone|clock|date|utc)/i,
     score: 22,
+  },
+  {
+    capability: "ai_media_generation",
+    pattern:
+      /(wavespeed|stability|replicate|midjourney|dall.?e|runway|imagen|flux|fal\.ai|dreamstudio)/i,
+    score: 24,
   },
   {
     capability: "research",
@@ -175,6 +183,19 @@ const CAPABILITY_PATTERNS: Record<CapabilityId, RegExp[]> = {
     /\bimage\b/i,
     /\blayout\b/i,
     /\bframe\b/i,
+  ],
+  ai_media_generation: [
+    /\btext.to.image\b/i,
+    /\bimage.to.image\b/i,
+    /\btext.to.video\b/i,
+    /\binpaint(?:ing)?\b/i,
+    /\bupscal(?:e|ing)\b/i,
+    /\bgenerat(?:e|ion)\b.*\bimage/i,
+    /\bimage\b.*\bgenerat(?:e|ion)\b/i,
+    /\bai\b.*\b(?:image|photo|video)\b/i,
+    /\bstable.diffusion\b/i,
+    /\bdiffusion\b/i,
+    /\bprompt\b.*\b(?:image|visual)\b/i,
   ],
   hosting_deploy: [
     /\bdeploy(?:ment)?\b/i,
