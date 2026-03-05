@@ -24,10 +24,25 @@ type MonitorLoaderModule = {
   runMonitorTui: (options?: MonitorTuiOptions) => Promise<void>;
 };
 
-const MONITOR_MODULE_SPECIFIER = "./tui/monitor.js";
+/**
+ * Resolves the monitor module path relative to the current file.
+ *
+ * In dev mode (running from source), this file is src/tui/monitor-loader.ts
+ * and the target is ./monitor.ts (same directory). When bundled into
+ * dist/index.js, the inlined code runs from the root so it needs
+ * ./tui/monitor.js. We detect which case by checking whether our own URL
+ * already contains a /tui/ segment.
+ */
+function getMonitorModuleSpecifier(): string {
+  const self = import.meta.url;
+  if (self.includes("/tui/")) {
+    return new URL("./monitor.js", self).href;
+  }
+  return "./tui/monitor.js";
+}
 
 async function loadMonitorModule(): Promise<MonitorLoaderModule> {
-  return import(MONITOR_MODULE_SPECIFIER) as Promise<MonitorLoaderModule>;
+  return import(getMonitorModuleSpecifier()) as Promise<MonitorLoaderModule>;
 }
 
 export async function runMonitorTui(

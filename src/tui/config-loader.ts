@@ -18,10 +18,27 @@ type ConfigLoaderModule = {
   runConfigTui: () => Promise<void>;
 };
 
-const CONFIG_MODULE_SPECIFIER = "./tui/config.js";
+/**
+ * Resolves the config module path relative to the current file.
+ *
+ * In dev mode (running from source), this file is src/tui/config-loader.ts
+ * and the target is ./config.ts (same directory). When bundled into
+ * dist/index.js, the inlined code runs from the root so it needs
+ * ./tui/config.js. We detect which case by checking whether our own URL
+ * already contains a /tui/ segment.
+ */
+function getConfigModuleSpecifier(): string {
+  const self = import.meta.url;
+  // When running from src/tui/ or dist/tui/, config.js is a sibling
+  if (self.includes("/tui/")) {
+    return new URL("./config.js", self).href;
+  }
+  // When bundled into dist/index.js (root), config.js is in ./tui/
+  return "./tui/config.js";
+}
 
 function loadConfigModule(): Promise<ConfigLoaderModule> {
-  return import(CONFIG_MODULE_SPECIFIER) as Promise<ConfigLoaderModule>;
+  return import(getConfigModuleSpecifier()) as Promise<ConfigLoaderModule>;
 }
 
 export async function runConfigTui(): Promise<void> {

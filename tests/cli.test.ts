@@ -429,6 +429,18 @@ describe("parseArgs", () => {
     });
   });
 
+  describe("status command", () => {
+    test("parses 'status' command", () => {
+      const result = parseArgs(["status"]);
+      expect(result.mode).toBe("status");
+    });
+
+    test("parses '--verbose' for status", () => {
+      const result = parseArgs(["status", "--verbose"]);
+      expect(result.mode).toBe("status");
+    });
+  });
+
   describe("edge cases", () => {
     test("handles empty --source value", () => {
       const result = parseArgs(["import", "--source="]);
