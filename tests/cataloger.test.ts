@@ -4,7 +4,11 @@ import type {
   McpSquaredConfig,
   UpstreamSseServerConfig,
 } from "../src/config/schema.js";
-import { Cataloger, type ServerConnection } from "../src/upstream/cataloger.js";
+import {
+  Cataloger,
+  isAuthError,
+  type ServerConnection,
+} from "../src/upstream/cataloger.js";
 
 type CatalogerAccess = {
   connections: Map<string, ServerConnection>;
@@ -247,7 +251,7 @@ describe("Cataloger", () => {
       const connection: ServerConnection = {
         key: "oauth-upstream",
         config: createSseConfig(),
-        status: "error",
+        status: "needs_auth",
         error:
           "OAuth authorization required. Run: mcp-squared auth oauth-upstream",
         serverName: undefined,
@@ -283,7 +287,7 @@ describe("Cataloger", () => {
       const connection: ServerConnection = {
         key: "oauth-upstream",
         config: createSseConfig(),
-        status: "error",
+        status: "needs_auth",
         error:
           "OAuth authorization required. Run: mcp-squared auth oauth-upstream",
         serverName: undefined,
@@ -338,7 +342,7 @@ describe("Cataloger", () => {
       await cataloger.refreshTools("oauth-upstream");
 
       expect(listToolsMock).toHaveBeenCalledTimes(1);
-      expect(connection.status).toBe("error");
+      expect(connection.status).toBe("needs_auth");
       expect(connection.authPending).toBe(true);
       expect(connection.error).toContain("mcp-squared auth oauth-upstream");
     });
@@ -393,5 +397,47 @@ describe("Cataloger", () => {
         cataloger.callTool("server:nonexistent", {}),
       ).rejects.toThrow("Tool not found: server:nonexistent");
     });
+  });
+});
+
+describe("isAuthError", () => {
+  test("detects invalid_token errors", () => {
+    expect(
+      isAuthError(
+        'Streamable HTTP error: {"error":"invalid_token","error_description":"No authorization provided"}',
+      ),
+    ).toBe(true);
+  });
+
+  test("detects missing token errors", () => {
+    expect(
+      isAuthError(
+        "Streamable HTTP error: No token provided, please provide a valid API token.",
+      ),
+    ).toBe(true);
+  });
+
+  test("detects unauthorized errors", () => {
+    expect(isAuthError("401 Unauthorized")).toBe(true);
+  });
+
+  test("detects API key errors", () => {
+    expect(isAuthError("Invalid API key provided")).toBe(true);
+  });
+
+  test("detects forbidden errors", () => {
+    expect(isAuthError("403 Forbidden: Access denied")).toBe(true);
+  });
+
+  test("is case-insensitive", () => {
+    expect(isAuthError("UNAUTHORIZED ACCESS")).toBe(true);
+    expect(isAuthError("Invalid_Token response")).toBe(true);
+  });
+
+  test("does not match generic connection errors", () => {
+    expect(isAuthError("Connection refused")).toBe(false);
+    expect(isAuthError("Connection timeout")).toBe(false);
+    expect(isAuthError("ENOENT: no such file or directory")).toBe(false);
+    expect(isAuthError("Process exited with code 1")).toBe(false);
   });
 });

@@ -35,13 +35,47 @@ import { safelyCloseTransport } from "../utils/transport.js";
  * - `disconnected`: No active connection
  * - `connecting`: Connection attempt in progress
  * - `connected`: Successfully connected and ready
+ * - `needs_auth`: Connection failed due to missing or invalid credentials
  * - `error`: Connection failed or encountered an error
  */
 export type ConnectionStatus =
   | "disconnected"
   | "connecting"
   | "connected"
+  | "needs_auth"
   | "error";
+
+/**
+ * Auth error patterns matched case-insensitively against error messages.
+ * Covers API key errors, token errors, OAuth failures, and HTTP 401/403 responses.
+ */
+const AUTH_ERROR_PATTERNS = [
+  "invalid_token",
+  "invalid token",
+  "unauthorized",
+  "no token provided",
+  "no authorization",
+  "api key",
+  "api_key",
+  "authentication required",
+  "authentication failed",
+  "invalid credentials",
+  "invalid api",
+  "forbidden",
+  "access denied",
+  "not authenticated",
+];
+
+/**
+ * Detects whether an error message indicates an authentication/authorization failure.
+ *
+ * @param message - The error message to check
+ * @returns true if the message matches known auth error patterns
+ */
+export function isAuthError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return AUTH_ERROR_PATTERNS.some((pattern) => lower.includes(pattern));
+}
 
 /**
  * JSON Schema for tool input parameters.
@@ -279,7 +313,7 @@ export class Cataloger {
             // In server mode, we can't do interactive browser auth
             // Mark as pending and let the user run `mcp-squared auth <upstream>`
             connection.authPending = true;
-            connection.status = "error";
+            connection.status = "needs_auth";
             connection.error = `OAuth authorization required. Run: mcp-squared auth ${key}`;
             return;
           }
@@ -309,8 +343,9 @@ export class Cataloger {
 
       connection.status = "connected";
     } catch (err) {
-      connection.status = "error";
-      connection.error = err instanceof Error ? err.message : String(err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      connection.status = isAuthError(errorMsg) ? "needs_auth" : "error";
+      connection.error = errorMsg;
 
       // Clean up on error - handle any cleanup errors to ensure the connection stays in error state
       try {
@@ -634,13 +669,14 @@ export class Cataloger {
       if (err instanceof UnauthorizedError && connection.authProvider) {
         if (connection.authProvider.isNonInteractive()) {
           connection.authPending = true;
-          connection.status = "error";
+          connection.status = "needs_auth";
           connection.error = `OAuth authorization required. Run: mcp-squared auth ${key}`;
           return;
         }
       }
-      connection.status = "error";
-      connection.error = err instanceof Error ? err.message : String(err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      connection.status = isAuthError(errorMsg) ? "needs_auth" : "error";
+      connection.error = errorMsg;
     }
   }
 
