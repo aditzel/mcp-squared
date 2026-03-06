@@ -32,6 +32,15 @@ function makeLargeContent(
   return [{ type: "text" as const, text }];
 }
 
+function measureStoredBytes(
+  content: Array<{ type: "text"; text: string }>,
+): number {
+  return Buffer.byteLength(
+    content.map((block) => block.text).join("\n\n---\n\n"),
+    "utf8",
+  );
+}
+
 describe("ResponseResourceManager", () => {
   describe("config defaults", () => {
     test("disabled by default", () => {
@@ -92,7 +101,7 @@ describe("ResponseResourceManager", () => {
 
     test("returns false for exactly threshold bytes", () => {
       const content = makeTextContent("hello world");
-      const exactSize = Buffer.byteLength(JSON.stringify(content), "utf8");
+      const exactSize = measureStoredBytes(content);
       // At exact threshold: should NOT offload (uses > not >=)
       const mgrExact = new ResponseResourceManager(
         makeConfig({ enabled: true, thresholdBytes: exactSize }),
@@ -103,6 +112,15 @@ describe("ResponseResourceManager", () => {
         makeConfig({ enabled: true, thresholdBytes: exactSize - 1 }),
       );
       expect(mgrBelow.shouldOffload(content)).toBe(true);
+
+      const offloaded = mgrBelow.offload(content, {
+        capability: "docs",
+        action: "read",
+      });
+      const inlineText = (
+        offloaded.inlineContent[0] as { type: "text"; text: string }
+      ).text;
+      expect(JSON.parse(inlineText).total_bytes).toBe(exactSize);
     });
   });
 

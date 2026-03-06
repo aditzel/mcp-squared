@@ -81,7 +81,7 @@ export class ResponseResourceManager {
    */
   shouldOffload(content: Array<{ type: "text"; text: string }>): boolean {
     if (!this.config.enabled) return false;
-    const byteCount = this.measureBytes(content);
+    const { byteCount } = this.canonicalizeContent(content);
     return byteCount > this.config.thresholdBytes;
   }
 
@@ -93,8 +93,7 @@ export class ResponseResourceManager {
     content: Array<{ type: "text"; text: string }>,
     context: OffloadContext,
   ): OffloadResult {
-    const fullText = content.map((c) => c.text).join("\n\n---\n\n");
-    const byteCount = Buffer.byteLength(fullText, "utf8");
+    const { fullText, byteCount } = this.canonicalizeContent(content);
     const id = this.generateId(context);
     const uri = `mcp2://response/${context.capability}/${id}`;
 
@@ -138,18 +137,12 @@ export class ResponseResourceManager {
 
     // Check TTL
     if (Date.now() - entry.createdAt >= this.config.ttlMs) {
-      this.resources.delete(uri);
-      const idx = this.insertionOrder.indexOf(uri);
-      if (idx !== -1) this.insertionOrder.splice(idx, 1);
+      this.deleteResource(uri);
       return null;
     }
 
     // Promote to end of insertion order (LRU)
-    const idx = this.insertionOrder.indexOf(uri);
-    if (idx !== -1) {
-      this.insertionOrder.splice(idx, 1);
-      this.insertionOrder.push(uri);
-    }
+    this.touchInsertionOrder(uri);
 
     return {
       contents: [
@@ -183,8 +176,19 @@ export class ResponseResourceManager {
     return this.resources.size;
   }
 
-  private measureBytes(content: Array<{ type: "text"; text: string }>): number {
-    return Buffer.byteLength(JSON.stringify(content), "utf8");
+  private canonicalizeContent(content: Array<{ type: "text"; text: string }>): {
+    fullText: string;
+    byteCount: number;
+  } {
+    const fullText = content.map((block) => block.text).join("\n\n---\n\n");
+    return {
+      fullText,
+      byteCount: this.measureBytes(fullText),
+    };
+  }
+
+  private measureBytes(text: string): number {
+    return Buffer.byteLength(text, "utf8");
   }
 
   private generateId(context: OffloadContext): string {
@@ -207,8 +211,7 @@ export class ResponseResourceManager {
     }
     // Also cap by bytes for single-line or very long-line payloads
     if (
-      Buffer.byteLength(preview, "utf8") >
-      ResponseResourceManager.MAX_PREVIEW_BYTES
+      this.measureBytes(preview) > ResponseResourceManager.MAX_PREVIEW_BYTES
     ) {
       const truncated = Buffer.from(preview, "utf8")
         .subarray(0, ResponseResourceManager.MAX_PREVIEW_BYTES)
@@ -227,13 +230,13 @@ export class ResponseResourceManager {
       this.resources.size >= this.config.maxResources &&
       this.insertionOrder.length > 0
     ) {
-      const oldest = this.insertionOrder.shift();
+      const oldest = this.insertionOrder[0];
       if (!oldest) break;
-      this.resources.delete(oldest);
+      this.deleteResource(oldest);
     }
 
     this.resources.set(uri, entry);
-    this.insertionOrder.push(uri);
+    this.touchInsertionOrder(uri);
   }
 
   private evictExpired(): void {
@@ -245,9 +248,26 @@ export class ResponseResourceManager {
       }
     }
     for (const uri of toRemove) {
-      this.resources.delete(uri);
-      const idx = this.insertionOrder.indexOf(uri);
-      if (idx !== -1) this.insertionOrder.splice(idx, 1);
+      this.deleteResource(uri);
     }
+  }
+
+  private deleteResource(uri: string): void {
+    this.resources.delete(uri);
+    this.removeFromInsertionOrder(uri);
+  }
+
+  private removeFromInsertionOrder(uri: string): void {
+    const idx = this.insertionOrder.indexOf(uri);
+    if (idx !== -1) this.insertionOrder.splice(idx, 1);
+  }
+
+  private appendToInsertionOrder(uri: string): void {
+    this.insertionOrder.push(uri);
+  }
+
+  private touchInsertionOrder(uri: string): void {
+    this.removeFromInsertionOrder(uri);
+    this.appendToInsertionOrder(uri);
   }
 }
