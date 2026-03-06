@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Fixed `cataloger.callTool()` silently dropping `structuredContent` from upstream MCP `CallToolResult` responses. The field is now forwarded through the response chain.
 - Fixed response-resource offload thresholds to measure the exact stored payload bytes consistently, so boundary decisions and reported resource sizes now match.
+- Fixed response-resource preview truncation to preserve valid UTF-8 when byte-capping long inline previews.
 - Fixed TUI lazy loaders (`config-loader.ts`, `monitor-loader.ts`) failing in dev mode with `Cannot find module './tui/config.js'`. The hardcoded `./tui/config.js` specifier assumed bundled context (where the loader is inlined into `dist/index.js`); now dynamically resolves relative to `import.meta.url` to work in both source and bundled contexts.
 - Fixed shadcn heuristic misclassification: added `shadcn` to docs namespace hints and added component registry patterns (`registry`, `component`, `example`) to docs capability patterns. Previously classified as `code_search` (with real tools) or `design` (with simplified tools).
 - `status --verbose` now shows a **Context Savings** section estimating token savings from capability routing: tokens without MCP² (raw upstream tools), tokens with MCP² (capability tools), total saved tokens, and savings percentage.

@@ -245,6 +245,33 @@ describe("ResponseResourceManager", () => {
       expect(mgr.readResource(r3.resourceUri)).not.toBeNull();
       expect(mgr.listResources()).toHaveLength(2);
     });
+
+    test("promotes recently read resources before eviction", () => {
+      const mgr = new ResponseResourceManager(
+        makeConfig({ enabled: true, thresholdBytes: 10, maxResources: 2 }),
+      );
+
+      const r1 = mgr.offload(makeTextContent("first large response"), {
+        capability: "a",
+        action: "1",
+      });
+      const r2 = mgr.offload(makeTextContent("second large response"), {
+        capability: "b",
+        action: "2",
+      });
+
+      expect(mgr.readResource(r1.resourceUri)).not.toBeNull();
+
+      const r3 = mgr.offload(makeTextContent("third large response"), {
+        capability: "c",
+        action: "3",
+      });
+
+      expect(mgr.readResource(r1.resourceUri)).not.toBeNull();
+      expect(mgr.readResource(r2.resourceUri)).toBeNull();
+      expect(mgr.readResource(r3.resourceUri)).not.toBeNull();
+      expect(mgr.listResources()).toHaveLength(2);
+    });
   });
 
   describe("TTL expiration", () => {
@@ -266,6 +293,25 @@ describe("ResponseResourceManager", () => {
   });
 
   describe("preview byte cap", () => {
+    test("truncates without introducing replacement characters", () => {
+      const mgr = new ResponseResourceManager(
+        makeConfig({ enabled: true, thresholdBytes: 10 }),
+      );
+      const content = makeTextContent(`${"a".repeat(2047)}étail`);
+
+      const result = mgr.offload(content, {
+        capability: "test",
+        action: "utf8_boundary",
+      });
+
+      const inlineText = (
+        result.inlineContent[0] as { type: "text"; text: string }
+      ).text;
+      const parsed = JSON.parse(inlineText);
+      expect(parsed.preview).not.toContain("\uFFFD");
+      expect(parsed.preview).toBe(`${"a".repeat(2047)}...`);
+    });
+
     test("truncates single-line payloads by bytes", () => {
       const mgr = new ResponseResourceManager(
         makeConfig({ enabled: true, thresholdBytes: 10 }),

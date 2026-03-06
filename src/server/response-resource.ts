@@ -213,12 +213,29 @@ export class ResponseResourceManager {
     if (
       this.measureBytes(preview) > ResponseResourceManager.MAX_PREVIEW_BYTES
     ) {
-      const truncated = Buffer.from(preview, "utf8")
-        .subarray(0, ResponseResourceManager.MAX_PREVIEW_BYTES)
-        .toString("utf8");
+      const truncated = this.truncateUtf8(
+        preview,
+        ResponseResourceManager.MAX_PREVIEW_BYTES,
+      );
       return `${truncated}...`;
     }
     return preview;
+  }
+
+  private truncateUtf8(text: string, maxBytes: number): string {
+    const bytes = Buffer.from(text, "utf8");
+    if (bytes.length <= maxBytes) return text;
+
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    for (let end = maxBytes; end > 0; end--) {
+      try {
+        return decoder.decode(bytes.subarray(0, end));
+      } catch {
+        // Keep trimming until the byte slice ends on a valid UTF-8 boundary.
+      }
+    }
+
+    return "";
   }
 
   private store(uri: string, entry: ResourceEntry): void {
