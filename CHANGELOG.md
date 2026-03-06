@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Added **response resource offloading**: when enabled, large upstream tool responses are stored as temporary MCP Resources instead of being returned inline. Clients receive a truncated preview with the resource URI and can fetch the full content via `resources/read`. Configurable via `operations.responseResource` with threshold, TTL, max inline lines, and eviction settings. Disabled by default.
+
+### Fixed
+- Fixed `cataloger.callTool()` silently dropping `structuredContent` from upstream MCP `CallToolResult` responses. The field is now forwarded through the response chain.
+- Fixed response-resource offload thresholds to measure the exact stored payload bytes consistently, so boundary decisions and reported resource sizes now match.
+- Fixed response-resource preview truncation to preserve valid UTF-8 when byte-capping long inline previews.
+- Fixed TUI lazy loaders (`config-loader.ts`, `monitor-loader.ts`) failing in dev mode with `Cannot find module './tui/config.js'`. The hardcoded `./tui/config.js` specifier assumed bundled context (where the loader is inlined into `dist/index.js`); now dynamically resolves relative to `import.meta.url` to work in both source and bundled contexts.
+- Fixed shadcn heuristic misclassification: added `shadcn` to docs namespace hints and added component registry patterns (`registry`, `component`, `example`) to docs capability patterns. Previously classified as `code_search` (with real tools) or `design` (with simplified tools).
 - `status --verbose` now shows a **Context Savings** section estimating token savings from capability routing: tokens without MCP² (raw upstream tools), tokens with MCP² (capability tools), total saved tokens, and savings percentage.
 - Added `ai_media_generation` capability (11th capability) for AI image/video generation tools (wavespeed, stability, replicate, runway, midjourney, etc.), preventing misclassification as `design`. Includes namespace hints, tool signal patterns, semantic reference text, and component tests with real wavespeed-cli-mcp tool metadata.
 - Added `mcp-squared status` command that shows upstream server connection status and the full capability routing table (which upstream tools map to which capability actions). Supports `--verbose` for schema parameter details.
@@ -16,20 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `SemanticCapabilityClassifier` module that reuses the existing `EmbeddingGenerator` to classify namespaces by cosine similarity against capability reference embeddings.
 - Added heuristic misclassification regression tests documenting 4 known failures (Notion, Sentry, Prisma, Supabase).
 - Added component test for shadcn MCP server classification using real tool metadata from the official server (`npx shadcn@latest mcp`).
-
-### Security
-- Updated `tar` from 7.5.9 to 7.5.10 (fixes GHSA-qffp-2rhf-9h96: hardlink path traversal).
-- Updated `@hono/node-server` from 1.19.9 to 1.19.11 (fixes GHSA-wc8c-qw6v-h7f6: auth bypass via encoded slashes).
-- Updated `hono` from 4.11.x to 4.12.5 (fixes GHSA-5pq2-9x2x-5p6w, GHSA-p6xx-57qc-3wxr, GHSA-q5qw-h33p-qvwr: cookie injection, SSE injection, arbitrary file access).
-
-### Fixed
-- Fixed TUI lazy loaders (`config-loader.ts`, `monitor-loader.ts`) failing in dev mode with `Cannot find module './tui/config.js'`. The hardcoded `./tui/config.js` specifier assumed bundled context (where the loader is inlined into `dist/index.js`); now dynamically resolves relative to `import.meta.url` to work in both source and bundled contexts.
-- Fixed shadcn heuristic misclassification: added `shadcn` to docs namespace hints and added component registry patterns (`registry`, `component`, `example`) to docs capability patterns. Previously classified as `code_search` (with real tools) or `design` (with simplified tools).
 - Added a capability-first public tool API that registers one router per non-empty capability at connect time (`code_search`, `docs`, `browser_automation`, `issue_tracking`, `cms_content`, `design`, `hosting_deploy`, `time_util`, `research`, `general`).
 - Added router introspection via reserved `action = "__describe_actions"` returning capability-local action catalogs and input schemas without upstream identifier leakage.
 - Added deterministic action ID generation/collision handling from upstream tools, including reserved-name rewriting and suffixing (`__2`, `__3`, ...).
 - Added capability inference/grouping tests (including `auggie` => `code_search`) and capability-router API contract tests.
 - Added context-window budget tests for capability-router `tools/list` metadata footprint.
+
+### Security
+- Updated `tar` from 7.5.9 to 7.5.10 (fixes GHSA-qffp-2rhf-9h96: hardlink path traversal).
+- Updated `@hono/node-server` from 1.19.9 to 1.19.11 (fixes GHSA-wc8c-qw6v-h7f6: auth bypass via encoded slashes).
+- Updated `hono` from 4.11.x to 4.12.5 (fixes GHSA-5pq2-9x2x-5p6w, GHSA-p6xx-57qc-3wxr, GHSA-q5qw-h33p-qvwr: cookie injection, SSE injection, arbitrary file access).
 
 ### Changed
 - Authentication errors (invalid tokens, missing API keys, unauthorized access) are now shown as `⚠ needs auth` (yellow) in `mcp-squared status` instead of the generic `✗ error` (red), making it easier to distinguish credential issues from connection failures.

@@ -10,6 +10,7 @@ import {
   ConfigSchema,
   ConfigValidationError,
   DEFAULT_CONFIG,
+  DEFAULT_RESPONSE_RESOURCE_CONFIG,
   discoverConfigPath,
   formatValidationIssues,
   loadConfig,
@@ -36,6 +37,9 @@ describe("ConfigSchema", () => {
       result.operations.findTools.preferredNamespacesByIntent.codeSearch,
     ).toEqual([]);
     expect(result.operations.logging.level).toBe("info");
+    expect(result.operations.responseResource).toEqual(
+      DEFAULT_RESPONSE_RESOURCE_CONFIG,
+    );
     expect(result.operations.dynamicToolSurface.inference).toBe(
       "heuristic_with_overrides",
     );
@@ -229,6 +233,9 @@ describe("DEFAULT_CONFIG", () => {
     expect(
       DEFAULT_CONFIG.operations.dynamicToolSurface.capabilityOverrides,
     ).toEqual({});
+    expect(DEFAULT_CONFIG.operations.responseResource).toEqual(
+      DEFAULT_RESPONSE_RESOURCE_CONFIG,
+    );
   });
 });
 

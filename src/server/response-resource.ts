@@ -1,0 +1,290 @@
+/**
+ * Response resource manager for offloading large tool responses to MCP Resources.
+ *
+ * When an upstream tool response exceeds a configurable byte threshold,
+ * the full content is stored as a temporary MCP Resource. The tool response
+ * is replaced with a truncated preview plus the resource URI, allowing
+ * clients to fetch the full data via `resources/read` on demand.
+ *
+ * @module server/response-resource
+ */
+
+import { randomBytes } from "node:crypto";
+import {
+  DEFAULT_RESPONSE_RESOURCE_CONFIG,
+  type ResponseResourceConfig,
+  ResponseResourceSchema,
+} from "../config/schema.js";
+
+export { DEFAULT_RESPONSE_RESOURCE_CONFIG, ResponseResourceSchema };
+export type { ResponseResourceConfig };
+
+/** Context about the tool call that produced the response. */
+export interface OffloadContext {
+  capability: string;
+  action: string;
+}
+
+/** Result of an offload operation. */
+export interface OffloadResult {
+  resourceUri: string;
+  inlineContent: Array<{ type: "text"; text: string }>;
+}
+
+/** MCP Resource metadata for listing. */
+export interface StoredResource {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType: string;
+  size?: number;
+}
+
+/** Internal stored resource entry. */
+interface ResourceEntry {
+  uri: string;
+  name: string;
+  description: string;
+  mimeType: string;
+  fullText: string;
+  byteCount: number;
+  createdAt: number;
+}
+
+/**
+ * Manages temporary MCP Resources for large tool responses.
+ *
+ * Resources are stored in-memory with LRU eviction and TTL expiration.
+ * The manager exposes list/read operations compatible with MCP's resource
+ * protocol, allowing integration with the McpServer's resource handlers.
+ */
+export class ResponseResourceManager {
+  /** Maximum preview size in bytes to guard against single-line / long-line payloads. */
+  private static readonly MAX_PREVIEW_BYTES = 2048;
+
+  private readonly config: ResponseResourceConfig;
+  private readonly resources = new Map<string, ResourceEntry>();
+  private readonly insertionOrder: string[] = [];
+
+  constructor(config: ResponseResourceConfig) {
+    this.config = config;
+  }
+
+  /** Whether response resource offloading is enabled. */
+  isEnabled(): boolean {
+    return this.config.enabled;
+  }
+
+  /**
+   * Determines whether the given content should be offloaded.
+   * Returns false if disabled or content is below the threshold.
+   */
+  shouldOffload(content: Array<{ type: "text"; text: string }>): boolean {
+    if (!this.config.enabled) return false;
+    const { byteCount } = this.canonicalizeContent(content);
+    return byteCount > this.config.thresholdBytes;
+  }
+
+  /**
+   * Offloads content to a temporary resource.
+   * Returns the resource URI and a truncated inline preview.
+   */
+  offload(
+    content: Array<{ type: "text"; text: string }>,
+    context: OffloadContext,
+  ): OffloadResult {
+    const { fullText, byteCount } = this.canonicalizeContent(content);
+    const id = this.generateId(context);
+    const uri = `mcp2://response/${context.capability}/${id}`;
+
+    const entry: ResourceEntry = {
+      uri,
+      name: `${context.capability}:${context.action} response`,
+      description: `Full response from ${context.capability}:${context.action} (${byteCount} bytes)`,
+      mimeType: "text/plain",
+      fullText,
+      byteCount,
+      createdAt: Date.now(),
+    };
+
+    this.store(uri, entry);
+
+    const preview = this.buildPreview(fullText);
+    const pointer = {
+      truncated: true,
+      resource_uri: uri,
+      total_bytes: byteCount,
+      preview,
+      instructions:
+        "Full response available via resources/read with the resource_uri above.",
+    };
+
+    return {
+      resourceUri: uri,
+      inlineContent: [{ type: "text" as const, text: JSON.stringify(pointer) }],
+    };
+  }
+
+  /**
+   * Reads a stored resource by URI.
+   * Returns null if the resource doesn't exist or has expired.
+   */
+  readResource(uri: string): {
+    contents: Array<{ uri: string; mimeType: string; text: string }>;
+  } | null {
+    const entry = this.resources.get(uri);
+    if (!entry) return null;
+
+    // Check TTL
+    if (Date.now() - entry.createdAt >= this.config.ttlMs) {
+      this.deleteResource(uri);
+      return null;
+    }
+
+    // Promote to end of insertion order (LRU)
+    this.touchInsertionOrder(uri);
+
+    return {
+      contents: [
+        {
+          uri: entry.uri,
+          mimeType: entry.mimeType,
+          text: entry.fullText,
+        },
+      ],
+    };
+  }
+
+  /** Lists all non-expired stored resources. */
+  listResources(): StoredResource[] {
+    this.evictExpired();
+    const result: StoredResource[] = [];
+    for (const entry of this.resources.values()) {
+      result.push({
+        uri: entry.uri,
+        name: entry.name,
+        description: entry.description,
+        mimeType: entry.mimeType,
+        size: entry.byteCount,
+      });
+    }
+    return result;
+  }
+
+  /** Returns the number of currently stored resources. */
+  getResourceCount(): number {
+    return this.resources.size;
+  }
+
+  private canonicalizeContent(content: Array<{ type: "text"; text: string }>): {
+    fullText: string;
+    byteCount: number;
+  } {
+    const fullText = content.map((block) => block.text).join("\n\n---\n\n");
+    return {
+      fullText,
+      byteCount: this.measureBytes(fullText),
+    };
+  }
+
+  private measureBytes(text: string): number {
+    return Buffer.byteLength(text, "utf8");
+  }
+
+  private generateId(context: OffloadContext): string {
+    const timestamp = Date.now().toString(36);
+    const random = randomBytes(4).toString("hex");
+    const actionSlug = context.action
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .slice(0, 24);
+    return `${actionSlug}_${timestamp}_${random}`;
+  }
+
+  private buildPreview(fullText: string): string {
+    const lines = fullText.split("\n");
+    let preview: string;
+    if (lines.length <= this.config.maxInlineLines) {
+      preview = fullText;
+    } else {
+      preview = `${lines.slice(0, this.config.maxInlineLines).join("\n")}\n...`;
+    }
+    // Also cap by bytes for single-line or very long-line payloads
+    if (
+      this.measureBytes(preview) > ResponseResourceManager.MAX_PREVIEW_BYTES
+    ) {
+      const truncated = this.truncateUtf8(
+        preview,
+        ResponseResourceManager.MAX_PREVIEW_BYTES,
+      );
+      return `${truncated}...`;
+    }
+    return preview;
+  }
+
+  private truncateUtf8(text: string, maxBytes: number): string {
+    const bytes = Buffer.from(text, "utf8");
+    if (bytes.length <= maxBytes) return text;
+
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    for (let end = maxBytes; end > 0; end--) {
+      try {
+        return decoder.decode(bytes.subarray(0, end));
+      } catch {
+        // Keep trimming until the byte slice ends on a valid UTF-8 boundary.
+      }
+    }
+
+    return "";
+  }
+
+  private store(uri: string, entry: ResourceEntry): void {
+    // Evict expired first
+    this.evictExpired();
+
+    // Evict oldest if at capacity
+    while (
+      this.resources.size >= this.config.maxResources &&
+      this.insertionOrder.length > 0
+    ) {
+      const oldest = this.insertionOrder[0];
+      if (!oldest) break;
+      this.deleteResource(oldest);
+    }
+
+    this.resources.set(uri, entry);
+    this.touchInsertionOrder(uri);
+  }
+
+  private evictExpired(): void {
+    const now = Date.now();
+    const toRemove: string[] = [];
+    for (const [uri, entry] of this.resources) {
+      if (now - entry.createdAt >= this.config.ttlMs) {
+        toRemove.push(uri);
+      }
+    }
+    for (const uri of toRemove) {
+      this.deleteResource(uri);
+    }
+  }
+
+  private deleteResource(uri: string): void {
+    this.resources.delete(uri);
+    this.removeFromInsertionOrder(uri);
+  }
+
+  private removeFromInsertionOrder(uri: string): void {
+    const idx = this.insertionOrder.indexOf(uri);
+    if (idx !== -1) this.insertionOrder.splice(idx, 1);
+  }
+
+  private appendToInsertionOrder(uri: string): void {
+    this.insertionOrder.push(uri);
+  }
+
+  private touchInsertionOrder(uri: string): void {
+    this.removeFromInsertionOrder(uri);
+    this.appendToInsertionOrder(uri);
+  }
+}

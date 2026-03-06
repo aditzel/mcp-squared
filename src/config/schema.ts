@@ -227,6 +227,30 @@ export const EmbeddingsSchema = z.object({
 export type EmbeddingsConfig = z.infer<typeof EmbeddingsSchema>;
 
 /**
+ * Schema for response resource offloading configuration.
+ * Controls when large upstream responses are stored as MCP Resources.
+ */
+export const ResponseResourceSchema = z.object({
+  /** Enable response resource offloading (default: false) */
+  enabled: z.boolean().default(false),
+  /** Byte threshold for offloading (default: 51200 = 50 KB) */
+  thresholdBytes: z.number().int().min(1024).default(51_200),
+  /** Maximum lines to include inline as preview (default: 20) */
+  maxInlineLines: z.number().int().min(1).default(20),
+  /** Maximum number of stored resources before eviction (default: 100) */
+  maxResources: z.number().int().min(1).default(100),
+  /** Time-to-live for stored resources in milliseconds (default: 600000 = 10 minutes) */
+  ttlMs: z.number().int().min(0).default(600_000),
+});
+
+/** Response resource offloading configuration type */
+export type ResponseResourceConfig = z.infer<typeof ResponseResourceSchema>;
+
+/** Default response resource configuration derived from schema defaults. */
+export const DEFAULT_RESPONSE_RESOURCE_CONFIG: ResponseResourceConfig =
+  ResponseResourceSchema.parse({});
+
+/**
  * Schema for selection caching configuration.
  * Controls co-occurrence tracking for tool suggestions.
  */
@@ -258,6 +282,9 @@ export const OperationsSchema = z
     index: IndexSchema.default({ refreshIntervalMs: 30_000 }),
     logging: LoggingSchema.default({ level: "info" }),
     embeddings: EmbeddingsSchema.default({ enabled: false }),
+    responseResource: ResponseResourceSchema.default(
+      DEFAULT_RESPONSE_RESOURCE_CONFIG,
+    ),
     selectionCache: SelectionCacheSchema.default({
       enabled: true,
       minCooccurrenceThreshold: 2,
@@ -281,6 +308,7 @@ export const OperationsSchema = z
     index: { refreshIntervalMs: 30_000 },
     logging: { level: "info" },
     embeddings: { enabled: false },
+    responseResource: DEFAULT_RESPONSE_RESOURCE_CONFIG,
     selectionCache: {
       enabled: true,
       minCooccurrenceThreshold: 2,

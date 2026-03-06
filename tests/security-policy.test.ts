@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { McpSquaredConfig } from "../src/config/schema.js";
+import { DEFAULT_CONFIG, type McpSquaredConfig } from "../src/config/schema.js";
 import {
   clearPendingConfirmations,
   compilePolicy,
@@ -19,38 +19,13 @@ function createConfig(security: {
   confirm?: string[];
 }): McpSquaredConfig {
   return {
-    schemaVersion: 1,
+    ...DEFAULT_CONFIG,
     upstreams: {},
     security: {
       tools: {
         allow: security.allow ?? ["*:*"],
         block: security.block ?? [],
         confirm: security.confirm ?? [],
-      },
-    },
-    operations: {
-      findTools: {
-        defaultLimit: 5,
-        maxLimit: 50,
-        defaultMode: "fast",
-        defaultDetailLevel: "L1",
-        preferredNamespacesByIntent: {
-          codeSearch: [],
-        },
-      },
-      index: { refreshIntervalMs: 30000 },
-      logging: { level: "info" },
-      embeddings: { enabled: false },
-      selectionCache: {
-        enabled: true,
-        minCooccurrenceThreshold: 2,
-        maxBundleSuggestions: 3,
-      },
-      dynamicToolSurface: {
-        inference: "heuristic_with_overrides",
-        refresh: "on_connect",
-        capabilityOverrides: {},
-        semanticConfidenceThreshold: 0.45,
       },
     },
   };
