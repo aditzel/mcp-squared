@@ -2,8 +2,9 @@
 
 import { readFileSync } from "node:fs";
 import {
-  meetsLineCoverageThreshold,
+  meetsCoverageThresholds,
   parseBunTextLineCoveragePercent,
+  parseLcovCoverage,
 } from "@/utils/coverage.js";
 
 function parseThreshold(raw: string | undefined): number {
@@ -17,25 +18,37 @@ function parseThreshold(raw: string | undefined): number {
 }
 
 function main(): void {
-  const coveragePath = process.argv[2] ?? "coverage/coverage-summary.txt";
-  const threshold = parseThreshold(process.argv[3]);
+  const summaryPath = process.argv[2] ?? "coverage/coverage-summary.txt";
+  const lcovPath = process.argv[3] ?? "coverage/lcov.info";
+  const threshold = parseThreshold(process.argv[4]);
 
-  const coverageText = readFileSync(coveragePath, "utf-8");
-  const pct = parseBunTextLineCoveragePercent(coverageText);
+  const coverageText = readFileSync(summaryPath, "utf-8");
+  const lineCoveragePct = parseBunTextLineCoveragePercent(coverageText);
+  const lcovText = readFileSync(lcovPath, "utf-8");
+  const lcovSummary = parseLcovCoverage(lcovText);
   const summary = {
+    ...lcovSummary,
     linesFound: 1,
-    linesHit: pct,
-    lineCoveragePct: pct,
+    linesHit: lineCoveragePct,
+    lineCoveragePct,
   };
 
-  if (!meetsLineCoverageThreshold(summary, threshold)) {
+  if (!meetsCoverageThresholds(summary, threshold)) {
     console.error(
-      `[coverage] Line coverage ${pct}% is below required ${threshold}%.`,
+      `[coverage] Coverage below required ${threshold}%: lines=${summary.lineCoveragePct.toFixed(2)}%, branches=${summary.branchCoveragePct.toFixed(2)}%.`,
     );
     process.exit(1);
   }
 
-  console.log(`[coverage] Line coverage ${pct}% meets required ${threshold}%.`);
+  if (!summary.hasBranchCoverage) {
+    console.warn(
+      "[coverage] Branch coverage totals were not present in LCOV output; treating branch coverage as fully covered for this run.",
+    );
+  }
+
+  console.log(
+    `[coverage] Coverage meets required ${threshold}%: lines=${summary.lineCoveragePct.toFixed(2)}%, branches=${summary.branchCoveragePct.toFixed(2)}%.`,
+  );
 }
 
 main();

@@ -30,6 +30,16 @@ function mockCapabilitySurface(runtime: McpSquaredServer): void {
   });
 }
 
+function parseToolPayload(result: unknown): Record<string, unknown> {
+  const content =
+    typeof result === "object" && result !== null && "content" in result
+      ? (result as { content?: Array<{ type?: string; text?: string }> })
+          .content
+      : undefined;
+  const text = content?.[0]?.text ?? "{}";
+  return JSON.parse(text) as Record<string, unknown>;
+}
+
 const SOCKET_LISTEN_SUPPORTED = await new Promise<boolean>((resolve) => {
   const server = createServer();
   server.once("error", () => resolve(false));
@@ -193,6 +203,116 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         expect(spawnedSecret).toBe("spawn-secret");
         expect(toolNames).toContain("time_util");
         expect(toolNames).not.toContain("find_tools");
+      } finally {
+        await client.close().catch(() => {});
+        await bridge.stop().catch(() => {});
+        await daemon.stop().catch(() => {});
+      }
+    });
+
+    test("long-lived proxy clients observe refreshed capability routing", async () => {
+      const config = {
+        ...DEFAULT_CONFIG,
+        security: {
+          tools: {
+            allow: ["code_search:*"],
+            block: [],
+            confirm: [],
+          },
+        },
+      };
+      const runtime = new McpSquaredServer({
+        config,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const cataloger = runtime.getCataloger();
+      let phase: "initial" | "updated" = "initial";
+
+      spyOn(cataloger, "getStatus").mockReturnValue(
+        new Map([["dynamic", { status: "connected", error: undefined }]]),
+      );
+      spyOn(cataloger, "getToolsForServer").mockImplementation(() => {
+        if (phase === "initial") {
+          return [
+            {
+              name: "codebase-retrieval",
+              description: "Search source code",
+              serverKey: "dynamic",
+              inputSchema: { type: "object" },
+            },
+          ];
+        }
+        return [
+          {
+            name: "symbol-search",
+            description: "Search symbols",
+            serverKey: "dynamic",
+            inputSchema: { type: "object" },
+          },
+        ];
+      });
+
+      const daemon = new DaemonServer({
+        runtime,
+        socketPath: "tcp://127.0.0.1:0",
+        idleTimeoutMs: 5000,
+        heartbeatTimeoutMs: 5000,
+      });
+
+      await daemon.start();
+
+      const [clientTransport, proxyTransport] =
+        InMemoryTransport.createLinkedPair();
+      const bridge = await createProxyBridge({
+        stdioTransport: proxyTransport,
+        endpoint: daemon.getSocketPath(),
+        heartbeatIntervalMs: 50,
+      });
+
+      const client = new Client({
+        name: "proxy-test-routing-refresh",
+        version: "0.0.0",
+      });
+
+      try {
+        await client.connect(clientTransport);
+        const initial = parseToolPayload(
+          await client.callTool({
+            name: "code_search",
+            arguments: {
+              action: "__describe_actions",
+              arguments: {},
+            },
+          }),
+        );
+        expect(initial["actions"]).toEqual([
+          {
+            action: "codebase_retrieval",
+            summary: "Search source code",
+            inputSchema: { type: "object" },
+            requiresConfirmation: false,
+          },
+        ]);
+
+        phase = "updated";
+
+        const refreshed = parseToolPayload(
+          await client.callTool({
+            name: "code_search",
+            arguments: {
+              action: "__describe_actions",
+              arguments: {},
+            },
+          }),
+        );
+        expect(refreshed["actions"]).toEqual([
+          {
+            action: "symbol_search",
+            summary: "Search symbols",
+            inputSchema: { type: "object" },
+            requiresConfirmation: false,
+          },
+        ]);
       } finally {
         await client.close().catch(() => {});
         await bridge.stop().catch(() => {});

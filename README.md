@@ -222,6 +222,14 @@ Each capability tool uses a thin router contract:
 
 Every capability tool supports `action = "__describe_actions"` for introspection. This returns capability-local action IDs, summaries, and input schemas without exposing upstream namespace/tool identifiers.
 
+When multiple upstream instances expose the same capability action, MCP² now
+uses stable, instance-aware action IDs such as `create_issue__github_work`
+instead of order-dependent numeric suffixes. `__describe_actions` also includes
+`baseAction`, `instance`, and `instanceTitle` fields for colliding routes so
+clients can distinguish duplicate accounts or environments. Legacy numeric
+aliases such as `create_issue__2` are still accepted during the transition, but
+the instance-aware IDs are the preferred public contract.
+
 Recommended workflow for LLM clients:
 1. Call the relevant capability (for example `code_search`) with `action = "__describe_actions"`.
 2. Select an action ID and call the same capability with `arguments`.

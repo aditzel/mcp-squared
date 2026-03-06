@@ -68,6 +68,7 @@ describe("buildCapabilityRouters", () => {
     const inventories: NamespaceInventory[] = [
       {
         namespace: "server-a",
+        title: "Server A",
         tools: [
           {
             name: "do_search",
@@ -78,6 +79,7 @@ describe("buildCapabilityRouters", () => {
       },
       {
         namespace: "server-b",
+        title: "Server B",
         tools: [
           {
             name: "do_search",
@@ -101,9 +103,97 @@ describe("buildCapabilityRouters", () => {
     const actions = generalRouter?.actions ?? [];
     expect(actions.length).toBe(2);
 
-    // One should be "do_search", the other "do_search__2"
+    // Canonical IDs should be stable and derived from the instance key.
     const actionNames = actions.map((a) => a.action).sort();
-    expect(actionNames).toEqual(["do_search", "do_search__2"]);
+    expect(actionNames).toEqual(["do_search__server_a", "do_search__server_b"]);
+
+    expect(actions[0]?.baseAction).toBe("do_search");
+    expect(actions[1]?.baseAction).toBe("do_search");
+    expect(actions.every((a) => a.instanceKey != null)).toBe(true);
+    expect(actions.every((a) => a.instanceTitle != null)).toBe(true);
+  });
+
+  test("uses numeric suffixes only for same-instance normalized collisions", () => {
+    const inventories: NamespaceInventory[] = [
+      {
+        namespace: "misc",
+        title: "Misc",
+        tools: [
+          {
+            name: "foo-bar",
+            description: "First variant",
+            inputSchema: { type: "object" },
+          },
+          {
+            name: "foo_bar",
+            description: "Second variant",
+            inputSchema: { type: "object" },
+          },
+        ],
+      },
+    ];
+
+    const grouping = groupNamespacesByCapability(inventories, {
+      misc: "general",
+    });
+    const routers = buildCapabilityRouters(inventories, grouping);
+    const generalRouter = routers.find((r) => r.capability === "general");
+    expect(generalRouter).toBeDefined();
+
+    const actionNames = (generalRouter?.actions ?? [])
+      .map((a) => a.action)
+      .sort();
+    expect(actionNames).toEqual(["foo_bar__misc", "foo_bar__misc__2"]);
+  });
+
+  test("deduplicates mixed inter-instance and intra-instance collisions globally", () => {
+    const inventories: NamespaceInventory[] = [
+      {
+        namespace: "alpha",
+        title: "Alpha",
+        tools: [
+          {
+            name: "foo-bar",
+            description: "Alpha primary",
+            inputSchema: { type: "object" },
+          },
+          {
+            name: "foo_bar",
+            description: "Alpha secondary",
+            inputSchema: { type: "object" },
+          },
+        ],
+      },
+      {
+        namespace: "alpha-",
+        title: "Alpha Dash",
+        tools: [
+          {
+            name: "foo_bar",
+            description: "Alpha dash primary",
+            inputSchema: { type: "object" },
+          },
+        ],
+      },
+    ];
+
+    const grouping = groupNamespacesByCapability(inventories, {
+      alpha: "general",
+      "alpha-": "general",
+    });
+    const routers = buildCapabilityRouters(inventories, grouping);
+    const generalRouter = routers.find((r) => r.capability === "general");
+    expect(generalRouter).toBeDefined();
+
+    const actionNames = (generalRouter?.actions ?? [])
+      .map((a) => a.action)
+      .sort();
+    expect(actionNames).toEqual([
+      "foo_bar__alpha",
+      "foo_bar__alpha__2",
+      "foo_bar__alpha__3",
+    ]);
+    expect(new Set(actionNames).size).toBe(actionNames.length);
   });
 
   test("routes are sorted by capability then action", () => {

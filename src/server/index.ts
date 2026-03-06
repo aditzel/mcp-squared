@@ -346,6 +346,7 @@ export class McpSquaredServer {
       .filter(([, info]) => info.status === "connected")
       .map(([namespace]) => ({
         namespace,
+        title: this.config.upstreams[namespace]?.label ?? namespace,
         tools: this.cataloger.getToolsForServer(namespace),
       }))
       .sort((a, b) => a.namespace.localeCompare(b.namespace));
@@ -365,6 +366,17 @@ export class McpSquaredServer {
     );
   }
 
+  private getCapabilityRouter(capability: CapabilityId): CapabilityRouter {
+    return (
+      this.buildCapabilityRouters().find(
+        (router) => router.capability === capability,
+      ) ?? {
+        capability,
+        actions: [],
+      }
+    );
+  }
+
   private registerCapabilityRouters(server: McpServer): void {
     const routers = this.buildCapabilityRouters();
     for (const router of routers) {
@@ -372,11 +384,13 @@ export class McpSquaredServer {
         continue;
       }
 
+      const capability = router.capability;
+
       server.registerTool(
-        router.capability,
+        capability,
         {
-          title: this.capabilityTitle(router.capability),
-          description: this.capabilitySummary(router.capability),
+          title: this.capabilityTitle(capability),
+          description: this.capabilitySummary(capability),
           annotations: {
             readOnlyHint: false,
             destructiveHint: false,
@@ -386,7 +400,7 @@ export class McpSquaredServer {
             action: z
               .string()
               .describe(
-                `Action ID for ${router.capability}. Use "${DESCRIBE_ACTION}" to inspect available actions and schemas.`,
+                `Action ID for ${capability}. Use "${DESCRIBE_ACTION}" to inspect available actions and schemas.`,
               ),
             arguments: z
               .record(z.string(), z.unknown())
@@ -401,12 +415,13 @@ export class McpSquaredServer {
           },
         },
         async (rawArgs) =>
-          this.runTaskSpan(router.capability, async () => {
+          this.runTaskSpan(capability, async () => {
             const requestId = this.statsCollector.startRequest();
             const startTime = Date.now();
             let success = false;
 
             try {
+              const liveRouter = this.getCapabilityRouter(capability);
               const parsedArgs: Record<string, unknown> = isRecord(rawArgs)
                 ? { ...rawArgs }
                 : {};
@@ -429,7 +444,7 @@ export class McpSquaredServer {
                       type: "text" as const,
                       text: JSON.stringify({
                         error: "Missing required action",
-                        capability: router.capability,
+                        capability,
                       }),
                     },
                   ],
@@ -437,10 +452,10 @@ export class McpSquaredServer {
                 };
               }
 
-              const visibleActions = router.actions
+              const visibleRoutes = liveRouter.actions
                 .map((route) => {
                   const visibility = getToolVisibilityCompiled(
-                    router.capability,
+                    capability,
                     route.action,
                     this.compiledPolicy,
                   );
@@ -448,9 +463,7 @@ export class McpSquaredServer {
                     return null;
                   }
                   return {
-                    action: route.action,
-                    summary: route.summary,
-                    inputSchema: route.inputSchema,
+                    route,
                     requiresConfirmation: visibility.requiresConfirmation,
                   };
                 })
@@ -458,12 +471,39 @@ export class McpSquaredServer {
                   (
                     entry,
                   ): entry is {
+                    route: CapabilityRouter["actions"][number];
+                    requiresConfirmation: boolean;
+                  } => entry !== null,
+                );
+
+              const visibleActions = visibleRoutes
+                .map(({ route, requiresConfirmation }) => {
+                  const actionInfo: {
                     action: string;
                     summary: string;
                     inputSchema: ToolInputSchema;
                     requiresConfirmation: boolean;
-                  } => entry !== null,
-                )
+                    baseAction?: string;
+                    instance?: string;
+                    instanceTitle?: string;
+                  } = {
+                    action: route.action,
+                    summary: route.summary,
+                    inputSchema: route.inputSchema,
+                    requiresConfirmation,
+                  };
+
+                  if ((route.collisionGroupSize ?? 1) > 1) {
+                    actionInfo.baseAction = route.baseAction;
+                    actionInfo.instance = route.instanceKey ?? route.serverKey;
+                    actionInfo.instanceTitle =
+                      route.instanceTitle ??
+                      route.instanceKey ??
+                      route.serverKey;
+                  }
+
+                  return actionInfo;
+                })
                 .sort((a, b) => a.action.localeCompare(b.action));
 
               if (action === DESCRIBE_ACTION) {
@@ -473,7 +513,7 @@ export class McpSquaredServer {
                     {
                       type: "text" as const,
                       text: JSON.stringify({
-                        capability: router.capability,
+                        capability,
                         actions: visibleActions,
                         totalActions: visibleActions.length,
                       }),
@@ -482,9 +522,15 @@ export class McpSquaredServer {
                 };
               }
 
-              const ambiguousCandidates = router.actions
-                .filter((route) => route.baseAction === action)
-                .map((route) => route.action)
+              const exactRoute = liveRouter.actions.find(
+                (entry) =>
+                  entry.action === action ||
+                  (entry.legacyActions ?? []).includes(action),
+              );
+
+              const ambiguousCandidates = visibleRoutes
+                .filter(({ route }) => route.baseAction === action)
+                .map(({ route }) => route.action)
                 .sort((a, b) => a.localeCompare(b));
 
               if (ambiguousCandidates.length > 1) {
@@ -494,7 +540,7 @@ export class McpSquaredServer {
                       type: "text" as const,
                       text: JSON.stringify({
                         requires_disambiguation: true,
-                        capability: router.capability,
+                        capability,
                         action,
                         candidates: ambiguousCandidates,
                       }),
@@ -504,17 +550,22 @@ export class McpSquaredServer {
                 };
               }
 
-              const route = router.actions.find(
-                (entry) => entry.action === action,
-              );
-              if (!route) {
+              const selectedRoute =
+                exactRoute ??
+                (ambiguousCandidates.length === 1
+                  ? visibleRoutes.find(
+                      ({ route }) => route.baseAction === action,
+                    )?.route
+                  : undefined);
+
+              if (selectedRoute == null) {
                 return {
                   content: [
                     {
                       type: "text" as const,
                       text: JSON.stringify({
                         error: "Unknown action",
-                        capability: router.capability,
+                        capability,
                         action,
                         availableActions: visibleActions.map((a) => a.action),
                       }),
@@ -525,10 +576,15 @@ export class McpSquaredServer {
               }
 
               const callResult = await this.executeRoutedTool({
-                capability: router.capability,
-                action: route.action,
-                qualifiedToolName: route.qualifiedName,
-                toolNameForCall: route.qualifiedName,
+                capability,
+                action: selectedRoute.action,
+                policyAction:
+                  exactRoute != null ? action : selectedRoute.action,
+                routeId:
+                  selectedRoute.canonicalRouteId ??
+                  `${capability}:${selectedRoute.action}`,
+                qualifiedToolName: selectedRoute.qualifiedName,
+                toolNameForCall: selectedRoute.qualifiedName,
                 args: actionArgs,
                 ...(confirmationToken != null ? { confirmationToken } : {}),
               });
@@ -552,7 +608,7 @@ export class McpSquaredServer {
                 requestId,
                 success,
                 responseTime,
-                router.capability,
+                capability,
                 "capability",
               );
             }
@@ -579,6 +635,8 @@ export class McpSquaredServer {
   private async executeRoutedTool(args: {
     capability: CapabilityId;
     action: string;
+    policyAction?: string;
+    routeId?: string;
     qualifiedToolName: string;
     toolNameForCall: string;
     args: Record<string, unknown>;
@@ -591,7 +649,7 @@ export class McpSquaredServer {
     const policyResult = evaluatePolicy(
       {
         capability: args.capability,
-        action: args.action,
+        action: args.policyAction ?? args.action,
         confirmationToken: args.confirmationToken,
       },
       this.config,
@@ -630,7 +688,7 @@ export class McpSquaredServer {
 
     this.guard.enforce({
       agent: this.safetyAgent,
-      tool: `${args.capability}:${args.action}`,
+      tool: args.routeId ?? `${args.capability}:${args.action}`,
       action: "call",
       params: args.args,
     });
@@ -639,7 +697,7 @@ export class McpSquaredServer {
       this.obsSink,
       {
         agent: this.safetyAgent,
-        tool: `${args.capability}:${args.action}`,
+        tool: args.routeId ?? `${args.capability}:${args.action}`,
         action: "call",
         playbook: this.guard.playbook,
         env: this.guard.agentEnv,
@@ -648,7 +706,7 @@ export class McpSquaredServer {
     );
 
     if (!result.isError && this.config.operations.selectionCache.enabled) {
-      const toolKey = `${args.capability}:${args.action}`;
+      const toolKey = args.routeId ?? `${args.capability}:${args.action}`;
       this.selectionTracker.trackToolUsage(toolKey);
       if (this.selectionTracker.getSessionToolCount() >= 2) {
         this.selectionTracker.flushToStore(this.retriever.getIndexStore());
