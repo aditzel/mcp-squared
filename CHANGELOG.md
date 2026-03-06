@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added context-window budget tests for capability-router `tools/list` metadata footprint.
 
 ### Security
+- Updated transitive `express-rate-limit` from 8.2.1 to 8.2.2 to fix GHSA-46wh-pxpv-q5gq (IPv4-mapped IPv6 addresses bypass per-client rate limiting on dual-stack servers).
 - Updated `tar` from 7.5.9 to 7.5.10 (fixes GHSA-qffp-2rhf-9h96: hardlink path traversal).
 - Updated `@hono/node-server` from 1.19.9 to 1.19.11 (fixes GHSA-wc8c-qw6v-h7f6: auth bypass via encoded slashes).
 - Updated `hono` from 4.11.x to 4.12.5 (fixes GHSA-5pq2-9x2x-5p6w, GHSA-p6xx-57qc-3wxr, GHSA-q5qw-h33p-qvwr: cookie injection, SSE injection, arbitrary file access).
