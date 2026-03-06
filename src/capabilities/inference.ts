@@ -37,6 +37,7 @@ export interface NamespaceToolMetadata {
 /** Namespace and tool inventory entry used for grouping. */
 export interface NamespaceInventory {
   namespace: string;
+  title?: string;
   tools: NamespaceToolMetadata[];
 }
 

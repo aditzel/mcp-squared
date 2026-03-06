@@ -25,10 +25,20 @@ export interface CapabilityActionRoute {
   baseAction: string;
   /** Upstream server key */
   serverKey: string;
+  /** Stable instance key used to distinguish duplicate upstreams */
+  instanceKey?: string;
+  /** Human-readable title for this upstream instance */
+  instanceTitle?: string;
   /** Original upstream tool name */
   toolName: string;
   /** Qualified name: `serverKey:toolName` */
   qualifiedName: string;
+  /** Canonical stable route identifier for internal tracking */
+  canonicalRouteId?: string;
+  /** Total number of routes sharing the same capability/base action */
+  collisionGroupSize?: number;
+  /** Backward-compatible action aliases retained for older callers */
+  legacyActions?: string[];
   /** JSON Schema for the tool's input parameters */
   inputSchema: ToolInputSchema;
   /** Human-readable summary for the action */
@@ -44,6 +54,49 @@ export interface CapabilityRouter {
 }
 
 const DESCRIBE_ACTION = "__describe_actions";
+
+function buildCanonicalRouteId(
+  capability: CapabilityId,
+  instanceKey: string,
+  toolName: string,
+): string {
+  return `${capability}:${instanceKey}:${toolName}`;
+}
+
+function buildInstanceActionBase(
+  baseAction: string,
+  instanceToken: string,
+): string {
+  return `${baseAction}__${instanceToken}`;
+}
+
+function resolveInstanceTokens(
+  records: CapabilityActionRoute[],
+): Map<string, string> {
+  const byToken = new Map<string, string[]>();
+
+  for (const record of records) {
+    const instanceKey = record.instanceKey ?? record.serverKey;
+    const token = toActionToken(instanceKey);
+    const existing = byToken.get(token) ?? [];
+    if (!existing.includes(instanceKey)) {
+      existing.push(instanceKey);
+      existing.sort((a, b) => a.localeCompare(b));
+      byToken.set(token, existing);
+    }
+  }
+
+  const resolved = new Map<string, string>();
+  for (const [token, instanceKeys] of [...byToken.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  )) {
+    instanceKeys.forEach((instanceKey, index) => {
+      resolved.set(instanceKey, index === 0 ? token : `${token}__${index + 1}`);
+    });
+  }
+
+  return resolved;
+}
 
 /**
  * Normalizes a tool name into a snake_case action token.
@@ -109,6 +162,8 @@ export function buildCapabilityRouters(
 
   for (const inventory of inventories) {
     const capability = grouping.byNamespace[inventory.namespace] ?? "general";
+    const instanceKey = inventory.namespace;
+    const instanceTitle = inventory.title ?? inventory.namespace;
     const sortedTools = [...inventory.tools].sort((a, b) =>
       a.name.localeCompare(b.name),
     );
@@ -124,8 +179,16 @@ export function buildCapabilityRouters(
         action: baseAction,
         baseAction,
         serverKey: inventory.namespace,
+        instanceKey,
+        instanceTitle,
         toolName: tool.name,
         qualifiedName: `${inventory.namespace}:${tool.name}`,
+        canonicalRouteId: buildCanonicalRouteId(
+          capability,
+          instanceKey,
+          tool.name,
+        ),
+        collisionGroupSize: 1,
         inputSchema: tool.inputSchema ?? { type: "object" },
         summary: resolveSummary(tool.description ?? undefined, capability),
       });
@@ -151,15 +214,59 @@ export function buildCapabilityRouters(
     const records = (byCapabilityAction.get(key) ?? []).sort((a, b) =>
       a.qualifiedName.localeCompare(b.qualifiedName),
     );
+    if (records.length === 1) {
+      const [record] = records;
+      if (record) {
+        resolved.push({
+          ...record,
+          action: record.baseAction,
+          collisionGroupSize: 1,
+          legacyActions: [],
+        });
+      }
+      continue;
+    }
+
+    const legacyActionsByQualifiedName = new Map<string, string[]>();
     records.forEach((record, index) => {
-      resolved.push({
-        ...record,
-        action:
-          index === 0
-            ? record.baseAction
-            : `${record.baseAction}__${index + 1}`,
-      });
+      legacyActionsByQualifiedName.set(
+        record.qualifiedName,
+        index === 0 ? [] : [`${record.baseAction}__${index + 1}`],
+      );
     });
+
+    const instanceTokens = resolveInstanceTokens(records);
+    const byInstance = new Map<string, CapabilityActionRoute[]>();
+    for (const record of records) {
+      const instanceKey = record.instanceKey ?? record.serverKey;
+      const existing = byInstance.get(instanceKey) ?? [];
+      existing.push(record);
+      byInstance.set(instanceKey, existing);
+    }
+
+    for (const instanceKey of [...byInstance.keys()].sort((a, b) =>
+      a.localeCompare(b),
+    )) {
+      const instanceRecords = (byInstance.get(instanceKey) ?? []).sort((a, b) =>
+        a.qualifiedName.localeCompare(b.qualifiedName),
+      );
+      const instanceToken =
+        instanceTokens.get(instanceKey) ?? toActionToken(instanceKey);
+      const actionBase = buildInstanceActionBase(
+        records[0]?.baseAction ?? "tool",
+        instanceToken,
+      );
+
+      instanceRecords.forEach((record, index) => {
+        resolved.push({
+          ...record,
+          action: index === 0 ? actionBase : `${actionBase}__${index + 1}`,
+          collisionGroupSize: records.length,
+          legacyActions:
+            legacyActionsByQualifiedName.get(record.qualifiedName) ?? [],
+        });
+      });
+    }
   }
 
   // Group by capability

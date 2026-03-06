@@ -46,7 +46,7 @@ jobs:
           set -o pipefail
           bun test --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir coverage |& tee coverage/coverage-summary.txt
 
-      - name: Enforce line coverage threshold
+      - name: Enforce line and branch coverage thresholds
         run: bun run coverage:check
 
       - name: Routing evaluation (strict)

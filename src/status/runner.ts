@@ -104,6 +104,7 @@ export async function collectStatus(
       .filter(([, info]) => info.status === "connected")
       .map(([namespace]) => ({
         namespace,
+        title: config.upstreams[namespace]?.label ?? namespace,
         tools: cataloger.getToolsForServer(namespace),
       }))
       .sort((a, b) => a.namespace.localeCompare(b.namespace));

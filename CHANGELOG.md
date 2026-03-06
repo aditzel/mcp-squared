@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed `cataloger.callTool()` silently dropping `structuredContent` from upstream MCP `CallToolResult` responses. The field is now forwarded through the response chain.
 - Fixed response-resource offload thresholds to measure the exact stored payload bytes consistently, so boundary decisions and reported resource sizes now match.
 - Fixed response-resource preview truncation to preserve valid UTF-8 when byte-capping long inline previews.
+- Fixed capability-router disambiguation to consider only visible routes when resolving bare base actions, so blocked sibling routes no longer force unnecessary `requires_disambiguation` errors.
 - Fixed TUI lazy loaders (`config-loader.ts`, `monitor-loader.ts`) failing in dev mode with `Cannot find module './tui/config.js'`. The hardcoded `./tui/config.js` specifier assumed bundled context (where the loader is inlined into `dist/index.js`); now dynamically resolves relative to `import.meta.url` to work in both source and bundled contexts.
 - Fixed shadcn heuristic misclassification: added `shadcn` to docs namespace hints and added component registry patterns (`registry`, `component`, `example`) to docs capability patterns. Previously classified as `code_search` (with real tools) or `design` (with simplified tools).
 - `status --verbose` now shows a **Context Savings** section estimating token savings from capability routing: tokens without MCP² (raw upstream tools), tokens with MCP² (capability tools), total saved tokens, and savings percentage.
@@ -36,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `hono` from 4.11.x to 4.12.5 (fixes GHSA-5pq2-9x2x-5p6w, GHSA-p6xx-57qc-3wxr, GHSA-q5qw-h33p-qvwr: cookie injection, SSE injection, arbitrary file access).
 
 ### Changed
+- Capability router collision IDs are now stable and instance-aware for duplicate upstreams. Colliding actions use the upstream instance key in the public action ID (for example `create_issue__github_work`), `__describe_actions` includes instance metadata for those collisions, and capability handlers resolve against live routing state so refreshed upstream tool surfaces are reflected without recreating the handler.
+- Coverage enforcement now reads Bun's text summary for line coverage and LCOV branch totals when available, closing the line-only gate gap without depending on Bun's incomplete LCOV line aggregation.
 - Authentication errors (invalid tokens, missing API keys, unauthorized access) are now shown as `⚠ needs auth` (yellow) in `mcp-squared status` instead of the generic `✗ error` (red), making it easier to distinguish credential issues from connection failures.
 - Replaced the mixed/legacy public API surface with capability routers only; public `find_tools` / `describe_tools` / `execute` / `list_namespaces` / `clear_selection_cache` are no longer registered.
 - Reinterpreted `security.tools` policy patterns as `capability:action` and bound confirmation tokens to capability/action context.

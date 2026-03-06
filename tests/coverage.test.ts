@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  meetsCoverageThresholds,
   meetsLineCoverageThreshold,
   parseBunTextLineCoveragePercent,
+  parseLcovCoverage,
   parseLcovLineCoverage,
 } from "@/utils/coverage.js";
 
@@ -62,6 +64,86 @@ describe("parseLcovLineCoverage", () => {
   });
 });
 
+describe("parseLcovCoverage", () => {
+  test("aggregates line and branch totals across multiple files", () => {
+    const lcov = [
+      "TN:",
+      "SF:src/a.ts",
+      "LF:10",
+      "LH:8",
+      "BRF:6",
+      "BRH:5",
+      "end_of_record",
+      "SF:src/b.ts",
+      "LF:5",
+      "LH:5",
+      "BRF:4",
+      "BRH:2",
+      "end_of_record",
+    ].join("\n");
+
+    const summary = parseLcovCoverage(lcov);
+
+    expect(summary.linesFound).toBe(15);
+    expect(summary.linesHit).toBe(13);
+    expect(summary.lineCoveragePct).toBeCloseTo(86.666, 2);
+    expect(summary.branchesFound).toBe(10);
+    expect(summary.branchesHit).toBe(7);
+    expect(summary.hasBranchCoverage).toBe(true);
+    expect(summary.branchCoveragePct).toBe(70);
+  });
+
+  test("treats missing branch totals as 100% when no branches are instrumented", () => {
+    const lcov = ["SF:src/a.ts", "LF:2", "LH:2", "end_of_record"].join("\n");
+
+    expect(parseLcovCoverage(lcov)).toEqual({
+      linesFound: 2,
+      linesHit: 2,
+      lineCoveragePct: 100,
+      branchesFound: 0,
+      branchesHit: 0,
+      hasBranchCoverage: false,
+      branchCoveragePct: 100,
+    });
+  });
+
+  test("deduplicates repeated file sections using DA line data", () => {
+    const lcov = [
+      "SF:src/a.ts",
+      "DA:1,1",
+      "DA:2,0",
+      "LF:2",
+      "LH:1",
+      "end_of_record",
+      "SF:src/a.ts",
+      "DA:1,0",
+      "DA:2,1",
+      "LF:2",
+      "LH:1",
+      "end_of_record",
+    ].join("\n");
+
+    expect(parseLcovCoverage(lcov)).toEqual({
+      linesFound: 2,
+      linesHit: 2,
+      lineCoveragePct: 100,
+      branchesFound: 0,
+      branchesHit: 0,
+      hasBranchCoverage: false,
+      branchCoveragePct: 100,
+    });
+  });
+
+  test("throws when LCOV has invalid BRF/BRH values", () => {
+    expect(() => parseLcovCoverage("LF:1\nLH:1\nBRF:not-a-number")).toThrow(
+      "Invalid BRF value",
+    );
+    expect(() => parseLcovCoverage("LF:1\nLH:1\nBRH:not-a-number")).toThrow(
+      "Invalid BRH value",
+    );
+  });
+});
+
 describe("meetsLineCoverageThreshold", () => {
   test("returns true when percentage is equal to threshold", () => {
     expect(
@@ -113,5 +195,58 @@ describe("parseBunTextLineCoveragePercent", () => {
     expect(() => parseBunTextLineCoveragePercent(text)).toThrow(
       "Invalid line coverage percentage",
     );
+  });
+});
+
+describe("meetsCoverageThresholds", () => {
+  test("returns true when both line and branch coverage meet threshold", () => {
+    expect(
+      meetsCoverageThresholds(
+        {
+          linesFound: 100,
+          linesHit: 90,
+          lineCoveragePct: 90,
+          branchesFound: 50,
+          branchesHit: 40,
+          branchCoveragePct: 80,
+          hasBranchCoverage: true,
+        },
+        80,
+      ),
+    ).toBe(true);
+  });
+
+  test("returns false when branch coverage is below threshold", () => {
+    expect(
+      meetsCoverageThresholds(
+        {
+          linesFound: 100,
+          linesHit: 90,
+          lineCoveragePct: 90,
+          branchesFound: 50,
+          branchesHit: 39,
+          branchCoveragePct: 78,
+          hasBranchCoverage: true,
+        },
+        80,
+      ),
+    ).toBe(false);
+  });
+
+  test("ignores branch threshold when the report has no branch data", () => {
+    expect(
+      meetsCoverageThresholds(
+        {
+          linesFound: 100,
+          linesHit: 85,
+          lineCoveragePct: 85,
+          branchesFound: 0,
+          branchesHit: 0,
+          branchCoveragePct: 100,
+          hasBranchCoverage: false,
+        },
+        80,
+      ),
+    ).toBe(true);
   });
 });
