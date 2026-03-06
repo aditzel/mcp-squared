@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-06
+
 ### Added
 - Added **response resource offloading**: when enabled, large upstream tool responses are stored as temporary MCP Resources instead of being returned inline. Clients receive a truncated preview with the resource URI and can fetch the full content via `resources/read`. Configurable via `operations.responseResource` with threshold, TTL, max inline lines, and eviction settings. Disabled by default.
 
