@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { McpSquaredConfig } from "@/config/schema";
@@ -14,10 +15,9 @@ type ToolCallResult = {
   isError?: boolean;
 };
 
-const fixturePath = new URL(
-  "./fixtures/dynamic-tool-server.ts",
-  import.meta.url,
-).pathname;
+const fixturePath = fileURLToPath(
+  new URL("./fixtures/dynamic-tool-server.ts", import.meta.url),
+);
 
 async function createTempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "mcp2-routing-"));
@@ -335,6 +335,103 @@ describe.serial("capability routing integration", () => {
         account: "dynamic",
         tool: "symbol-search",
       });
+    } finally {
+      await close();
+    }
+  });
+
+  test("fixture startup tolerates invalid initial tool state and later recovers", async () => {
+    const dir = await createTempDir();
+    tempDirs.add(dir);
+    const statePath = join(dir, "broken-tools.json");
+    await writeFile(statePath, "{not valid json");
+
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      security: {
+        tools: {
+          allow: ["code_search:*"],
+          block: [],
+          confirm: [],
+        },
+      },
+      operations: {
+        ...DEFAULT_CONFIG.operations,
+        dynamicToolSurface: {
+          ...DEFAULT_CONFIG.operations.dynamicToolSurface,
+          capabilityOverrides: {
+            dynamic: "code_search",
+          },
+        },
+      },
+      upstreams: {
+        dynamic: {
+          transport: "stdio",
+          enabled: true,
+          label: "Dynamic Code Search",
+          env: {
+            FIXTURE_ACCOUNT: "dynamic",
+            FIXTURE_TOOL_STATE: statePath,
+            FIXTURE_POLL_MS: "25",
+          },
+          stdio: {
+            command: process.execPath,
+            args: ["run", fixturePath],
+          },
+        },
+      },
+    };
+
+    const runtime = new McpSquaredServer({
+      config,
+      monitorSocketPath: "tcp://127.0.0.1:0",
+    });
+    runtimes.add(runtime);
+    await runtime.startCore();
+
+    const initialStatus = runtime.getCataloger().getStatus().get("dynamic");
+    expect(initialStatus?.status).toBe("connected");
+
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        tools: [
+          {
+            name: "symbol-search",
+            description: "Search symbols",
+          },
+        ],
+      }),
+    );
+
+    await waitFor(
+      async () => {
+        await runtime.getCataloger().refreshTools("dynamic");
+        return runtime.getCataloger().getToolsForServer("dynamic");
+      },
+      (tools) => tools.some((tool) => tool.name === "symbol-search"),
+    );
+
+    const { client, close } = await connectClient(runtime);
+    try {
+      const recovered = parseToolPayload(
+        (await client.callTool({
+          name: "code_search",
+          arguments: {
+            action: "__describe_actions",
+            arguments: {},
+          },
+        })) as ToolCallResult,
+      );
+
+      expect(recovered["actions"]).toMatchObject([
+        {
+          action: "symbol_search",
+          summary: "Search symbols",
+          requiresConfirmation: false,
+          inputSchema: { type: "object" },
+        },
+      ]);
     } finally {
       await close();
     }

@@ -70,6 +70,27 @@ function buildInstanceActionBase(
   return `${baseAction}__${instanceToken}`;
 }
 
+function allocateUniqueActionId(
+  emittedActions: Set<string>,
+  actionBase: string,
+  index: number,
+): string {
+  let candidate = index === 0 ? actionBase : `${actionBase}__${index + 1}`;
+  const suffixMatch = actionBase.match(/^(.*)__(\d+)$/);
+  const dedupeBase = suffixMatch?.[1] ?? actionBase;
+  let dedupe = suffixMatch?.[2]
+    ? Number.parseInt(suffixMatch[2], 10) + 1
+    : index + 2;
+
+  while (emittedActions.has(candidate)) {
+    candidate = `${dedupeBase}__${dedupe}`;
+    dedupe += 1;
+  }
+
+  emittedActions.add(candidate);
+  return candidate;
+}
+
 function resolveInstanceTokens(
   records: CapabilityActionRoute[],
 ): Map<string, string> {
@@ -244,6 +265,7 @@ export function buildCapabilityRouters(
       byInstance.set(instanceKey, existing);
     }
 
+    const emittedActions = new Set<string>();
     for (const instanceKey of [...byInstance.keys()].sort((a, b) =>
       a.localeCompare(b),
     )) {
@@ -260,7 +282,7 @@ export function buildCapabilityRouters(
       instanceRecords.forEach((record, index) => {
         resolved.push({
           ...record,
-          action: index === 0 ? actionBase : `${actionBase}__${index + 1}`,
+          action: allocateUniqueActionId(emittedActions, actionBase, index),
           collisionGroupSize: records.length,
           legacyActions:
             legacyActionsByQualifiedName.get(record.qualifiedName) ?? [],

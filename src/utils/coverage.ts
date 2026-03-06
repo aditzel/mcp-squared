@@ -130,7 +130,11 @@ export function parseLcovCoverage(lcovContent: string): CoverageSummary {
       ) {
         throw new Error(`Invalid BRDA value in LCOV: ${rawLine}`);
       }
-      const hit = hitsRaw !== "-" && Number(hitsRaw) > 0;
+      const taken = (hitsRaw ?? "").trim();
+      if (taken !== "-" && !/^\d+$/.test(taken)) {
+        throw new Error(`Invalid BRDA value in LCOV: ${rawLine}`);
+      }
+      const hit = taken !== "-" && Number(taken) > 0;
       const key = `${lineNo}:${block}:${branch}`;
       currentFile.branches.set(
         key,

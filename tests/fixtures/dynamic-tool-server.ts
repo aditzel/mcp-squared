@@ -23,6 +23,19 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
+// Ensure the SDK exposes tools/list even while the dynamic tool set is empty.
+const bootstrapTool = server.registerTool(
+  "__bootstrap_fixture",
+  {
+    description: "Hidden bootstrap tool for empty fixture surfaces",
+    inputSchema: z.object({}).passthrough(),
+  },
+  async () => ({
+    content: [],
+  }),
+);
+bootstrapTool.disable();
+
 const registrations = new Map<string, ReturnType<typeof server.registerTool>>();
 
 function readDesiredTools(): ToolSpec[] {
@@ -120,7 +133,12 @@ function syncTools(): void {
   }
 }
 
-syncTools();
+try {
+  syncTools();
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[dynamic-tool-server] initial sync failed: ${message}`);
+}
 const timer = setInterval(
   () => {
     try {

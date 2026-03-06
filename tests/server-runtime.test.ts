@@ -471,6 +471,58 @@ describe("server runtime coverage", () => {
     });
   });
 
+  test("legacy numeric aliases still satisfy explicit security policy patterns", async () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      security: {
+        tools: {
+          allow: ["general:do_search__2"],
+          block: [],
+          confirm: [],
+        },
+      },
+    };
+
+    server = new McpSquaredServer({ config });
+    const cataloger = server.getCataloger();
+
+    spyOn(cataloger, "getStatus").mockReturnValue(
+      new Map([
+        ["server-a", { status: "connected" as const, error: undefined }],
+        ["server-b", { status: "connected" as const, error: undefined }],
+      ]),
+    );
+    spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
+      if (key === "server-a" || key === "server-b") {
+        return [
+          {
+            name: "do_search",
+            description: `Search via ${key}`,
+            serverKey: key,
+            inputSchema: { type: "object" },
+          },
+        ];
+      }
+      return [];
+    });
+
+    const callToolSpy = spyOn(cataloger, "callTool").mockResolvedValue({
+      content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
+      isError: false,
+    });
+
+    const handler = getHandler(server, "general");
+    const result = await handler({
+      action: "do_search__2",
+      arguments: { query: "legacy" },
+    });
+
+    expect(result.isError).toBe(false);
+    expect(callToolSpy).toHaveBeenCalledWith("server-b:do_search", {
+      query: "legacy",
+    });
+  });
+
   test("hidden sibling routes do not force disambiguation", async () => {
     const config: McpSquaredConfig = {
       ...DEFAULT_CONFIG,
@@ -531,6 +583,60 @@ describe("server runtime coverage", () => {
 
     expect(result.isError).toBe(false);
     expect(callToolSpy).toHaveBeenCalledWith("github-safe:delete_file", {});
+  });
+
+  test("hidden exact action ids return blocked responses", async () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      security: {
+        tools: {
+          allow: ["general:delete_file__github_safe"],
+          block: ["general:delete_file__github_danger"],
+          confirm: [],
+        },
+      },
+    };
+
+    server = new McpSquaredServer({ config });
+    const cataloger = server.getCataloger();
+
+    spyOn(cataloger, "getStatus").mockReturnValue(
+      new Map([
+        ["github-safe", { status: "connected" as const, error: undefined }],
+        ["github-danger", { status: "connected" as const, error: undefined }],
+      ]),
+    );
+    spyOn(cataloger, "getToolsForServer").mockImplementation((key: string) => {
+      if (key === "github-safe" || key === "github-danger") {
+        return [
+          {
+            name: "delete_file",
+            description: `Delete file via ${key}`,
+            serverKey: key,
+            inputSchema: { type: "object" },
+          },
+        ];
+      }
+      return [];
+    });
+
+    const callToolSpy = spyOn(cataloger, "callTool").mockResolvedValue({
+      content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
+      isError: false,
+    });
+
+    const handler = getHandler(server, "general");
+    const result = await handler({
+      action: "delete_file__github_danger",
+      arguments: {},
+    });
+
+    expect(result.isError).toBe(true);
+    expect(parsePayload(result)).toEqual({
+      error: "Action blocked by security policy",
+      blocked: true,
+    });
+    expect(callToolSpy).not.toHaveBeenCalled();
   });
 
   test("handlers resolve fresh routing state on subsequent calls", async () => {

@@ -578,6 +578,8 @@ export class McpSquaredServer {
               const callResult = await this.executeRoutedTool({
                 capability,
                 action: selectedRoute.action,
+                policyAction:
+                  exactRoute != null ? action : selectedRoute.action,
                 routeId:
                   selectedRoute.canonicalRouteId ??
                   `${capability}:${selectedRoute.action}`,
@@ -633,6 +635,7 @@ export class McpSquaredServer {
   private async executeRoutedTool(args: {
     capability: CapabilityId;
     action: string;
+    policyAction?: string;
     routeId?: string;
     qualifiedToolName: string;
     toolNameForCall: string;
@@ -646,7 +649,7 @@ export class McpSquaredServer {
     const policyResult = evaluatePolicy(
       {
         capability: args.capability,
-        action: args.action,
+        action: args.policyAction ?? args.action,
         confirmationToken: args.confirmationToken,
       },
       this.config,

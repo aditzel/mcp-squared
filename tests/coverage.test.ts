@@ -142,6 +142,21 @@ describe("parseLcovCoverage", () => {
       "Invalid BRH value",
     );
   });
+
+  test("throws when BRDA taken token is malformed", () => {
+    const lcov = [
+      "SF:src/a.ts",
+      "DA:1,1",
+      "LF:1",
+      "LH:1",
+      "BRDA:1,0,0,not-a-number",
+      "BRF:1",
+      "BRH:0",
+      "end_of_record",
+    ].join("\n");
+
+    expect(() => parseLcovCoverage(lcov)).toThrow("Invalid BRDA value");
+  });
 });
 
 describe("meetsLineCoverageThreshold", () => {
