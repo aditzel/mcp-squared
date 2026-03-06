@@ -246,6 +246,10 @@ export const ResponseResourceSchema = z.object({
 /** Response resource offloading configuration type */
 export type ResponseResourceConfig = z.infer<typeof ResponseResourceSchema>;
 
+/** Default response resource configuration derived from schema defaults. */
+export const DEFAULT_RESPONSE_RESOURCE_CONFIG: ResponseResourceConfig =
+  ResponseResourceSchema.parse({});
+
 /**
  * Schema for selection caching configuration.
  * Controls co-occurrence tracking for tool suggestions.
@@ -278,13 +282,9 @@ export const OperationsSchema = z
     index: IndexSchema.default({ refreshIntervalMs: 30_000 }),
     logging: LoggingSchema.default({ level: "info" }),
     embeddings: EmbeddingsSchema.default({ enabled: false }),
-    responseResource: ResponseResourceSchema.default({
-      enabled: false,
-      thresholdBytes: 51_200,
-      maxInlineLines: 20,
-      maxResources: 100,
-      ttlMs: 600_000,
-    }),
+    responseResource: ResponseResourceSchema.default(
+      DEFAULT_RESPONSE_RESOURCE_CONFIG,
+    ),
     selectionCache: SelectionCacheSchema.default({
       enabled: true,
       minCooccurrenceThreshold: 2,
@@ -308,13 +308,7 @@ export const OperationsSchema = z
     index: { refreshIntervalMs: 30_000 },
     logging: { level: "info" },
     embeddings: { enabled: false },
-    responseResource: {
-      enabled: false,
-      thresholdBytes: 51_200,
-      maxInlineLines: 20,
-      maxResources: 100,
-      ttlMs: 600_000,
-    },
+    responseResource: DEFAULT_RESPONSE_RESOURCE_CONFIG,
     selectionCache: {
       enabled: true,
       minCooccurrenceThreshold: 2,

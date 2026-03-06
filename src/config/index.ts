@@ -60,6 +60,7 @@ export {
 export {
   ConfigSchema,
   DEFAULT_CONFIG,
+  DEFAULT_RESPONSE_RESOURCE_CONFIG,
   type DynamicToolSurfaceConfig,
   DynamicToolSurfaceSchema,
   type EmbeddingsConfig,

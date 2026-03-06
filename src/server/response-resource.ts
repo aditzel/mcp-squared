@@ -11,15 +11,13 @@
 
 import { randomBytes } from "node:crypto";
 import {
+  DEFAULT_RESPONSE_RESOURCE_CONFIG,
   type ResponseResourceConfig,
   ResponseResourceSchema,
 } from "../config/schema.js";
 
+export { DEFAULT_RESPONSE_RESOURCE_CONFIG, ResponseResourceSchema };
 export type { ResponseResourceConfig };
-
-/** Default configuration derived from the Zod schema defaults (single source of truth). */
-export const DEFAULT_RESPONSE_RESOURCE_CONFIG: ResponseResourceConfig =
-  ResponseResourceSchema.parse({});
 
 /** Context about the tool call that produced the response. */
 export interface OffloadContext {
