@@ -182,6 +182,24 @@ refresh = "on_connect"
 [operations.dynamicToolSurface.capabilityOverrides]
 # Optional explicit namespace -> capability pinning.
 # auggie = "code_search"
+# pencil = "design_workspace"
+
+[operations.dynamicToolSurface.facetOverrides]
+# Optional namespace -> internal facet tags for diagnostics/adapter projection.
+# pencil = ["design_workspace", "design_tokens", "design_to_code"]
+
+[operations.adapterProjection]
+enabled = false
+defaultAdapter = "mcp2"
+
+[operations.adapterProjection.adapters.gateway]
+mode = "projected"
+fallbackBucket = "general"
+
+[operations.adapterProjection.adapters.gateway.namespaceBucketOverrides]
+# Optional adapter-specific remapping for namespaces that should not inherit the
+# downstream bucket semantics of their canonical MCP² capability.
+# pencil = "general"
 ```
 
 For existing configs created before this default, run:
@@ -196,6 +214,9 @@ Migration note: capability-router mode is now the only public surface. `mcp-squa
 
 Legacy keys `operations.dynamicToolSurface.mode` and `operations.dynamicToolSurface.naming` are accepted for compatibility, ignored at runtime, and warned on load. `mcp-squared migrate` removes them.
 
+`mcp-squared status --verbose` now also reports canonical namespace classification,
+internal facet tags, and optional adapter-projection results when configured.
+
 ## Tool API (Capability Routers)
 
 MCP² exposes one public tool per non-empty capability at connect time:
@@ -203,8 +224,13 @@ MCP² exposes one public tool per non-empty capability at connect time:
 - `docs`
 - `browser_automation`
 - `issue_tracking`
+- `observability`
+- `messaging`
+- `payments`
+- `database`
 - `cms_content`
 - `design`
+- `design_workspace`
 - `hosting_deploy`
 - `time_util`
 - `research`

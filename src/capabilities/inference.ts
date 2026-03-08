@@ -15,8 +15,13 @@ export const CAPABILITY_IDS = [
   "docs",
   "browser_automation",
   "issue_tracking",
+  "observability",
+  "messaging",
+  "payments",
+  "database",
   "cms_content",
   "design",
+  "design_workspace",
   "ai_media_generation",
   "hosting_deploy",
   "time_util",
@@ -26,6 +31,59 @@ export const CAPABILITY_IDS = [
 
 /** Capability identifier union. */
 export type CapabilityId = (typeof CAPABILITY_IDS)[number];
+
+/** Secondary internal classification tags. */
+export type CapabilityFacetId = string;
+
+/** Source of the canonical capability decision. */
+export type CapabilityClassificationSource =
+  | "heuristic"
+  | "semantic"
+  | "user_override"
+  | "computed_override";
+
+/** Evidence source used for diagnostics. */
+export type ClassificationEvidenceSource =
+  | "namespace_hint"
+  | "tool_signal"
+  | "semantic_similarity"
+  | "user_override"
+  | "computed_override"
+  | "facet_override";
+
+/** A single diagnostic clue used during classification. */
+export interface ClassificationEvidence {
+  source: ClassificationEvidenceSource;
+  target: string;
+  score?: number;
+  note?: string;
+}
+
+/** Secondary ranked canonical capability for diagnostics. */
+export interface NamespaceClassificationRunnerUp {
+  canonicalCapability: CapabilityId;
+  confidence: number;
+}
+
+/** Rich namespace classification used for diagnostics and adapter projection. */
+export interface NamespaceClassification {
+  namespace: string;
+  canonicalCapability: CapabilityId;
+  capabilitySource: CapabilityClassificationSource;
+  confidence: number;
+  runnerUp?: NamespaceClassificationRunnerUp | undefined;
+  facets: CapabilityFacetId[];
+  evidence: ClassificationEvidence[];
+}
+
+/** Options for rich namespace classification. */
+export interface NamespaceClassificationOptions {
+  capabilityOverrides?: Partial<Record<string, CapabilityId>> | undefined;
+  capabilityOverrideSources?:
+    | Partial<Record<string, CapabilityClassificationSource>>
+    | undefined;
+  facetOverrides?: Partial<Record<string, CapabilityFacetId[]>> | undefined;
+}
 
 /** Minimal tool metadata used by inference heuristics. */
 export interface NamespaceToolMetadata {
@@ -52,7 +110,12 @@ const CAPABILITY_PRIORITY: CapabilityId[] = [
   "docs",
   "browser_automation",
   "issue_tracking",
+  "observability",
+  "messaging",
+  "payments",
+  "database",
   "cms_content",
+  "design_workspace",
   "design",
   "ai_media_generation",
   "hosting_deploy",
@@ -87,13 +150,42 @@ const NAMESPACE_HINTS: Array<{
     score: 20,
   },
   {
+    capability: "observability",
+    pattern:
+      /(sentry|datadog|newrelic|grafana|honeycomb|bugsnag|rollbar|incident|alert|trace|metric|log|observability|monitor)/i,
+    score: 22,
+  },
+  {
+    capability: "messaging",
+    pattern:
+      /(slack|discord|teams|telegram|twilio|message|chat|channel|notification|email|inbox|thread|dm)/i,
+    score: 22,
+  },
+  {
+    capability: "payments",
+    pattern:
+      /(stripe|payment|invoice|subscription|checkout|billing|refund|charge|customer portal)/i,
+    score: 22,
+  },
+  {
+    capability: "database",
+    pattern:
+      /(prisma|supabase|postgres(?:ql)?|mysql|sqlite|mongodb|redis|neon|planetscale|hasura|database|sql)/i,
+    score: 22,
+  },
+  {
     capability: "cms_content",
     pattern: /(sanity|content|cms|dataset|schema|studio)/i,
     score: 20,
   },
   {
+    capability: "design_workspace",
+    pattern: /(pencil|penfile|design[-_ ]workspace)/i,
+    score: 24,
+  },
+  {
     capability: "design",
-    pattern: /(pencil|figma|ui|design|artifact|visual)/i,
+    pattern: /(figma|sketch|ui|design|artifact|visual)/i,
     score: 20,
   },
   {
@@ -163,6 +255,65 @@ const CAPABILITY_PATTERNS: Record<CapabilityId, RegExp[]> = {
     /\bcomment(?:s)?\b/i,
     /\blinear\b/i,
   ],
+  observability: [
+    /\berror(?:s)?\b/i,
+    /\bincident(?:s)?\b/i,
+    /\balert(?:s)?\b/i,
+    /\btrace(?:s)?\b/i,
+    /\bmetric(?:s)?\b/i,
+    /\blogs?\b/i,
+    /\bmonitor(?:ing)?\b/i,
+    /\bperformance\b/i,
+    /\bexception(?:s)?\b/i,
+    /\bcrash(?:es)?\b/i,
+    /\bsentry\b/i,
+    /\brollbar\b/i,
+    /\bdatadog\b/i,
+    /\bgrafana\b/i,
+  ],
+  messaging: [
+    /\bmessage(?:s)?\b/i,
+    /\bchannel(?:s)?\b/i,
+    /\bchat\b/i,
+    /\bthread(?:s)?\b/i,
+    /\bdm\b/i,
+    /\bnotification(?:s)?\b/i,
+    /\bemail\b/i,
+    /\binbox\b/i,
+    /\bslack\b/i,
+    /\bdiscord\b/i,
+    /\btelegram\b/i,
+    /\bteams\b/i,
+    /\btwilio\b/i,
+  ],
+  payments: [
+    /\bpayment(?:s)?\b/i,
+    /\binvoice(?:s)?\b/i,
+    /\bsubscription(?:s)?\b/i,
+    /\bcheckout\b/i,
+    /\bbilling\b/i,
+    /\brefund(?:s)?\b/i,
+    /\bcharge(?:s)?\b/i,
+    /\bcustomer portal\b/i,
+    /\bstripe\b/i,
+  ],
+  database: [
+    /\bdatabase\b/i,
+    /\bsql\b/i,
+    /\bquery\b/i,
+    /\bqueries\b/i,
+    /\btable(?:s)?\b/i,
+    /\bcolumn(?:s)?\b/i,
+    /\brow(?:s)?\b/i,
+    /\bschema\b/i,
+    /\bmigration\b/i,
+    /\borm\b/i,
+    /\bpostgres(?:ql)?\b/i,
+    /\bmysql\b/i,
+    /\bsqlite\b/i,
+    /\bprisma\b/i,
+    /\bsupabase\b/i,
+  ],
   cms_content: [
     /\bcms\b/i,
     /\bcontent\b/i,
@@ -173,6 +324,17 @@ const CAPABILITY_PATTERNS: Record<CapabilityId, RegExp[]> = {
     /\bdraft(?:s)?\b/i,
     /\bsanity\b/i,
     /\bmigration\b/i,
+  ],
+  design_workspace: [
+    /\b\.pen\b/i,
+    /\bbatch_design\b/i,
+    /\bbatch_get\b/i,
+    /\beditor[_ ]state\b/i,
+    /\bcanvas\b/i,
+    /\bdesign system\b/i,
+    /\bdesign tokens\b/i,
+    /\bsync\b.*\bcss\b/i,
+    /\bexport\b.*\breact\b/i,
   ],
   design: [
     /\bdesign\b/i,
@@ -234,6 +396,96 @@ const CAPABILITY_PATTERNS: Record<CapabilityId, RegExp[]> = {
   general: [],
 };
 
+const FACET_PATTERNS: Record<CapabilityFacetId, RegExp[]> = {
+  vision_analysis: [
+    /\banaly[sz]e[_ ]image\b/i,
+    /\banaly[sz]e[_ ]video\b/i,
+    /\bdiagnos(?:e|ing)?[_ ]error[_ ]screenshot\b/i,
+    /\bextract[_ ]text[_ ]from[_ ]screenshot\b/i,
+    /\bvisual diff/i,
+  ],
+  ocr: [/\bocr\b/i, /\bextract[_ ]text\b/i, /\btext extraction\b/i],
+  diagram_understanding: [
+    /\bdiagram\b/i,
+    /\bflowchart\b/i,
+    /\buml\b/i,
+    /\ber diagram\b/i,
+    /\barchitecture diagram\b/i,
+  ],
+  ui_diff: [
+    /\bui[_ ]diff\b/i,
+    /\bvisual differences?\b/i,
+    /\bcompare before\/after\b/i,
+  ],
+  design_workspace: [
+    /\bpencil\b/i,
+    /\b\.pen\b/i,
+    /\bbatch_design\b/i,
+    /\bbatch_get\b/i,
+    /\beditor[_ ]state\b/i,
+    /\bdesign elements?\b/i,
+    /\bcanvas\b/i,
+  ],
+  layout_analysis: [
+    /\blayout\b/i,
+    /\boverlap(?:ping)?\b/i,
+    /\bposition(?:ing)?\b/i,
+    /\bhierarchy\b/i,
+    /\bspacing\b/i,
+  ],
+  design_tokens: [
+    /\bvariables?\b/i,
+    /\btokens?\b/i,
+    /\btheme\b/i,
+    /\bcolor palette\b/i,
+    /\btypography scale\b/i,
+    /\bcss variables?\b/i,
+  ],
+  design_to_code: [
+    /\bexport\b.*\bcomponent\b/i,
+    /\bgenerate\b.*\b(?:react|vue|svelte|next\.js|typescript)\b/i,
+    /\bsync\b.*\bcode\b/i,
+    /\bimport\b.*\bcodebase\b/i,
+    /\btailwind\b/i,
+    /\bshadcn\b/i,
+  ],
+  database_admin: [
+    /\bdatabase\b/i,
+    /\bsql\b/i,
+    /\btable\b/i,
+    /\bmigration\b/i,
+    /\bschema\b/i,
+    /\bprisma\b/i,
+    /\bsupabase\b/i,
+  ],
+  observability: [
+    /\bsentry\b/i,
+    /\berror tracking\b/i,
+    /\btrace(?:s)?\b/i,
+    /\bmetric(?:s)?\b/i,
+    /\blogs?\b/i,
+    /\balert(?:s)?\b/i,
+    /\bincident(?:s)?\b/i,
+    /\bmonitor(?:ing)?\b/i,
+  ],
+  messaging: [
+    /\bslack\b/i,
+    /\bmessage(?:s)?\b/i,
+    /\bchannel(?:s)?\b/i,
+    /\bchat\b/i,
+    /\bnotification(?:s)?\b/i,
+    /\bemail\b/i,
+  ],
+  payments: [
+    /\bstripe\b/i,
+    /\bpayment(?:s)?\b/i,
+    /\binvoice(?:s)?\b/i,
+    /\bsubscription(?:s)?\b/i,
+    /\bcheckout\b/i,
+    /\bbilling\b/i,
+  ],
+};
+
 function createEmptyScores(): Record<CapabilityId, number> {
   return CAPABILITY_IDS.reduce(
     (acc, capability) => {
@@ -242,6 +494,23 @@ function createEmptyScores(): Record<CapabilityId, number> {
     },
     {} as Record<CapabilityId, number>,
   );
+}
+
+function pushEvidence(
+  evidence: ClassificationEvidence[],
+  seen: Set<string>,
+  entry: ClassificationEvidence,
+): void {
+  const key = JSON.stringify([
+    entry.source,
+    entry.target,
+    entry.score ?? null,
+    entry.note ?? null,
+  ]);
+  if (!seen.has(key)) {
+    seen.add(key);
+    evidence.push(entry);
+  }
 }
 
 export function extractSchemaSignal(
@@ -258,53 +527,80 @@ export function extractSchemaSignal(
 function scoreTextSignals(
   scores: Record<CapabilityId, number>,
   text: string,
+  evidence?: ClassificationEvidence[],
+  seen?: Set<string>,
+  note?: string,
 ): void {
   for (const capability of CAPABILITY_IDS) {
     for (const pattern of CAPABILITY_PATTERNS[capability]) {
       if (pattern.test(text)) {
         scores[capability] += 4;
+        if (evidence && seen) {
+          pushEvidence(evidence, seen, {
+            source: "tool_signal",
+            target: capability,
+            score: 4,
+            note: note
+              ? `${note} matched ${pattern}`
+              : `Matched ${pattern} in tool signal`,
+          });
+        }
       }
     }
   }
 }
 
-function getHighestScoringCapability(
+function getSortedScoreEntries(
   scores: Record<CapabilityId, number>,
-): CapabilityId {
-  const bestScore = Math.max(...Object.values(scores));
-  if (bestScore <= 0) {
-    return "general";
-  }
-
-  for (const capability of CAPABILITY_PRIORITY) {
-    if (scores[capability] === bestScore) {
-      return capability;
-    }
-  }
-
-  return "general";
+): Array<{ capability: CapabilityId; score: number }> {
+  return CAPABILITY_PRIORITY.map((capability) => ({
+    capability,
+    score: scores[capability],
+  })).sort((a, b) =>
+    b.score === a.score
+      ? CAPABILITY_PRIORITY.indexOf(a.capability) -
+        CAPABILITY_PRIORITY.indexOf(b.capability)
+      : b.score - a.score,
+  );
 }
 
-/**
- * Infers a namespace capability using deterministic heuristics, with optional
- * explicit overrides.
- */
-export function inferNamespaceCapability(
+function computeHeuristicConfidence(
+  bestScore: number,
+  runnerUpScore: number,
+): number {
+  if (bestScore <= 0) {
+    return 0;
+  }
+  if (runnerUpScore <= 0) {
+    return 1;
+  }
+  return Number((bestScore / (bestScore + runnerUpScore)).toFixed(4));
+}
+
+function inferNamespaceFacetsInternal(
   namespace: string,
   tools: NamespaceToolMetadata[],
-  capabilityOverrides: Partial<Record<string, CapabilityId>> = {},
-): CapabilityId {
-  const override = capabilityOverrides[namespace];
-  if (override) {
-    return override;
-  }
-
-  const scores = createEmptyScores();
+  facetOverrides: Partial<Record<string, CapabilityFacetId[]>> = {},
+): {
+  facets: CapabilityFacetId[];
+  evidence: ClassificationEvidence[];
+} {
+  const facets = new Set<CapabilityFacetId>();
+  const evidence: ClassificationEvidence[] = [];
+  const seen = new Set<string>();
   const namespaceText = namespace.toLowerCase();
 
-  for (const hint of NAMESPACE_HINTS) {
-    if (hint.pattern.test(namespaceText)) {
-      scores[hint.capability] += hint.score;
+  for (const [facet, patterns] of Object.entries(FACET_PATTERNS)) {
+    for (const pattern of patterns) {
+      if (pattern.test(namespaceText)) {
+        facets.add(facet);
+        pushEvidence(evidence, seen, {
+          source: "namespace_hint",
+          target: facet,
+          note: `Namespace matched ${pattern}`,
+        });
+        break;
+      }
     }
   }
 
@@ -316,18 +612,151 @@ export function inferNamespaceCapability(
     ]
       .join(" ")
       .toLowerCase();
-    scoreTextSignals(scores, signal);
+
+    for (const [facet, patterns] of Object.entries(FACET_PATTERNS)) {
+      for (const pattern of patterns) {
+        if (pattern.test(signal)) {
+          facets.add(facet);
+          pushEvidence(evidence, seen, {
+            source: "tool_signal",
+            target: facet,
+            note: `${tool.name} matched ${pattern}`,
+          });
+          break;
+        }
+      }
+    }
   }
 
-  return getHighestScoringCapability(scores);
+  for (const facet of facetOverrides[namespace] ?? []) {
+    facets.add(facet);
+    pushEvidence(evidence, seen, {
+      source: "facet_override",
+      target: facet,
+      note: "Pinned by config facet override",
+    });
+  }
+
+  return {
+    facets: [...facets].sort(),
+    evidence,
+  };
 }
 
-/**
- * Groups namespace inventories by inferred capability.
- */
-export function groupNamespacesByCapability(
+/** Returns inferred facets for a namespace. */
+export function inferNamespaceFacets(
+  namespace: string,
+  tools: NamespaceToolMetadata[],
+  facetOverrides: Partial<Record<string, CapabilityFacetId[]>> = {},
+): CapabilityFacetId[] {
+  return inferNamespaceFacetsInternal(namespace, tools, facetOverrides).facets;
+}
+
+/** Rich heuristic namespace classification with facets and evidence. */
+export function classifyNamespace(
+  namespace: string,
+  tools: NamespaceToolMetadata[],
+  options: NamespaceClassificationOptions = {},
+): NamespaceClassification {
+  const capabilityOverrides = options.capabilityOverrides ?? {};
+  const capabilityOverrideSources = options.capabilityOverrideSources ?? {};
+  const facetOverrides = options.facetOverrides ?? {};
+  const { facets, evidence: facetEvidence } = inferNamespaceFacetsInternal(
+    namespace,
+    tools,
+    facetOverrides,
+  );
+
+  const override = capabilityOverrides[namespace];
+  if (override) {
+    const source = capabilityOverrideSources[namespace] ?? "user_override";
+    return {
+      namespace,
+      canonicalCapability: override,
+      capabilitySource: source,
+      confidence: 1,
+      facets,
+      evidence: [
+        {
+          source,
+          target: override,
+          note: "Pinned by capability override",
+        },
+        ...facetEvidence,
+      ],
+    };
+  }
+
+  const scores = createEmptyScores();
+  const evidence: ClassificationEvidence[] = [];
+  const seen = new Set<string>();
+  const namespaceText = namespace.toLowerCase();
+
+  for (const hint of NAMESPACE_HINTS) {
+    if (hint.pattern.test(namespaceText)) {
+      scores[hint.capability] += hint.score;
+      pushEvidence(evidence, seen, {
+        source: "namespace_hint",
+        target: hint.capability,
+        score: hint.score,
+        note: `Namespace matched ${hint.pattern}`,
+      });
+    }
+  }
+
+  for (const tool of tools) {
+    const signal = [
+      tool.name,
+      tool.description ?? "",
+      extractSchemaSignal(tool.inputSchema),
+    ]
+      .join(" ")
+      .toLowerCase();
+    scoreTextSignals(scores, signal, evidence, seen, tool.name);
+  }
+
+  const ranked = getSortedScoreEntries(scores);
+  const best = ranked[0] ?? { capability: "general" as CapabilityId, score: 0 };
+  const runnerUp = ranked[1];
+  const bestCapability =
+    best.score <= 0 ? ("general" as CapabilityId) : best.capability;
+  const bestConfidence = computeHeuristicConfidence(
+    best.score,
+    runnerUp?.score ?? 0,
+  );
+
+  return {
+    namespace,
+    canonicalCapability: bestCapability,
+    capabilitySource: "heuristic",
+    confidence: bestConfidence,
+    runnerUp:
+      runnerUp && runnerUp.score > 0
+        ? {
+            canonicalCapability: runnerUp.capability,
+            confidence: computeHeuristicConfidence(runnerUp.score, best.score),
+          }
+        : undefined,
+    facets,
+    evidence: [...evidence, ...facetEvidence],
+  };
+}
+
+/** Rich classification for a batch of inventories. */
+export function classifyNamespaces(
   inventories: NamespaceInventory[],
-  capabilityOverrides: Partial<Record<string, CapabilityId>> = {},
+  options: NamespaceClassificationOptions = {},
+): NamespaceClassification[] {
+  return [...inventories]
+    .sort((a, b) => a.namespace.localeCompare(b.namespace))
+    .map((inventory) =>
+      classifyNamespace(inventory.namespace, inventory.tools, options),
+    );
+}
+
+/** Builds a capability grouping from rich namespace classifications. */
+export function groupClassificationsByCapability(
+  classifications: NamespaceClassification[],
 ): CapabilityGrouping {
   const grouped = CAPABILITY_IDS.reduce(
     (acc, capability) => {
@@ -338,19 +767,40 @@ export function groupNamespacesByCapability(
   );
 
   const byNamespace: Record<string, CapabilityId> = {};
-  const sorted = [...inventories].sort((a, b) =>
+  const sorted = [...classifications].sort((a, b) =>
     a.namespace.localeCompare(b.namespace),
   );
 
-  for (const inventory of sorted) {
-    const capability = inferNamespaceCapability(
-      inventory.namespace,
-      inventory.tools,
-      capabilityOverrides,
-    );
-    byNamespace[inventory.namespace] = capability;
-    grouped[capability].push(inventory.namespace);
+  for (const classification of sorted) {
+    byNamespace[classification.namespace] = classification.canonicalCapability;
+    grouped[classification.canonicalCapability].push(classification.namespace);
   }
 
   return { byNamespace, grouped };
+}
+
+/**
+ * Infers a namespace capability using deterministic heuristics, with optional
+ * explicit overrides.
+ */
+export function inferNamespaceCapability(
+  namespace: string,
+  tools: NamespaceToolMetadata[],
+  capabilityOverrides: Partial<Record<string, CapabilityId>> = {},
+): CapabilityId {
+  return classifyNamespace(namespace, tools, {
+    capabilityOverrides,
+  }).canonicalCapability;
+}
+
+/**
+ * Groups namespace inventories by inferred capability.
+ */
+export function groupNamespacesByCapability(
+  inventories: NamespaceInventory[],
+  capabilityOverrides: Partial<Record<string, CapabilityId>> = {},
+): CapabilityGrouping {
+  return groupClassificationsByCapability(
+    classifyNamespaces(inventories, { capabilityOverrides }),
+  );
 }

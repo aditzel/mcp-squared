@@ -33,10 +33,20 @@ const CAPABILITY_REFERENCE_TEXTS: Record<CapabilityId, string> = {
     "Automate web browser interactions: click elements, fill forms, take screenshots, inspect DOM nodes, navigate URLs, execute JavaScript in page context, and run browser diagnostics.",
   issue_tracking:
     "Manage project management tickets, kanban boards, sprints, and work items. Create, update, and track issues in project trackers like Jira, Linear, Asana, and ClickUp.",
+  observability:
+    "Monitor systems, track incidents, inspect logs, errors, exceptions, traces, and metrics. Work with observability and error-tracking tools like Sentry, Datadog, Grafana, Rollbar, and New Relic.",
+  messaging:
+    "Send and manage chat messages, channels, threads, notifications, email, direct messages, and team communication workflows. Work with messaging tools like Slack, Discord, Microsoft Teams, Telegram, and Twilio.",
+  payments:
+    "Manage payments, subscriptions, invoices, checkout sessions, billing, charges, refunds, and customer payment workflows. Work with payment platforms like Stripe and related billing APIs.",
+  database:
+    "Manage databases, SQL queries, table schemas, migrations, rows, columns, and data operations. Work with database platforms and ORMs like Postgres, MySQL, SQLite, Prisma, and Supabase.",
   cms_content:
     "Manage wiki pages, knowledge base articles, content documents, blog posts, editorial workflows, and structured content. Create and organize content in systems like Notion, Confluence, and Sanity.",
   design:
-    "Create and inspect visual design artifacts, UI mockups, wireframes, and design system components. Work with design tools like Figma, Sketch, and Pencil for visual layout and styling.",
+    "Create and inspect visual design artifacts, UI mockups, wireframes, screenshots, diagrams, and visual layouts. Work with design tools like Figma and Sketch for visual styling and mockup review.",
+  design_workspace:
+    "Edit structured design workspace files, canvases, layout state, design tokens, and design-to-code assets. Work with Pencil-style .pen files, batch design edits, workspace hierarchy, layout snapshots, variables, and code synchronization flows.",
   ai_media_generation:
     "Generate and edit images, videos, and visual media using AI models. Create images from text prompts, edit existing images with AI, upscale resolution, apply style transfer, inpaint or outpaint regions, and generate sequential or consistent media. Supports text-to-image, image-to-image, and AI-powered visual content creation.",
   hosting_deploy:
@@ -46,7 +56,7 @@ const CAPABILITY_REFERENCE_TEXTS: Record<CapabilityId, string> = {
   research:
     "Search the web, collect information from multiple sources, synthesize findings, and perform web research and data gathering operations.",
   general:
-    "General-purpose utility operations, API integrations, data transformations, notifications, messaging, payments, and miscellaneous tool actions.",
+    "General-purpose utility operations, API integrations, data transformations, and miscellaneous tool actions.",
 };
 
 /** Result of classifying a single namespace. */

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import type { NamespaceClassification } from "@/capabilities/inference";
+import type { AdapterProjectionResult } from "@/capabilities/projection";
 import type { CapabilityRouter } from "@/capabilities/routing";
 import type { StatusResult, UpstreamStatus } from "@/status/runner";
 import { formatStatus } from "@/status/runner";
@@ -493,5 +495,61 @@ describe("formatStatus", () => {
     expect(output).toContain("Context Savings");
     expect(output).toContain("Without MCP");
     expect(output).not.toContain("Saved:");
+  });
+
+  test("verbose mode shows namespace classification details and adapter projection", () => {
+    const classifications: NamespaceClassification[] = [
+      {
+        namespace: "pencil",
+        canonicalCapability: "design_workspace",
+        capabilitySource: "user_override",
+        confidence: 1,
+        runnerUp: {
+          canonicalCapability: "docs",
+          confidence: 0.2,
+        },
+        facets: ["design_workspace", "design_tokens", "design_to_code"],
+        evidence: [
+          {
+            source: "user_override",
+            target: "design",
+            note: "Pinned by config override",
+          },
+        ],
+      },
+    ];
+    const projections: AdapterProjectionResult[] = [
+      {
+        namespace: "pencil",
+        adapterId: "gateway",
+        bucket: "general",
+        confidence: 1,
+        reason: "namespace override",
+        source: "adapter_override",
+      },
+    ];
+
+    const result: StatusResult = {
+      upstreams: [
+        makeUpstream({ name: "pencil", status: "connected", toolCount: 7 }),
+      ],
+      routers: [],
+      classifications,
+      adapterProjection: {
+        adapterId: "gateway",
+        projections,
+      },
+    };
+
+    const output = stripAnsi(formatStatus(result, { verbose: true }));
+
+    expect(output).toContain("Namespace Classification");
+    expect(output).toContain("pencil");
+    expect(output).toContain("design_workspace");
+    expect(output).toContain("source=user_override");
+    expect(output).toContain(
+      "facets: design_workspace, design_tokens, design_to_code",
+    );
+    expect(output).toContain("projection[gateway]: general");
   });
 });

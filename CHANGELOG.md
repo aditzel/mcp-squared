@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added `docs/capability-taxonomy-design.md`, a draft design for evolving capability matching with stable canonical buckets, dynamic internal facets, and adapter-specific projection rules for downstream gateways.
+- Added rich namespace classification diagnostics: canonical capability, internal facet tags, and evidence metadata are now available to internal callers, with `status --verbose` surfacing classification and optional adapter-projection details.
+- Added additive config support for `operations.dynamicToolSurface.facetOverrides` and `operations.adapterProjection` so downstream integrations can remap canonical MCP² capabilities into adapter-specific buckets without changing the public router names.
+- Added a canonical `database` capability for database tooling such as Prisma and Supabase, including heuristic signals, semantic reference text, and public capability metadata.
+- Added a canonical `observability` capability for monitoring and error-tracking tooling such as Sentry, including heuristic signals, semantic reference text, and public capability metadata.
+- Added a canonical `messaging` capability for chat and notification tooling such as Slack, including heuristic signals, semantic reference text, and public capability metadata.
+- Added a canonical `payments` capability for billing and checkout tooling such as Stripe, including heuristic signals, semantic reference text, and public capability metadata.
+- Added a canonical `design_workspace` capability for structured design-as-code tooling such as Pencil, including public capability metadata and docs/examples that distinguish it from generic visual `design` tools.
+
+### Changed
+- Updated `docs/ARCHITECTURE.md` to document the planned direction for taxonomy evolution: preserve stable public capability IDs and layer richer internal classification beneath them.
+- Capability inference now records richer internal signals while preserving the existing public capability router contract.
+
 ## [0.7.0] - 2026-03-06
 
 ### Added

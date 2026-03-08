@@ -175,12 +175,53 @@ export const DynamicToolSurfaceSchema = z.object({
   capabilityOverrides: z
     .record(z.string().min(1), CapabilityIdSchema)
     .default({}),
+  facetOverrides: z
+    .record(z.string().min(1), z.array(z.string().min(1)))
+    .default({}),
   /** Minimum cosine similarity for ML classification to override heuristic (hybrid mode only) */
   semanticConfidenceThreshold: z.number().min(0).max(1).default(0.45),
 });
 
 /** Dynamic tool surface configuration type. */
 export type DynamicToolSurfaceConfig = z.infer<typeof DynamicToolSurfaceSchema>;
+
+export const AdapterProjectionModeSchema = z.enum(["canonical", "projected"]);
+
+export const AdapterCapabilityProfileSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  acceptsCanonical: z.array(CapabilityIdSchema).default([]),
+  prefersFacets: z.array(z.string().min(1)).default([]),
+  rejectsFacets: z.array(z.string().min(1)).default([]),
+});
+
+export type AdapterCapabilityProfile = z.infer<
+  typeof AdapterCapabilityProfileSchema
+>;
+
+export const AdapterProjectionAdapterSchema = z.object({
+  mode: AdapterProjectionModeSchema.default("canonical"),
+  fallbackBucket: z.string().min(1).optional(),
+  capabilities: z.array(AdapterCapabilityProfileSchema).default([]),
+  namespaceBucketOverrides: z
+    .record(z.string().min(1), z.string().min(1))
+    .default({}),
+});
+
+export type AdapterProjectionAdapterConfig = z.infer<
+  typeof AdapterProjectionAdapterSchema
+>;
+
+export const AdapterProjectionSchema = z.object({
+  enabled: z.boolean().default(false),
+  defaultAdapter: z.string().min(1).default("mcp2"),
+  adapters: z
+    .record(z.string().min(1), AdapterProjectionAdapterSchema)
+    .default({}),
+});
+
+export type AdapterProjectionConfig = z.infer<typeof AdapterProjectionSchema>;
 
 /** Schema for internal retrieval defaults */
 const PreferredNamespacesByIntentSchema = z.object({
@@ -294,7 +335,13 @@ export const OperationsSchema = z
       inference: "heuristic_with_overrides",
       refresh: "on_connect",
       capabilityOverrides: {},
+      facetOverrides: {},
       semanticConfidenceThreshold: 0.45,
+    }),
+    adapterProjection: AdapterProjectionSchema.default({
+      enabled: false,
+      defaultAdapter: "mcp2",
+      adapters: {},
     }),
   })
   .default({
@@ -318,7 +365,13 @@ export const OperationsSchema = z
       inference: "heuristic_with_overrides",
       refresh: "on_connect",
       capabilityOverrides: {},
+      facetOverrides: {},
       semanticConfidenceThreshold: 0.45,
+    },
+    adapterProjection: {
+      enabled: false,
+      defaultAdapter: "mcp2",
+      adapters: {},
     },
   });
 

@@ -7,7 +7,15 @@
  * @module status/runner
  */
 
-import { groupNamespacesByCapability } from "../capabilities/inference.js";
+import {
+  classifyNamespaces,
+  groupClassificationsByCapability,
+  type NamespaceClassification,
+} from "../capabilities/inference.js";
+import {
+  type AdapterProjectionResult,
+  projectNamespaceClassifications,
+} from "../capabilities/projection.js";
 import {
   buildCapabilityRouters,
   type CapabilityRouter,
@@ -46,6 +54,11 @@ export interface UpstreamStatus {
 export interface StatusResult {
   upstreams: UpstreamStatus[];
   routers: CapabilityRouter[];
+  classifications?: NamespaceClassification[];
+  adapterProjection?: {
+    adapterId: string;
+    projections: AdapterProjectionResult[];
+  };
   configPath?: string;
   contextStats?: ContextStats;
 }
@@ -110,18 +123,53 @@ export async function collectStatus(
       .sort((a, b) => a.namespace.localeCompare(b.namespace));
 
     let routers: CapabilityRouter[] = [];
+    let classifications: NamespaceClassification[] = [];
+    let adapterProjection:
+      | {
+          adapterId: string;
+          projections: AdapterProjectionResult[];
+        }
+      | undefined;
     if (inventories.length > 0) {
       const overrides =
         config.operations.dynamicToolSurface.capabilityOverrides ?? {};
-      const grouping = groupNamespacesByCapability(inventories, overrides);
+      const overrideSources = Object.fromEntries(
+        Object.keys(overrides).map((namespace) => [namespace, "user_override"]),
+      ) as Record<string, "user_override">;
+      const facetOverrides =
+        config.operations.dynamicToolSurface.facetOverrides ?? {};
+      classifications = classifyNamespaces(inventories, {
+        capabilityOverrides: overrides,
+        capabilityOverrideSources: overrideSources,
+        facetOverrides,
+      });
+      const grouping = groupClassificationsByCapability(classifications);
       routers = buildCapabilityRouters(inventories, grouping);
+
+      if (config.operations.adapterProjection.enabled) {
+        const adapterId = config.operations.adapterProjection.defaultAdapter;
+        adapterProjection = {
+          adapterId,
+          projections: projectNamespaceClassifications(
+            adapterId,
+            classifications,
+            config.operations.adapterProjection,
+          ),
+        };
+      }
     }
 
     // Compute context savings stats
     const allUpstreamTools = inventories.flatMap((inv) => inv.tools);
     const contextStats = computeContextStats(allUpstreamTools, routers);
 
-    return { upstreams, routers, contextStats };
+    return {
+      upstreams,
+      routers,
+      classifications,
+      adapterProjection,
+      contextStats,
+    };
   } finally {
     await cataloger.disconnectAll();
   }
@@ -180,7 +228,51 @@ export function formatStatus(
     }
   }
 
-  // Section 2: Capability Routing
+  // Section 2: Namespace Classification (verbose only)
+  if (
+    options.verbose &&
+    result.classifications &&
+    result.classifications.length
+  ) {
+    lines.push("");
+    lines.push(
+      `${DIM}── Namespace Classification ─────────────────────────${RESET}`,
+    );
+
+    const projectionsByNamespace = new Map<string, AdapterProjectionResult>();
+    for (const projection of result.adapterProjection?.projections ?? []) {
+      projectionsByNamespace.set(projection.namespace, projection);
+    }
+
+    for (const classification of result.classifications) {
+      lines.push(
+        `  ${classification.namespace.padEnd(24)} ${BOLD}${classification.canonicalCapability}${RESET}`,
+      );
+      lines.push(`    ${DIM}source=${classification.capabilitySource}${RESET}`);
+      lines.push(
+        `    ${DIM}confidence=${classification.confidence.toFixed(2)}${RESET}`,
+      );
+      if (classification.runnerUp) {
+        lines.push(
+          `    ${DIM}runner-up=${classification.runnerUp.canonicalCapability} (${classification.runnerUp.confidence.toFixed(2)})${RESET}`,
+        );
+      }
+      if (classification.facets.length > 0) {
+        lines.push(
+          `    ${DIM}facets:${RESET} ${classification.facets.join(", ")}`,
+        );
+      }
+
+      const projection = projectionsByNamespace.get(classification.namespace);
+      if (projection && result.adapterProjection) {
+        lines.push(
+          `    ${DIM}projection[${result.adapterProjection.adapterId}]:${RESET} ${projection.bucket} ${DIM}(${projection.source})${RESET}`,
+        );
+      }
+    }
+  }
+
+  // Section 3: Capability Routing
   lines.push("");
   lines.push(
     `${DIM}── Capability Routing ────────────────────────────────${RESET}`,
@@ -226,7 +318,7 @@ export function formatStatus(
     lines.push(""); // blank line between capabilities
   }
 
-  // Section 3: Context Savings (verbose only)
+  // Section 4: Context Savings (verbose only)
   if (options.verbose && result.contextStats) {
     const cs = result.contextStats;
     if (cs.upstreamToolCount > 0) {

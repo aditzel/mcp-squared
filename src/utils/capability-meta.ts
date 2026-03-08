@@ -34,10 +34,20 @@ export function capabilitySummary(capability: string): string {
       return "Automate browser interactions and diagnostics.";
     case "issue_tracking":
       return "Work with issues, tickets, and project tracking.";
+    case "observability":
+      return "Work with monitoring, incidents, logs, and error tracking.";
+    case "messaging":
+      return "Work with chat, messages, channels, and notifications.";
+    case "payments":
+      return "Work with payments, subscriptions, invoices, and billing.";
+    case "database":
+      return "Work with databases, SQL, schemas, and data operations.";
     case "cms_content":
       return "Manage content and CMS resources.";
     case "design":
       return "Create and inspect design artifacts and visuals.";
+    case "design_workspace":
+      return "Work with structured design workspaces, layout state, tokens, and design-to-code flows.";
     case "ai_media_generation":
       return "Generate and edit images and media using AI models.";
     case "hosting_deploy":

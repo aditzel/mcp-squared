@@ -83,6 +83,72 @@ describe("ConfigSchema", () => {
     });
   });
 
+  test("parses facet overrides for dynamic tool surface classification", () => {
+    const result = ConfigSchema.parse({
+      operations: {
+        dynamicToolSurface: {
+          facetOverrides: {
+            pencil: ["design_workspace", "design_tokens"],
+          },
+        },
+      },
+    });
+
+    expect(result.operations.dynamicToolSurface.facetOverrides).toEqual({
+      pencil: ["design_workspace", "design_tokens"],
+    });
+  });
+
+  test("parses adapter projection configuration", () => {
+    const result = ConfigSchema.parse({
+      operations: {
+        adapterProjection: {
+          enabled: true,
+          defaultAdapter: "gateway",
+          adapters: {
+            gateway: {
+              mode: "projected",
+              fallbackBucket: "general",
+              capabilities: [
+                {
+                  id: "design",
+                  title: "Design Analysis",
+                  summary: "Analyze screenshots",
+                  acceptsCanonical: ["design"],
+                  prefersFacets: ["vision_analysis"],
+                  rejectsFacets: ["design_workspace"],
+                },
+              ],
+              namespaceBucketOverrides: {
+                pencil: "general",
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(result.operations.adapterProjection.enabled).toBe(true);
+    expect(result.operations.adapterProjection.defaultAdapter).toBe("gateway");
+    expect(result.operations.adapterProjection.adapters["gateway"]).toEqual({
+      mode: "projected",
+      fallbackBucket: "general",
+      capabilities: [
+        {
+          id: "design",
+          title: "Design Analysis",
+          summary: "Analyze screenshots",
+          acceptsCanonical: ["design"],
+          prefersFacets: ["vision_analysis"],
+          rejectsFacets: ["design_workspace"],
+        },
+      ],
+      namespaceBucketOverrides: {
+        pencil: "general",
+      },
+    });
+  });
+
   test("accepts 'hybrid' inference mode", () => {
     const result = ConfigSchema.parse({
       operations: {
@@ -233,6 +299,14 @@ describe("DEFAULT_CONFIG", () => {
     expect(
       DEFAULT_CONFIG.operations.dynamicToolSurface.capabilityOverrides,
     ).toEqual({});
+    expect(DEFAULT_CONFIG.operations.dynamicToolSurface.facetOverrides).toEqual(
+      {},
+    );
+    expect(DEFAULT_CONFIG.operations.adapterProjection.enabled).toBe(false);
+    expect(DEFAULT_CONFIG.operations.adapterProjection.defaultAdapter).toBe(
+      "mcp2",
+    );
+    expect(DEFAULT_CONFIG.operations.adapterProjection.adapters).toEqual({});
     expect(DEFAULT_CONFIG.operations.responseResource).toEqual(
       DEFAULT_RESPONSE_RESOURCE_CONFIG,
     );
