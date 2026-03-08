@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a canonical `messaging` capability for chat and notification tooling such as Slack, including heuristic signals, semantic reference text, and public capability metadata.
 - Added a canonical `payments` capability for billing and checkout tooling such as Stripe, including heuristic signals, semantic reference text, and public capability metadata.
 - Added a canonical `design_workspace` capability for structured design-as-code tooling such as Pencil, including public capability metadata and docs/examples that distinguish it from generic visual `design` tools.
+- Added a live-captured official Figma MCP fixture test and tuned `design_workspace` signals so Figma's published MCP tool surface classifies as `design_workspace` rather than generic visual `design`.
 
 ### Changed
 - Updated `docs/ARCHITECTURE.md` to document the planned direction for taxonomy evolution: preserve stable public capability IDs and layer richer internal classification beneath them.

@@ -44,9 +44,9 @@ const CAPABILITY_REFERENCE_TEXTS: Record<CapabilityId, string> = {
   cms_content:
     "Manage wiki pages, knowledge base articles, content documents, blog posts, editorial workflows, and structured content. Create and organize content in systems like Notion, Confluence, and Sanity.",
   design:
-    "Create and inspect visual design artifacts, UI mockups, wireframes, screenshots, diagrams, and visual layouts. Work with design tools like Figma and Sketch for visual styling and mockup review.",
+    "Create and inspect visual design artifacts, UI mockups, wireframes, screenshots, diagrams, and visual layouts. Work with visual design tools for styling and mockup review.",
   design_workspace:
-    "Edit structured design workspace files, canvases, layout state, design tokens, and design-to-code assets. Work with Pencil-style .pen files, batch design edits, workspace hierarchy, layout snapshots, variables, and code synchronization flows.",
+    "Edit structured design workspace files, canvases, layout state, selections, variables, components, and design-to-code assets. Work with Pencil .pen files and Figma or FigJam workspaces, design context, code connect mappings, workspace hierarchy, layout snapshots, variables, and code synchronization flows.",
   ai_media_generation:
     "Generate and edit images, videos, and visual media using AI models. Create images from text prompts, edit existing images with AI, upscale resolution, apply style transfer, inpaint or outpaint regions, and generate sequential or consistent media. Supports text-to-image, image-to-image, and AI-powered visual content creation.",
   hosting_deploy:
