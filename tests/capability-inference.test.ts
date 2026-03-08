@@ -79,6 +79,18 @@ describe("capability inference", () => {
  * correct capability instead.
  */
 describe("heuristic misclassification regression cases", () => {
+  test("short tokens in namespace hints do not match unrelated namespaces", () => {
+    const minimalTools = [{ name: "create", description: "Create output" }];
+
+    expect(inferNamespaceCapability("catalog", minimalTools)).not.toBe(
+      "observability",
+    );
+    expect(inferNamespaceCapability("admin", minimalTools)).not.toBe(
+      "messaging",
+    );
+    expect(inferNamespaceCapability("build", minimalTools)).not.toBe("design");
+  });
+
   test("Notion: misclassified as browser_automation (should be cms_content)", () => {
     // "page" means wiki page, not browser page — semantic collision
     const capability = inferNamespaceCapability("notion", [

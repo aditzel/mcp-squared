@@ -167,7 +167,7 @@ export async function collectStatus(
       upstreams,
       routers,
       classifications,
-      adapterProjection,
+      ...(adapterProjection ? { adapterProjection } : {}),
       contextStats,
     };
   } finally {

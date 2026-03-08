@@ -42,6 +42,12 @@ export type CapabilityClassificationSource =
   | "user_override"
   | "computed_override";
 
+/** Override-only sources that can be injected from config/runtime callers. */
+export type CapabilityOverrideSource = Extract<
+  CapabilityClassificationSource,
+  "user_override" | "computed_override"
+>;
+
 /** Evidence source used for diagnostics. */
 export type ClassificationEvidenceSource =
   | "namespace_hint"
@@ -80,7 +86,7 @@ export interface NamespaceClassification {
 export interface NamespaceClassificationOptions {
   capabilityOverrides?: Partial<Record<string, CapabilityId>> | undefined;
   capabilityOverrideSources?:
-    | Partial<Record<string, CapabilityClassificationSource>>
+    | Partial<Record<string, CapabilityOverrideSource>>
     | undefined;
   facetOverrides?: Partial<Record<string, CapabilityFacetId[]>> | undefined;
 }
@@ -152,13 +158,13 @@ const NAMESPACE_HINTS: Array<{
   {
     capability: "observability",
     pattern:
-      /(sentry|datadog|newrelic|grafana|honeycomb|bugsnag|rollbar|incident|alert|trace|metric|log|observability|monitor)/i,
+      /(sentry|datadog|newrelic|grafana|honeycomb|bugsnag|rollbar|incident|alert|trace|metric|observability|monitor|(?:^|[._/\-\s])log(?:$|[._/\-\s]))/i,
     score: 22,
   },
   {
     capability: "messaging",
     pattern:
-      /(slack|discord|teams|telegram|twilio|message|chat|channel|notification|email|inbox|thread|dm)/i,
+      /(slack|discord|teams|telegram|twilio|message|chat|channel|notification|email|inbox|thread|(?:^|[._/\-\s])dm(?:$|[._/\-\s]))/i,
     score: 22,
   },
   {
@@ -185,7 +191,8 @@ const NAMESPACE_HINTS: Array<{
   },
   {
     capability: "design",
-    pattern: /(sketch|ui|design|artifact|visual)/i,
+    pattern:
+      /(sketch|design|artifact|visual|(?:^|[._/\-\s])ui(?:$|[._/\-\s]))/i,
     score: 20,
   },
   {

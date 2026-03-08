@@ -120,6 +120,8 @@ describe("adapter projection", () => {
               "docs",
               "research",
             ],
+            prefersFacets: [],
+            rejectsFacets: [],
           },
         ],
       },
@@ -128,6 +130,37 @@ describe("adapter projection", () => {
     expect(projection.bucket).toBe("general");
     expect(projection.adapterId).toBe("gateway");
     expect(projection.reason).toContain("matched adapter profile");
+  });
+
+  test("falls back when all matching profiles are rejected to non-positive scores", () => {
+    const classification = classifyNamespace("pencil", PENCIL_TOOLS);
+
+    const projection = projectNamespaceClassification(
+      "gateway",
+      classification,
+      {
+        mode: "projected",
+        fallbackBucket: "general",
+        capabilities: [
+          {
+            id: "design",
+            title: "Design Analysis",
+            summary: "Analyze screenshots, diagrams, and visual diffs.",
+            acceptsCanonical: ["design_workspace"],
+            prefersFacets: [],
+            rejectsFacets: [
+              "design_workspace",
+              "design_tokens",
+              "design_to_code",
+            ],
+          },
+        ],
+        namespaceBucketOverrides: {},
+      },
+    );
+
+    expect(projection.bucket).toBe("general");
+    expect(projection.source).toBe("fallback");
   });
 });
 

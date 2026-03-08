@@ -98,7 +98,7 @@ export function projectNamespaceClassification(
         entry,
       ): entry is typeof entry & {
         score: number;
-      } => entry.score !== null,
+      } => entry.score !== null && entry.score > 0,
     )
     .sort((a, b) => b.score - a.score);
 
