@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-03-08
+
 ### Added
 - Added `docs/capability-taxonomy-design.md`, a draft design for evolving capability matching with stable canonical buckets, dynamic internal facets, and adapter-specific projection rules for downstream gateways.
 - Added rich namespace classification diagnostics: canonical capability, internal facet tags, and evidence metadata are now available to internal callers, with `status --verbose` surfacing classification and optional adapter-projection details.

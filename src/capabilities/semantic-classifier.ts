@@ -59,6 +59,32 @@ const CAPABILITY_REFERENCE_TEXTS: Record<CapabilityId, string> = {
     "General-purpose utility operations, API integrations, data transformations, and miscellaneous tool actions.",
 };
 
+/**
+ * Narrow deterministic priors for capability families whose namespaces/tool
+ * vocabularies are highly distinctive in practice. These are intentionally
+ * small and only nudge the embedding score so hybrid mode stays aligned with
+ * the canonical taxonomy for obvious cases such as Figma/Pencil workspaces and
+ * AI media generators like Wavespeed.
+ */
+const SEMANTIC_PRIOR_PATTERNS: Partial<Record<CapabilityId, RegExp[]>> = {
+  ai_media_generation: [
+    /(wavespeed|stability|replicate|midjourney|dall.?e|runway|imagen|flux|fal\.ai|dreamstudio)/i,
+    /\btext.to.image\b/i,
+    /\bimage.to.image\b/i,
+    /\bprompt\b.*\bimage\b/i,
+  ],
+  design_workspace: [
+    /(pencil|figma|figjam)/i,
+    /\b\.pen\b/i,
+    /\bbatch_design\b/i,
+    /\bget_design_context\b/i,
+    /\bget_variable_defs\b/i,
+    /\bcode connect\b/i,
+  ],
+};
+
+const SEMANTIC_PRIOR_BOOST = 0.12;
+
 /** Result of classifying a single namespace. */
 export interface SemanticClassificationResult {
   /** Best-matching capability */
@@ -149,14 +175,14 @@ export class SemanticCapabilityClassifier {
     const startTime = performance.now();
     const signalText = this.buildSignalText(namespace, tools);
     const signalResult = await this.generator.embed(signalText, true);
+    const priorBoosts = this.computePriorBoosts(signalText);
 
     // Compute cosine similarity against each capability reference
     const scores: Array<{ capability: CapabilityId; similarity: number }> = [];
     for (const [capId, refEmb] of this.referenceEmbeddings) {
-      const similarity = EmbeddingGenerator.cosineSimilarity(
-        signalResult.embedding,
-        refEmb,
-      );
+      const similarity =
+        EmbeddingGenerator.cosineSimilarity(signalResult.embedding, refEmb) +
+        (priorBoosts[capId] ?? 0);
       scores.push({ capability: capId, similarity });
     }
 
@@ -228,5 +254,22 @@ export class SemanticCapabilityClassifier {
       }
     }
     return parts.join(" ");
+  }
+
+  private computePriorBoosts(
+    signalText: string,
+  ): Partial<Record<CapabilityId, number>> {
+    const boosts: Partial<Record<CapabilityId, number>> = {};
+    for (const [capability, patterns] of Object.entries(
+      SEMANTIC_PRIOR_PATTERNS,
+    ) as Array<[CapabilityId, RegExp[] | undefined]>) {
+      if (!patterns) {
+        continue;
+      }
+      if (patterns.some((pattern) => pattern.test(signalText))) {
+        boosts[capability] = SEMANTIC_PRIOR_BOOST;
+      }
+    }
+    return boosts;
   }
 }
