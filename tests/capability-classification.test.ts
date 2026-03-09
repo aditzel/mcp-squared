@@ -124,6 +124,7 @@ describe("adapter projection", () => {
             rejectsFacets: [],
           },
         ],
+        namespaceBucketOverrides: {},
       },
     );
 
