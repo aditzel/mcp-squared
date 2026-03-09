@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CAPABILITY_IDS,
+  type CapabilityId,
   classifyNamespace,
   type NamespaceToolMetadata,
 } from "@/capabilities/inference";
@@ -82,6 +84,34 @@ describe("namespace classification", () => {
 });
 
 describe("adapter projection", () => {
+  test("prefers namespace bucket overrides over profile scoring", () => {
+    const classification = classifyNamespace("pencil", PENCIL_TOOLS);
+
+    const projection = projectNamespaceClassification(
+      "gateway",
+      classification,
+      {
+        mode: "projected",
+        fallbackBucket: "general",
+        capabilities: [
+          {
+            id: "design",
+            title: "Design Analysis",
+            summary: "Analyze screenshots, diagrams, and visual diffs.",
+            acceptsCanonical: ["design_workspace"],
+            prefersFacets: [],
+            rejectsFacets: [],
+          },
+        ],
+        namespaceBucketOverrides: { pencil: "general" },
+      },
+    );
+
+    expect(projection.bucket).toBe("general");
+    expect(projection.source).toBe("adapter_override");
+    expect(projection.reason).toBe("namespace override");
+  });
+
   test("can project a canonical design_workspace classification away from screenshot-analysis design buckets", () => {
     const classification = classifyNamespace("pencil", PENCIL_TOOLS);
 
@@ -184,19 +214,20 @@ describe("semantic classifier", () => {
     const designWorkspaceVector = normalizedVector([1, 0, 0, 0]);
     const designVector = normalizedVector([0, 1, 0, 0]);
     const otherVector = normalizedVector([0, 0, 1, 0]);
+    const capabilityVectors = {} as Record<CapabilityId, Float32Array>;
+    for (const capability of CAPABILITY_IDS) {
+      capabilityVectors[capability] = otherVector;
+    }
+    capabilityVectors.design = designVector;
+    capabilityVectors.design_workspace = designWorkspaceVector;
 
     const fakeGenerator = {
       async embedBatch(texts: string[]) {
+        expect(texts).toHaveLength(CAPABILITY_IDS.length);
         return {
-          embeddings: texts.map((text) => {
-            if (text.includes("structured design workspace files")) {
-              return designWorkspaceVector;
-            }
-            if (text.includes("visual design artifacts")) {
-              return designVector;
-            }
-            return otherVector;
-          }),
+          embeddings: CAPABILITY_IDS.map(
+            (capability) => capabilityVectors[capability],
+          ),
           dimensions: 4,
           inferenceMs: 0,
           avgPerEmbeddingMs: 0,
