@@ -1,0 +1,55 @@
+{
+  "capturedFrom": "https://developers.figma.com/docs/figma-mcp-server/tools-and-prompts/",
+  "capturedAt": "2026-03-08",
+  "server": "figma",
+  "tools": [
+    {
+      "name": "get_design_context",
+      "description": "Get the design context for a layer or selection"
+    },
+    {
+      "name": "get_variable_defs",
+      "description": "Returns the variables and styles used in your Figma selection"
+    },
+    {
+      "name": "get_code_connect_map",
+      "description": "Retrieves a mapping between Figma node IDs and their corresponding code components in your codebase"
+    },
+    {
+      "name": "add_code_connect_map",
+      "description": "Adds a mapping between a Figma node ID and its corresponding code component in your codebase"
+    },
+    {
+      "name": "get_screenshot",
+      "description": "Allows the agent to take a screenshot of your selection"
+    },
+    {
+      "name": "create_design_system_rules",
+      "description": "Creates a rule file that provide agents with the right context to translate designs into frontend code"
+    },
+    {
+      "name": "get_metadata",
+      "description": "Returns a sparse XML representation of your selection that contains basic properties such as layer IDs, names, types, position and sizes"
+    },
+    {
+      "name": "get_figjam",
+      "description": "Converts FigJam diagrams to XML"
+    },
+    {
+      "name": "generate_diagram",
+      "description": "Generates a FigJam diagram from Mermaid syntax"
+    },
+    {
+      "name": "whoami",
+      "description": "Returns the identity of the user that's authenticated to Figma"
+    },
+    {
+      "name": "get_code_connect_suggestions",
+      "description": "Find suggestions for mapping Figma node IDs to corresponding code components in your codebase using Code Connect"
+    },
+    {
+      "name": "send_code_connect_mappings",
+      "description": "Confirm suggested Code Connect mappings"
+    }
+  ]
+}

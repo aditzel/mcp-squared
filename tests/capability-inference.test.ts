@@ -79,6 +79,18 @@ describe("capability inference", () => {
  * correct capability instead.
  */
 describe("heuristic misclassification regression cases", () => {
+  test("short tokens in namespace hints do not match unrelated namespaces", () => {
+    const minimalTools = [{ name: "create", description: "Create output" }];
+
+    expect(inferNamespaceCapability("catalog", minimalTools)).not.toBe(
+      "observability",
+    );
+    expect(inferNamespaceCapability("admin", minimalTools)).not.toBe(
+      "messaging",
+    );
+    expect(inferNamespaceCapability("build", minimalTools)).not.toBe("design");
+  });
+
   test("Notion: misclassified as browser_automation (should be cms_content)", () => {
     // "page" means wiki page, not browser page — semantic collision
     const capability = inferNamespaceCapability("notion", [
@@ -95,18 +107,56 @@ describe("heuristic misclassification regression cases", () => {
     expect(capability).toBe("browser_automation");
   });
 
-  test("Sentry: misclassified as issue_tracking (should be general)", () => {
-    // "issue" means error/exception, not project management ticket
+  test("Sentry: classified as observability", () => {
+    // "issue" here refers to errors/incidents and should now land in the
+    // canonical observability bucket rather than project tracking.
     const capability = inferNamespaceCapability("sentry", [
       { name: "list_issues", description: "List error issues in a project" },
       { name: "get_issue", description: "Get details of a specific issue" },
       { name: "resolve_issue", description: "Resolve an issue" },
     ]);
-    expect(capability).toBe("issue_tracking");
+    expect(capability).toBe("observability");
   });
 
-  test("Prisma: misclassified as cms_content (should be general)", () => {
-    // "schema" and "migration" are database concepts, not CMS concepts
+  test("Slack: classified as messaging", () => {
+    const capability = inferNamespaceCapability("slack", [
+      {
+        name: "send_message",
+        description: "Send a message to a Slack channel",
+      },
+      {
+        name: "list_channels",
+        description: "List available Slack channels",
+      },
+      {
+        name: "get_thread",
+        description: "Get a message thread from a channel",
+      },
+    ]);
+    expect(capability).toBe("messaging");
+  });
+
+  test("Stripe: classified as payments", () => {
+    const capability = inferNamespaceCapability("stripe", [
+      {
+        name: "create_checkout_session",
+        description: "Create a checkout session for a subscription payment",
+      },
+      {
+        name: "list_invoices",
+        description: "List invoices for a customer account",
+      },
+      {
+        name: "get_subscription",
+        description: "Get subscription billing details",
+      },
+    ]);
+    expect(capability).toBe("payments");
+  });
+
+  test("Prisma: classified as database", () => {
+    // "schema" and "migration" are database concepts and should now land in
+    // the canonical database bucket.
     const capability = inferNamespaceCapability("prisma", [
       {
         name: "introspect_schema",
@@ -118,7 +168,7 @@ describe("heuristic misclassification regression cases", () => {
       },
       { name: "apply_migration", description: "Apply pending migrations" },
     ]);
-    expect(capability).toBe("cms_content");
+    expect(capability).toBe("database");
   });
 
   test("shadcn: correctly classified as docs (fixed — was design)", () => {
@@ -133,8 +183,8 @@ describe("heuristic misclassification regression cases", () => {
     expect(capability).toBe("docs");
   });
 
-  test("Supabase: misclassified as issue_tracking (taxonomy gap — no database category)", () => {
-    // Database-as-a-service doesn't map to any of the 10 categories
+  test("Supabase: classified as database", () => {
+    // Database-as-a-service now has a canonical bucket.
     const capability = inferNamespaceCapability("supabase", [
       { name: "list_projects", description: "List all Supabase projects" },
       { name: "run_query", description: "Execute a SQL query" },
@@ -150,7 +200,7 @@ describe("heuristic misclassification regression cases", () => {
         },
       },
     ]);
-    expect(capability).toBe("issue_tracking");
+    expect(capability).toBe("database");
   });
 
   test("wavespeed-cli-mcp: correctly classified as ai_media_generation (fixed — was design)", () => {

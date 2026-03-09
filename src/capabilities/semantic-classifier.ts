@@ -33,10 +33,20 @@ const CAPABILITY_REFERENCE_TEXTS: Record<CapabilityId, string> = {
     "Automate web browser interactions: click elements, fill forms, take screenshots, inspect DOM nodes, navigate URLs, execute JavaScript in page context, and run browser diagnostics.",
   issue_tracking:
     "Manage project management tickets, kanban boards, sprints, and work items. Create, update, and track issues in project trackers like Jira, Linear, Asana, and ClickUp.",
+  observability:
+    "Monitor systems, track incidents, inspect logs, errors, exceptions, traces, and metrics. Work with observability and error-tracking tools like Sentry, Datadog, Grafana, Rollbar, and New Relic.",
+  messaging:
+    "Send and manage chat messages, channels, threads, notifications, email, direct messages, and team communication workflows. Work with messaging tools like Slack, Discord, Microsoft Teams, Telegram, and Twilio.",
+  payments:
+    "Manage payments, subscriptions, invoices, checkout sessions, billing, charges, refunds, and customer payment workflows. Work with payment platforms like Stripe and related billing APIs.",
+  database:
+    "Manage databases, SQL queries, table schemas, migrations, rows, columns, and data operations. Work with database platforms and ORMs like Postgres, MySQL, SQLite, Prisma, and Supabase.",
   cms_content:
     "Manage wiki pages, knowledge base articles, content documents, blog posts, editorial workflows, and structured content. Create and organize content in systems like Notion, Confluence, and Sanity.",
   design:
-    "Create and inspect visual design artifacts, UI mockups, wireframes, and design system components. Work with design tools like Figma, Sketch, and Pencil for visual layout and styling.",
+    "Create and inspect visual design artifacts, UI mockups, wireframes, screenshots, diagrams, and visual layouts. Work with visual design tools for styling and mockup review.",
+  design_workspace:
+    "Edit structured design workspace files, canvases, layout state, selections, variables, components, and design-to-code assets. Work with Pencil .pen files and Figma or FigJam workspaces, design context, code connect mappings, workspace hierarchy, layout snapshots, variables, and code synchronization flows.",
   ai_media_generation:
     "Generate and edit images, videos, and visual media using AI models. Create images from text prompts, edit existing images with AI, upscale resolution, apply style transfer, inpaint or outpaint regions, and generate sequential or consistent media. Supports text-to-image, image-to-image, and AI-powered visual content creation.",
   hosting_deploy:
@@ -46,8 +56,34 @@ const CAPABILITY_REFERENCE_TEXTS: Record<CapabilityId, string> = {
   research:
     "Search the web, collect information from multiple sources, synthesize findings, and perform web research and data gathering operations.",
   general:
-    "General-purpose utility operations, API integrations, data transformations, notifications, messaging, payments, and miscellaneous tool actions.",
+    "General-purpose utility operations, API integrations, data transformations, and miscellaneous tool actions.",
 };
+
+/**
+ * Narrow deterministic priors for capability families whose namespaces/tool
+ * vocabularies are highly distinctive in practice. These are intentionally
+ * small and only nudge the embedding score so hybrid mode stays aligned with
+ * the canonical taxonomy for obvious cases such as Figma/Pencil workspaces and
+ * AI media generators like Wavespeed.
+ */
+const SEMANTIC_PRIOR_PATTERNS: Partial<Record<CapabilityId, RegExp[]>> = {
+  ai_media_generation: [
+    /(wavespeed|stability|replicate|midjourney|dall.?e|runway|imagen|flux|fal\.ai|dreamstudio)/i,
+    /\btext.to.image\b/i,
+    /\bimage.to.image\b/i,
+    /\bprompt\b.*\bimage\b/i,
+  ],
+  design_workspace: [
+    /(pencil|figma|figjam)/i,
+    /\b\.pen\b/i,
+    /\bbatch_design\b/i,
+    /\bget_design_context\b/i,
+    /\bget_variable_defs\b/i,
+    /\bcode connect\b/i,
+  ],
+};
+
+const SEMANTIC_PRIOR_BOOST = 0.12;
 
 /** Result of classifying a single namespace. */
 export interface SemanticClassificationResult {
@@ -139,14 +175,14 @@ export class SemanticCapabilityClassifier {
     const startTime = performance.now();
     const signalText = this.buildSignalText(namespace, tools);
     const signalResult = await this.generator.embed(signalText, true);
+    const priorBoosts = this.computePriorBoosts(signalText);
 
     // Compute cosine similarity against each capability reference
     const scores: Array<{ capability: CapabilityId; similarity: number }> = [];
     for (const [capId, refEmb] of this.referenceEmbeddings) {
-      const similarity = EmbeddingGenerator.cosineSimilarity(
-        signalResult.embedding,
-        refEmb,
-      );
+      const similarity =
+        EmbeddingGenerator.cosineSimilarity(signalResult.embedding, refEmb) +
+        (priorBoosts[capId] ?? 0);
       scores.push({ capability: capId, similarity });
     }
 
@@ -218,5 +254,22 @@ export class SemanticCapabilityClassifier {
       }
     }
     return parts.join(" ");
+  }
+
+  private computePriorBoosts(
+    signalText: string,
+  ): Partial<Record<CapabilityId, number>> {
+    const boosts: Partial<Record<CapabilityId, number>> = {};
+    for (const [capability, patterns] of Object.entries(
+      SEMANTIC_PRIOR_PATTERNS,
+    ) as Array<[CapabilityId, RegExp[] | undefined]>) {
+      if (!patterns) {
+        continue;
+      }
+      if (patterns.some((pattern) => pattern.test(signalText))) {
+        boosts[capability] = SEMANTIC_PRIOR_BOOST;
+      }
+    }
+    return boosts;
   }
 }

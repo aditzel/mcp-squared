@@ -11,6 +11,7 @@ describe("capabilityTitle", () => {
     expect(capabilityTitle("ai_media_generation")).toBe("Ai Media Generation");
     expect(capabilityTitle("hosting_deploy")).toBe("Hosting Deploy");
     expect(capabilityTitle("time_util")).toBe("Time Util");
+    expect(capabilityTitle("design_workspace")).toBe("Design Workspace");
   });
 
   test("handles single-word IDs", () => {
@@ -43,8 +44,14 @@ describe("capabilitySummary", () => {
     docs: "Query and read technical documentation.",
     browser_automation: "Automate browser interactions and diagnostics.",
     issue_tracking: "Work with issues, tickets, and project tracking.",
+    observability: "Work with monitoring, incidents, logs, and error tracking.",
+    messaging: "Work with chat, messages, channels, and notifications.",
+    database: "Work with databases, SQL, schemas, and data operations.",
+    payments: "Work with payments, subscriptions, invoices, and billing.",
     cms_content: "Manage content and CMS resources.",
     design: "Create and inspect design artifacts and visuals.",
+    design_workspace:
+      "Work with structured design workspaces, layout state, tokens, and design-to-code flows.",
     ai_media_generation: "Generate and edit images and media using AI models.",
     hosting_deploy:
       "Manage deployments, hosting, and infrastructure operations.",

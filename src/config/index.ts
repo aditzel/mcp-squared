@@ -58,6 +58,13 @@ export {
   saveConfigSync,
 } from "./save.js";
 export {
+  type AdapterCapabilityProfile,
+  AdapterCapabilityProfileSchema,
+  type AdapterProjectionAdapterConfig,
+  AdapterProjectionAdapterSchema,
+  type AdapterProjectionConfig,
+  AdapterProjectionModeSchema,
+  AdapterProjectionSchema,
   ConfigSchema,
   DEFAULT_CONFIG,
   DEFAULT_RESPONSE_RESOURCE_CONFIG,

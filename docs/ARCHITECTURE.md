@@ -66,3 +66,14 @@ graph TD
 
 - A monitor server (UDS/TCP) exposes real-time stats for the TUI monitor.
 - Stats include request counts, latency, memory usage, index size, and embedding/co-occurrence counts.
+
+## Taxonomy Evolution
+
+The public router surface intentionally uses stable canonical capability IDs because
+security policy matching, config overrides, and client tool calls all depend on
+predictable `capability:action` contracts. Richer internal classification and
+adapter-specific bucket mappings should be layered underneath that public API
+rather than replacing it with runtime-generated categories.
+
+See `docs/capability-taxonomy-design.md` for the proposed canonical capability +
+facet + adapter-projection model.

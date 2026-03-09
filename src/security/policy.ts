@@ -34,6 +34,16 @@ interface PendingConfirmation {
 
 const CONFIRMATION_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * Transitional policy aliases for canonical capability renames/splits.
+ *
+ * These aliases are one-way: old broader policies continue to match newer,
+ * more specific canonical capabilities, but not vice versa.
+ */
+const POLICY_SCOPE_ALIASES: Record<string, string[]> = {
+  design_workspace: ["design"],
+};
+
 // In-memory store for pending confirmations
 const pendingConfirmations = new Map<string, PendingConfirmation>();
 
@@ -57,7 +67,9 @@ export function matchesPattern(
     return false;
   }
 
-  const serverMatches = patternServer === "*" || patternServer === serverKey;
+  const policyScopes = [serverKey, ...(POLICY_SCOPE_ALIASES[serverKey] ?? [])];
+  const serverMatches =
+    patternServer === "*" || policyScopes.includes(patternServer);
   const toolMatches = patternTool === "*" || patternTool === toolName;
 
   return serverMatches && toolMatches;

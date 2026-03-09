@@ -68,6 +68,15 @@ describe("matchesPattern", () => {
     test("does not match different server with server:*", () => {
       expect(matchesPattern("fs:*", "db", "read_file")).toBe(false);
     });
+
+    test("legacy design policies match design_workspace during transition", () => {
+      expect(
+        matchesPattern("design:*", "design_workspace", "batch_design"),
+      ).toBe(true);
+      expect(
+        matchesPattern("design_workspace:*", "design", "inspect_artifact"),
+      ).toBe(false);
+    });
   });
 
   describe("full wildcard", () => {
@@ -119,6 +128,15 @@ describe("evaluatePolicy", () => {
       const config = createConfig({ allow: ["*:*"] });
       const result = evaluatePolicy(
         { serverKey: "any", toolName: "tool" },
+        config,
+      );
+      expect(result.decision).toBe("allow");
+    });
+
+    test("legacy design allow policies still allow design_workspace actions", () => {
+      const config = createConfig({ allow: ["design:*"] });
+      const result = evaluatePolicy(
+        { capability: "design_workspace", action: "batch_design" },
         config,
       );
       expect(result.decision).toBe("allow");
