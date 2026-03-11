@@ -16,6 +16,11 @@ import { SocketClientTransport } from "./transport.js";
 
 const DEFAULT_STARTUP_TIMEOUT_MS = 5000;
 const HEARTBEAT_INTERVAL_MS = 5000;
+const RECONNECT_RETRY_DELAY_MS = 100;
+const sharedDaemonStartupPromises = new Map<
+  string,
+  Promise<DaemonRegistryEntry>
+>();
 
 export interface ProxyOptions {
   endpoint?: string;
@@ -71,108 +76,270 @@ function spawnDaemonProcess(sharedSecret?: string): void {
   child.unref();
 }
 
+async function resolveSharedDaemonStartup(
+  startupKey: string,
+  spawnDaemon: (sharedSecret?: string) => void,
+  sharedSecret: string | undefined,
+  configHash?: string,
+): Promise<DaemonRegistryEntry> {
+  const existingPromise = sharedDaemonStartupPromises.get(startupKey);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const startupPromise = (async () => {
+    spawnDaemon(sharedSecret);
+    const entry = await waitForDaemon(DEFAULT_STARTUP_TIMEOUT_MS, configHash);
+    if (!entry) {
+      throw new Error("Timed out waiting for daemon to start");
+    }
+    return entry;
+  })();
+
+  sharedDaemonStartupPromises.set(startupKey, startupPromise);
+
+  try {
+    return await startupPromise;
+  } finally {
+    if (sharedDaemonStartupPromises.get(startupKey) === startupPromise) {
+      sharedDaemonStartupPromises.delete(startupKey);
+    }
+  }
+}
+
 export async function createProxyBridge(
   options: ProxyBridgeOptions,
 ): Promise<ProxyBridge> {
   const spawnDaemon = options.spawnDaemon ?? spawnDaemonProcess;
-  let endpoint = options.endpoint;
+  const configuredEndpoint = options.endpoint;
+  let endpoint = configuredEndpoint;
   let sharedSecret = options.sharedSecret?.trim();
   let sessionId: string | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let isOwner = false;
   let daemonClosed = false;
   let stdioClosed = false;
+  let stopping = false;
+  let stdioClosePromise: Promise<void> | null = null;
+  let daemonTransport: SocketClientTransport | null = null;
+  let reconnectPromise: Promise<void> | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   const debug = options.debug ?? process.env["MCP_SQUARED_PROXY_DEBUG"] === "1";
+  const launcherHint =
+    process.env["MCP_SQUARED_LAUNCHER"] ??
+    process.env["MCP_CLIENT_NAME"] ??
+    process.env["MCP_SQUARED_AGENT"];
+  const clientId = launcherHint
+    ? `${launcherHint}-${process.pid}`
+    : `proxy-${process.pid}`;
 
-  if (!endpoint) {
-    const registry = await loadLiveDaemonRegistry(options.configHash);
-    if (registry) {
-      endpoint = registry.endpoint;
-      sharedSecret ??= registry.sharedSecret;
-    } else if (!options.noSpawn) {
-      spawnDaemon(sharedSecret);
-      const entry = await waitForDaemon(
-        DEFAULT_STARTUP_TIMEOUT_MS,
-        options.configHash,
-      );
-      if (!entry) {
-        throw new Error("Timed out waiting for daemon to start");
+  const canRecoverDaemon = Boolean(options.configHash ?? configuredEndpoint);
+
+  const resolveDaemonTarget = async (allowSpawn: boolean): Promise<string> => {
+    if (options.configHash) {
+      const registry = await loadLiveDaemonRegistry(options.configHash);
+      if (registry) {
+        sharedSecret ??= registry.sharedSecret;
+        endpoint = registry.endpoint;
+        return registry.endpoint;
       }
-      endpoint = entry.endpoint;
-      sharedSecret ??= entry.sharedSecret;
-    } else if (options.configHash) {
-      endpoint = getDaemonSocketPath(options.configHash);
+
+      if (allowSpawn && !options.noSpawn) {
+        const startupKey = options.configHash
+          ? `config:${options.configHash}`
+          : `endpoint:${configuredEndpoint ?? "default"}:${sharedSecret ?? ""}`;
+        const entry = await resolveSharedDaemonStartup(
+          startupKey,
+          spawnDaemon,
+          sharedSecret,
+          options.configHash,
+        );
+        sharedSecret ??= entry.sharedSecret;
+        endpoint = entry.endpoint;
+        return entry.endpoint;
+      }
+
+      if (configuredEndpoint) {
+        endpoint = configuredEndpoint;
+        return configuredEndpoint;
+      }
+
+      const hashedEndpoint = getDaemonSocketPath(options.configHash);
+      endpoint = hashedEndpoint;
+      return hashedEndpoint;
     }
-  }
 
-  if (!endpoint) {
+    if (configuredEndpoint) {
+      endpoint = configuredEndpoint;
+      return configuredEndpoint;
+    }
+
     throw new Error("Daemon endpoint not available");
-  }
-
-  const transportOptions: { endpoint: string; timeoutMs?: number } = {
-    endpoint,
   };
-  if (options.timeoutMs !== undefined) {
-    transportOptions.timeoutMs = options.timeoutMs;
-  }
-  const daemonTransport = new SocketClientTransport(transportOptions);
+
   const stdioTransport = options.stdioTransport;
 
   const closeDaemon = async (sendGoodbye: boolean): Promise<void> => {
-    if (daemonClosed) {
+    const activeTransport = daemonTransport;
+    if (!activeTransport || daemonClosed) {
       return;
     }
     daemonClosed = true;
     if (sendGoodbye && sessionId) {
-      await daemonTransport
+      await activeTransport
         .sendControl({ type: "goodbye", sessionId })
         .catch(() => {});
     }
-    await daemonTransport.close().catch(() => {});
+    daemonTransport = null;
+    sessionId = null;
+    await activeTransport.close().catch(() => {});
   };
 
-  daemonTransport.oncontrol = (message) => {
-    switch (message.type) {
-      case "helloAck":
-        sessionId = message.sessionId;
-        isOwner = message.isOwner;
-        if (debug) {
-          console.error(
-            `[proxy] session ${message.sessionId} owner=${message.isOwner}`,
-          );
-        }
-        break;
-      case "ownerChanged":
-        isOwner = message.ownerSessionId === sessionId;
-        if (debug) {
-          console.error(
-            `[proxy] owner changed: ${message.ownerSessionId} (isOwner=${isOwner})`,
-          );
-        }
-        break;
+  const closeStdio = async (): Promise<void> => {
+    if (stdioClosed) {
+      return;
+    }
+    if (!stdioClosePromise) {
+      stdioClosePromise = stdioTransport.close().finally(() => {
+        stdioClosePromise = null;
+      });
+    }
+    await stdioClosePromise;
+  };
+
+  const clearReconnectTimer = (): void => {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
     }
   };
 
-  daemonTransport.onmessage = (message) => {
-    void stdioTransport.send(message);
-  };
-  daemonTransport.onclose = () => {
-    daemonClosed = true;
-    if (heartbeatTimer) {
-      clearInterval(heartbeatTimer);
-      heartbeatTimer = null;
+  const scheduleReconnect = (): void => {
+    if (
+      reconnectTimer ||
+      reconnectPromise ||
+      stopping ||
+      stdioClosed ||
+      !canRecoverDaemon
+    ) {
+      return;
     }
-    void stdioTransport.close();
+
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      void reconnectDaemon();
+    }, RECONNECT_RETRY_DELAY_MS);
   };
-  daemonTransport.onerror = (error) => {
-    console.error(`Daemon transport error: ${error.message}`);
+
+  const connectDaemon = async (allowSpawn: boolean): Promise<void> => {
+    const resolvedEndpoint = allowSpawn
+      ? await resolveDaemonTarget(true)
+      : (endpoint ?? (await resolveDaemonTarget(false)));
+    const transportOptions: { endpoint: string; timeoutMs?: number } = {
+      endpoint: resolvedEndpoint,
+    };
+    if (options.timeoutMs !== undefined) {
+      transportOptions.timeoutMs = options.timeoutMs;
+    }
+
+    const transport = new SocketClientTransport(transportOptions);
+    daemonTransport = transport;
+    daemonClosed = false;
+    sessionId = null;
+
+    transport.oncontrol = (message) => {
+      switch (message.type) {
+        case "helloAck":
+          sessionId = message.sessionId;
+          isOwner = message.isOwner;
+          if (debug) {
+            console.error(
+              `[proxy] session ${message.sessionId} owner=${message.isOwner}`,
+            );
+          }
+          break;
+        case "ownerChanged":
+          isOwner = message.ownerSessionId === sessionId;
+          if (debug) {
+            console.error(
+              `[proxy] owner changed: ${message.ownerSessionId} (isOwner=${isOwner})`,
+            );
+          }
+          break;
+      }
+    };
+
+    transport.onmessage = (message) => {
+      void stdioTransport.send(message);
+    };
+    transport.onclose = () => {
+      if (daemonTransport !== transport) {
+        return;
+      }
+      daemonTransport = null;
+      daemonClosed = true;
+      sessionId = null;
+      if (stopping || stdioClosed || !canRecoverDaemon) {
+        clearReconnectTimer();
+        void closeStdio();
+        return;
+      }
+      void reconnectDaemon();
+    };
+    transport.onerror = (error) => {
+      console.error(`Daemon transport error: ${error.message}`);
+    };
+
+    await transport.start();
+    void transport.sendControl({
+      type: "hello",
+      clientId,
+      ...(sharedSecret ? { sharedSecret } : {}),
+    });
+  };
+
+  const reconnectDaemon = async (): Promise<void> => {
+    if (reconnectPromise) {
+      return reconnectPromise;
+    }
+
+    clearReconnectTimer();
+
+    reconnectPromise = (async () => {
+      try {
+        await connectDaemon(true);
+      } catch {
+        if (stopping || stdioClosed || !canRecoverDaemon) {
+          await closeStdio();
+          return;
+        }
+        scheduleReconnect();
+      } finally {
+        reconnectPromise = null;
+      }
+    })();
+
+    return reconnectPromise;
   };
 
   stdioTransport.onmessage = (message) => {
-    void daemonTransport.send(message);
+    const activeTransport = daemonTransport;
+    if (!activeTransport) {
+      if (!stopping && !stdioClosed && canRecoverDaemon) {
+        void reconnectDaemon();
+      }
+      return;
+    }
+    void activeTransport.send(message).catch(() => {
+      if (!stopping && !stdioClosed && canRecoverDaemon) {
+        void reconnectDaemon();
+      }
+    });
   };
   stdioTransport.onclose = () => {
+    stopping = true;
     stdioClosed = true;
+    clearReconnectTimer();
     if (heartbeatTimer) {
       clearInterval(heartbeatTimer);
       heartbeatTimer = null;
@@ -183,25 +350,14 @@ export async function createProxyBridge(
     console.error(`Stdio transport error: ${error.message}`);
   };
 
-  await daemonTransport.start();
-  const launcherHint =
-    process.env["MCP_SQUARED_LAUNCHER"] ??
-    process.env["MCP_CLIENT_NAME"] ??
-    process.env["MCP_SQUARED_AGENT"];
-  const clientId = launcherHint
-    ? `${launcherHint}-${process.pid}`
-    : `proxy-${process.pid}`;
-  void daemonTransport.sendControl({
-    type: "hello",
-    clientId,
-    ...(sharedSecret ? { sharedSecret } : {}),
-  });
+  await connectDaemon(!configuredEndpoint);
 
   heartbeatTimer = setInterval(() => {
-    if (!sessionId) {
+    const activeTransport = daemonTransport;
+    if (!sessionId || !activeTransport) {
       return;
     }
-    void daemonTransport.sendControl({
+    void activeTransport.sendControl({
       type: "heartbeat",
       sessionId,
     });
@@ -211,14 +367,17 @@ export async function createProxyBridge(
 
   return {
     stop: async () => {
+      stopping = true;
+      clearReconnectTimer();
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
       }
-      await closeDaemon(true);
-      if (!stdioClosed) {
-        await stdioTransport.close();
+      if (reconnectPromise) {
+        await reconnectPromise.catch(() => {});
       }
+      await closeDaemon(true);
+      await closeStdio();
     },
   };
 }

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Extracted capability-surface assembly from `src/server/index.ts` into `src/server/capability-surface.ts`, isolating capability-router instructions, metadata summaries, and router construction behind focused tests to make further server architecture refactors safer.
+- Extracted capability tool registration and request-dispatch composition from `src/server/index.ts` into `src/server/capability-tool-surface.ts`, with additional handler regression tests covering `__describe_actions`, missing/unknown actions, and ambiguous capability-route disambiguation.
+- Extracted capability tool execution from `src/server/index.ts` into `src/server/capability-tool-executor.ts`, isolating policy gating, response-resource offload handling, and selection-tracking behavior behind focused executor tests.
+- Extracted session-surface registration from `src/server/index.ts` into `src/server/session-surface.ts`, isolating capability tool exposure and optional response-resource registration behind focused helper tests.
+- Extracted runtime lifecycle orchestration from `src/server/index.ts` into `src/server/runtime-lifecycle.ts`, isolating background refresh hooks plus core startup/shutdown sequencing for upstream connections, hybrid classification, embeddings, and monitor lifecycle.
+- Extracted remaining stdio/session bootstrap composition from `src/server/index.ts` into `src/server/server-shell.ts`, isolating session creation plus primary start/stop connection wiring behind focused shell tests.
+- Extracted shared CLI startup/shutdown helpers plus daemon/proxy orchestration from `src/index.ts` into dedicated runtime-bootstrap and runner modules, with focused dispatch and lifecycle regression tests for the interactive daemon and stdio proxy flows.
+- Extracted the remaining auth and monitor orchestration from `src/index.ts` into dedicated CLI runner modules plus a shared TUI-runtime helper, with focused regression tests covering auth/monitor dispatch and lifecycle behavior.
+- Extracted the remaining CLI test/install/import/migrate orchestration from `src/index.ts` into dedicated runner modules, with focused regression tests covering command delegation plus runtime dispatch for those flows.
+- Refactored the remaining CLI entrypoint composition out of `src/index.ts` into dedicated `main-runtime`, `run-stdio-server`, and runtime-profile modules, with focused tests covering `main()` help/version dispatch and stdio startup/shutdown lifecycle wiring.
+- Expanded shared-daemon lifecycle regression coverage to lock down three-client owner-reconnect sequencing on the server side and three-bridge replacement-daemon recovery on the proxy side during restart flapping.
+- Expanded daemon lifecycle monitor coverage to verify monitor-visible owner promotion/restoration ordering and stale-session cleanup during three-client reconnect flapping.
+
+### Fixed
+- Fixed a proxy shutdown race where overlapping daemon disconnect and manual bridge stop paths could call `stdioTransport.close()` twice before the first close completed, improving lifecycle idempotency for daemon/proxy teardown.
+- Fixed daemon owner reassignment ordering so authenticated peers become the active owner immediately after a disconnect, even if the departing session's cleanup is still awaiting server/transport shutdown.
+- Fixed fast same-client daemon reconnects to replace stale authenticated sessions immediately, so ownership recovers without waiting for heartbeat timeout when a proxy reconnects after transport loss.
+- Fixed owner preservation during delayed same-client reconnect cleanup, so a reconnecting logical owner keeps ownership instead of incorrectly handing it to an older observer session.
+- Fixed shared-daemon proxy recovery after daemon restarts by forcing reconnects to refresh endpoint discovery instead of reusing the dead daemon endpoint, so active stdio clients stay connected when a replacement daemon comes up.
+- Fixed proxy reconnect handling after transient daemon restart failures by retrying recovery instead of closing stdio immediately, so active clients survive reconnect flapping while the replacement daemon comes online.
+- Fixed concurrent shared-daemon recovery so multiple active proxy bridges reuse one replacement-daemon startup wait instead of racing duplicate rediscovery/spawn attempts after an outage.
+- Fixed rapid shared-daemon owner reconnect flapping so a recently disconnected logical owner can promptly reclaim ownership from observers after reconnecting, instead of losing owner status based only on disconnect timing.
+- Fixed reconnect-time daemon owner restoration to send `helloAck` before `ownerChanged`, so a reconnecting logical owner sees a stable handshake before the broadcast ownership update reaches all clients.
+- Fixed reconnect-time daemon owner restoration to avoid sending a redundant `ownerChanged` self-notification to the authenticating session when its `helloAck` already reflects final ownership, while still broadcasting the restored owner to other active clients.
+
 ## [0.8.0] - 2026-03-08
 
 ### Added

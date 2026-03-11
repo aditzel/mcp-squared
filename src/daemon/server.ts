@@ -189,6 +189,8 @@ export class DaemonServer {
   private server: Server | null = null;
   private sessions = new Map<string, DaemonSession>();
   private ownerSessionId: string | null = null;
+  private recentOwnerClientId: string | null = null;
+  private recentOwnerDisconnectedAt = 0;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -375,7 +377,7 @@ export class DaemonServer {
 
     transport.oncontrol = async (message) => {
       switch (message.type) {
-        case "hello":
+        case "hello": {
           if (
             this.sharedSecret !== undefined &&
             message.sharedSecret !== this.sharedSecret
@@ -393,10 +395,29 @@ export class DaemonServer {
           if (message.clientId !== undefined) {
             session.clientId = message.clientId;
           }
+          let shouldBroadcastOwnerChange = false;
           if (!session.authenticated) {
+            let replacedOwner = false;
+            if (session.clientId) {
+              replacedOwner = this.replaceExistingClientSessions(
+                session.clientId,
+                sessionId,
+              );
+            }
             session.authenticated = true;
             this.runtime.getStatsCollector().incrementActiveConnections();
-            this.assignOwnerIfNeeded();
+            if (
+              replacedOwner ||
+              this.shouldRestoreRecentOwner(session.clientId)
+            ) {
+              this.ownerSessionId = sessionId;
+              this.clearRecentOwner();
+              shouldBroadcastOwnerChange = true;
+            } else {
+              shouldBroadcastOwnerChange = this.assignOwnerIfNeeded({
+                broadcast: false,
+              });
+            }
             this.clearIdleTimer();
           }
           session.lastSeen = Date.now();
@@ -405,10 +426,14 @@ export class DaemonServer {
             sessionId,
             isOwner: this.ownerSessionId === sessionId,
           });
+          if (shouldBroadcastOwnerChange) {
+            this.broadcastOwnerChange({ excludeSessionId: sessionId });
+          }
           void connectSessionServer().catch(() =>
             this.handleDisconnect(sessionId),
           );
           break;
+        }
         case "heartbeat":
           if (!session.authenticated) {
             break;
@@ -431,18 +456,12 @@ export class DaemonServer {
     }
     this.sessions.delete(sessionId);
 
-    try {
-      await session.server.close();
-      await session.transport.close();
-    } catch {
-      // ignore
-    }
-
     if (session.authenticated) {
       this.runtime.getStatsCollector().decrementActiveConnections();
     }
 
     if (this.ownerSessionId === sessionId) {
+      this.recordRecentOwner(session);
       this.ownerSessionId = null;
       this.assignOwnerIfNeeded();
     }
@@ -450,27 +469,59 @@ export class DaemonServer {
     if (this.sessions.size === 0) {
       this.startIdleTimer();
     }
+
+    await this.evictSession(session);
   }
 
-  private assignOwnerIfNeeded(): void {
+  private assignOwnerIfNeeded(options?: { broadcast?: boolean }): boolean {
     if (this.ownerSessionId) {
-      return;
+      return false;
     }
     const next = Array.from(this.sessions.values())
       .filter((session) => session.authenticated)
       .sort((a, b) => a.connectedAt - b.connectedAt)[0];
     if (next) {
       this.ownerSessionId = next.id;
-      this.broadcastOwnerChange();
+      if (options?.broadcast !== false) {
+        this.broadcastOwnerChange();
+      }
+      return true;
     }
+
+    return false;
   }
 
-  private broadcastOwnerChange(): void {
+  private shouldRestoreRecentOwner(clientId: string | undefined): boolean {
+    if (!clientId || this.recentOwnerClientId !== clientId) {
+      return false;
+    }
+
+    return (
+      Date.now() - this.recentOwnerDisconnectedAt <= this.heartbeatTimeoutMs
+    );
+  }
+
+  private recordRecentOwner(session: DaemonSession): void {
+    if (!session.clientId) {
+      this.clearRecentOwner();
+      return;
+    }
+
+    this.recentOwnerClientId = session.clientId;
+    this.recentOwnerDisconnectedAt = Date.now();
+  }
+
+  private clearRecentOwner(): void {
+    this.recentOwnerClientId = null;
+    this.recentOwnerDisconnectedAt = 0;
+  }
+
+  private broadcastOwnerChange(options?: { excludeSessionId?: string }): void {
     if (!this.ownerSessionId) {
       return;
     }
     for (const session of this.sessions.values()) {
-      if (!session.authenticated) {
+      if (!session.authenticated || session.id === options?.excludeSessionId) {
         continue;
       }
       void session.transport.sendControl({
@@ -548,5 +599,44 @@ export class DaemonServer {
         }
         return info;
       });
+  }
+
+  private async evictSession(session: DaemonSession): Promise<void> {
+    try {
+      await session.server.close();
+      await session.transport.close();
+    } catch {
+      // ignore
+    }
+  }
+
+  private replaceExistingClientSessions(
+    clientId: string,
+    nextSessionId: string,
+  ): boolean {
+    const duplicates = Array.from(this.sessions.values()).filter(
+      (session) =>
+        session.id !== nextSessionId &&
+        session.authenticated &&
+        session.clientId === clientId,
+    );
+
+    if (duplicates.length === 0) {
+      return false;
+    }
+
+    let replacedOwner = false;
+
+    for (const duplicate of duplicates) {
+      this.sessions.delete(duplicate.id);
+      this.runtime.getStatsCollector().decrementActiveConnections();
+      if (this.ownerSessionId === duplicate.id) {
+        this.ownerSessionId = null;
+        replacedOwner = true;
+      }
+      void this.evictSession(duplicate);
+    }
+
+    return replacedOwner;
   }
 }
