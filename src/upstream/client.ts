@@ -250,6 +250,8 @@ export async function testUpstreamConnection(
   let transport: Transport | null = null;
   let httpTransport: StreamableHTTPClientTransport | null = null;
   let authProvider: McpOAuthProvider | undefined;
+  let sseConfig: UpstreamSseServerConfig | undefined;
+  let httpTransportFactory: TestOptions["httpTransportFactory"] | undefined;
 
   try {
     client =
@@ -280,7 +282,7 @@ export async function testUpstreamConnection(
         },
       );
     } else if (config.transport === "sse") {
-      const sseConfig = config as UpstreamSseServerConfig;
+      sseConfig = config as UpstreamSseServerConfig;
 
       // Create OAuth provider if auth is enabled OR if stored tokens exist
       const tokenStorage = new TokenStorage();
@@ -290,7 +292,7 @@ export async function testUpstreamConnection(
         authProvider = new McpOAuthProvider(name, tokenStorage, authOptions);
       }
 
-      const httpTransportFactory =
+      httpTransportFactory =
         options.httpTransportFactory ?? createHttpTransport;
       httpTransport = httpTransportFactory(
         sseConfig,
@@ -342,6 +344,16 @@ export async function testUpstreamConnection(
 
           // Retry connection after auth
           log("Retrying connection after OAuth...");
+          if (sseConfig && httpTransportFactory) {
+            await safelyCloseTransport(transport);
+            httpTransport = httpTransportFactory(
+              sseConfig,
+              log,
+              verbose,
+              authProvider,
+            );
+            transport = httpTransport as Transport;
+          }
           // biome-ignore lint/style/noNonNullAssertion: transport is assigned above for all code paths
           await Promise.race([client.connect(transport!), timeoutPromise]);
         } else {

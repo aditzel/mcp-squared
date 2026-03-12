@@ -1094,5 +1094,181 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       await observerClient.close();
       await daemon.stop();
     });
+
+    test("reattaches a monitor client across full daemon replacement without leaking stale sessions", async () => {
+      const configHash = "monitor-restart-recovery";
+      const firstRuntime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const firstDaemon = new DaemonServer({
+        runtime: firstRuntime,
+        socketPath: "tcp://127.0.0.1:0",
+        configHash,
+        idleTimeoutMs: 2_000,
+        heartbeatTimeoutMs: 2_000,
+      });
+      const waitFor = async (
+        condition: () => boolean,
+        timeoutMs = 2_000,
+      ): Promise<void> => {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+          if (condition()) {
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        throw new Error("Timed out waiting for condition");
+      };
+      const waitForAsync = async (
+        condition: () => Promise<boolean>,
+        timeoutMs = 2_000,
+      ): Promise<void> => {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+          if (await condition()) {
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        throw new Error("Timed out waiting for condition");
+      };
+
+      const startClient = async (args: {
+        endpoint: string;
+        clientId: string;
+      }): Promise<{ transport: SocketClientTransport; sessionId: string }> => {
+        const transport = new SocketClientTransport({
+          endpoint: args.endpoint,
+        });
+        let sessionId: string | null = null;
+        transport.oncontrol = (message) => {
+          if (message.type === "helloAck") {
+            sessionId = message.sessionId;
+          }
+        };
+        await transport.start();
+        await transport.sendControl({
+          type: "hello",
+          clientId: args.clientId,
+        });
+        await waitFor(() => sessionId !== null);
+        return {
+          transport,
+          sessionId: sessionId as string,
+        };
+      };
+
+      await firstDaemon.start();
+
+      const monitorClient = new MonitorClient({
+        socketPath: firstRuntime.getMonitorSocketPath(),
+      });
+      await monitorClient.connect();
+
+      const originalOwner = await startClient({
+        endpoint: firstDaemon.getSocketPath(),
+        clientId: "restart-shared-client",
+      });
+      const observerA = await startClient({
+        endpoint: firstDaemon.getSocketPath(),
+        clientId: "restart-observer-a",
+      });
+      const observerB = await startClient({
+        endpoint: firstDaemon.getSocketPath(),
+        clientId: "restart-observer-b",
+      });
+
+      await waitForAsync(async () => {
+        const clients = await monitorClient.getClients();
+        return (
+          clients.length === 3 &&
+          clients.some(
+            (client) =>
+              client.sessionId === originalOwner.sessionId && client.isOwner,
+          ) &&
+          clients.some(
+            (client) =>
+              client.sessionId === observerA.sessionId && !client.isOwner,
+          ) &&
+          clients.some(
+            (client) =>
+              client.sessionId === observerB.sessionId && !client.isOwner,
+          )
+        );
+      });
+
+      await firstDaemon.stop();
+      monitorClient.disconnect();
+
+      const secondRuntime = new McpSquaredServer({
+        config: DEFAULT_CONFIG,
+        monitorSocketPath: "tcp://127.0.0.1:0",
+      });
+      const replacementDaemon = new DaemonServer({
+        runtime: secondRuntime,
+        socketPath: "tcp://127.0.0.1:0",
+        configHash,
+        idleTimeoutMs: 2_000,
+        heartbeatTimeoutMs: 2_000,
+      });
+
+      await replacementDaemon.start();
+
+      const replacementMonitorClient = new MonitorClient({
+        socketPath: secondRuntime.getMonitorSocketPath(),
+      });
+      await replacementMonitorClient.connect();
+
+      const replacementOwner = await startClient({
+        endpoint: replacementDaemon.getSocketPath(),
+        clientId: "restart-shared-client",
+      });
+      const replacementObserverA = await startClient({
+        endpoint: replacementDaemon.getSocketPath(),
+        clientId: "restart-observer-a",
+      });
+      const replacementObserverB = await startClient({
+        endpoint: replacementDaemon.getSocketPath(),
+        clientId: "restart-observer-b",
+      });
+
+      await waitForAsync(async () => {
+        const clients = await replacementMonitorClient.getClients();
+        return (
+          clients.length === 3 &&
+          clients.some(
+            (client) =>
+              client.sessionId === replacementOwner.sessionId && client.isOwner,
+          ) &&
+          clients.some(
+            (client) =>
+              client.sessionId === replacementObserverA.sessionId &&
+              !client.isOwner,
+          ) &&
+          clients.some(
+            (client) =>
+              client.sessionId === replacementObserverB.sessionId &&
+              !client.isOwner,
+          ) &&
+          !clients.some(
+            (client) => client.sessionId === originalOwner.sessionId,
+          ) &&
+          !clients.some((client) => client.sessionId === observerA.sessionId) &&
+          !clients.some((client) => client.sessionId === observerB.sessionId)
+        );
+      }, 4_000);
+
+      expect(replacementDaemon.getOwnerSessionId()).toBe(
+        replacementOwner.sessionId,
+      );
+
+      replacementMonitorClient.disconnect();
+      await replacementOwner.transport.close();
+      await replacementObserverA.transport.close();
+      await replacementObserverB.transport.close();
+      await replacementDaemon.stop();
+    });
   });
 }

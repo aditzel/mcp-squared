@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-03-11
+
 ### Changed
+- Refreshed the top-level README status text to match the current `0.8.x` alpha line and clarify that auth integrations and CLI/config details may still evolve.
+- Refreshed contributor and agent-facing docs (`.github/CONTRIBUTING.md`, `WARP.md`, and `docs/PROJECT-INCEPTION-REQUIREMENTS.md`) so current-status messaging consistently reflects the active `0.8.x` alpha line while preserving the inception doc as a historical `v0.1.x` baseline.
 - Extracted capability-surface assembly from `src/server/index.ts` into `src/server/capability-surface.ts`, isolating capability-router instructions, metadata summaries, and router construction behind focused tests to make further server architecture refactors safer.
 - Extracted capability tool registration and request-dispatch composition from `src/server/index.ts` into `src/server/capability-tool-surface.ts`, with additional handler regression tests covering `__describe_actions`, missing/unknown actions, and ambiguous capability-route disambiguation.
 - Extracted capability tool execution from `src/server/index.ts` into `src/server/capability-tool-executor.ts`, isolating policy gating, response-resource offload handling, and selection-tracking behavior behind focused executor tests.
@@ -20,8 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored the remaining CLI entrypoint composition out of `src/index.ts` into dedicated `main-runtime`, `run-stdio-server`, and runtime-profile modules, with focused tests covering `main()` help/version dispatch and stdio startup/shutdown lifecycle wiring.
 - Expanded shared-daemon lifecycle regression coverage to lock down three-client owner-reconnect sequencing on the server side and three-bridge replacement-daemon recovery on the proxy side during restart flapping.
 - Expanded daemon lifecycle monitor coverage to verify monitor-visible owner promotion/restoration ordering and stale-session cleanup during three-client reconnect flapping.
+- Expanded daemon lifecycle monitor recovery coverage to verify a monitor client can reconnect across full daemon replacement while three clients rejoin cleanly and stale session IDs do not survive the old/new daemon boundary.
+- Expanded full shared-daemon replacement coverage to verify a reattached monitor client still sees exactly three recovered proxy sessions, the logical prior owner restored, and no stale session IDs after three proxy bridges reconnect to the replacement daemon.
+- Expanded shared-daemon config-identity recovery coverage to verify three recovering proxy bridges ignore a live mismatched daemon identity, rebind only to the matching replacement daemon, and never surface mixed session state through monitor clients.
+- Expanded shared-daemon stale-registry recovery coverage to verify recovering proxy bridges prune a dead matching-config registry entry, ignore a live mismatched daemon identity, and converge on exactly one fresh matching replacement daemon without leaking mixed monitor-visible session state.
+- Expanded shared-daemon convergence coverage to verify overlapping stale matching-config recovery triggers still produce exactly one fresh matching replacement daemon, keep registry state stable after convergence, and avoid mixed monitor-visible session sets.
 
 ### Fixed
+- Fixed `mcp-squared test` for interactive OAuth SSE upstreams to recreate the HTTP transport after browser auth completes, avoiding `StreamableHTTPClientTransport already started!` failures during reconnect.
+- Fixed SSE config validation to give OAuth-specific guidance when an `auth = true` upstream also includes a literal bearer `Authorization` header, instead of suggesting env-placeholder bearer-token setup for OAuth-only services.
 - Fixed a proxy shutdown race where overlapping daemon disconnect and manual bridge stop paths could call `stdioTransport.close()` twice before the first close completed, improving lifecycle idempotency for daemon/proxy teardown.
 - Fixed daemon owner reassignment ordering so authenticated peers become the active owner immediately after a disconnect, even if the departing session's cleanup is still awaiting server/transport shutdown.
 - Fixed fast same-client daemon reconnects to replace stale authenticated sessions immediately, so ownership recovers without waiting for heartbeat timeout when a proxy reconnects after transport loss.

@@ -1,8 +1,8 @@
 # MCP²: Project Inception Requirements
 
-> Note: This document captures the original inception requirements. For the current implementation and architecture, see `README.md` and `docs/ARCHITECTURE.md`.
+> Note: This document captures the original inception requirements and early-project baseline. For the current implementation and architecture, see `README.md` and `docs/ARCHITECTURE.md`.
 
-## 0. Current Status (Alpha, v0.1.x)
+## 0. Historical Baseline (Alpha, v0.1.x planning snapshot)
 - Multi-upstream support (stdio + SSE/HTTP) with OAuth for SSE upstreams
 - Hybrid search (FTS5 + optional embeddings) with L0/L1/L2 detail levels
 - Selection caching with co-occurrence suggestions

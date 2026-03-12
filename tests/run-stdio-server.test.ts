@@ -59,7 +59,7 @@ describe("startStdioServer", () => {
         shutdownHandler = options.shutdown;
       }),
       resolveLauncherHint: () => "claude",
-      version: "0.8.0",
+      version: "0.8.1",
     });
 
     expect(calls).toEqual([
@@ -120,7 +120,7 @@ describe("startStdioServer", () => {
       randomUUID: () => "instance-123",
       registerShutdownHooks: () => {},
       resolveLauncherHint: () => undefined,
-      version: "0.8.0",
+      version: "0.8.1",
     });
 
     expect(error).toHaveBeenCalledWith(

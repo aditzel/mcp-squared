@@ -20,7 +20,7 @@ describe("cli runtime bootstrap helpers", () => {
       role: "daemon",
       socketPath: "/tmp/daemon.sock",
       startedAt: 1000,
-      version: "0.8.0",
+      version: "0.8.1",
     });
 
     expect(entry).toEqual({
@@ -33,7 +33,7 @@ describe("cli runtime bootstrap helpers", () => {
       role: "daemon",
       socketPath: "/tmp/daemon.sock",
       startedAt: 1000,
-      version: "0.8.0",
+      version: "0.8.1",
     });
   });
 

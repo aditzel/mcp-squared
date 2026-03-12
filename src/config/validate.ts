@@ -134,15 +134,18 @@ export function validateSseUpstream(
     const isAuthorization = headerName.toLowerCase() === "authorization";
     const isBearer = /^Bearer\s+/i.test(headerValue);
     const usesEnvPlaceholder = /^Bearer\s+\$/i.test(headerValue.trim());
+    const usesOAuth = Boolean(config.sse.auth);
 
     if (isAuthorization && isBearer && !usesEnvPlaceholder) {
       issues.push({
         severity: "warning",
         upstream: name,
-        message:
-          "Authorization header appears to contain a literal bearer token",
-        suggestion:
-          'Use an environment placeholder, e.g., Authorization = "Bearer $API_TOKEN"',
+        message: usesOAuth
+          ? "OAuth-enabled SSE upstream appears to set a literal bearer token"
+          : "Authorization header appears to contain a literal bearer token",
+        suggestion: usesOAuth
+          ? "Remove the Authorization header and keep `auth = true`; MCP² will manage the OAuth token automatically."
+          : 'Use an environment placeholder, e.g., Authorization = "Bearer $API_TOKEN"',
       });
     }
   }

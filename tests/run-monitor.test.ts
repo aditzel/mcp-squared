@@ -30,7 +30,7 @@ describe("runMonitorCommand", () => {
         loadLiveDaemonRegistry: async () => ({
           pid: 123,
           startedAt: "2026-03-10T14:44:00.000Z",
-          version: "0.8.0",
+          version: "0.8.1",
         }),
         loadMonitorTui: async () => ({ runMonitorTui }),
         printTuiUnavailableError: mock(() => {}),
@@ -49,7 +49,7 @@ describe("runMonitorCommand", () => {
           role: "daemon",
           socketPath: "/tmp/monitor.sock",
           startedAt: "2026-03-10T14:44:00.000Z",
-          version: "0.8.0",
+          version: "0.8.1",
         },
       ],
       refreshInterval: 2500,
