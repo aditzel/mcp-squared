@@ -881,13 +881,16 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(originalOwnerControlSequence).toEqual(["helloAck"]);
+      expect(temporaryOwnerSession).not.toBeNull();
+      expect(replacementOwnerSession).not.toBeNull();
+      expect(observerOwnerChanges).toContain(replacementOwnerSession ?? "");
       expect(temporaryOwnerChanges).toEqual([
-        temporaryOwnerSession as string,
-        replacementOwnerSession as string,
+        temporaryOwnerSession ?? "",
+        replacementOwnerSession ?? "",
       ]);
       expect(observerOwnerChanges).toEqual([
-        temporaryOwnerSession as string,
-        replacementOwnerSession as string,
+        temporaryOwnerSession ?? "",
+        replacementOwnerSession ?? "",
       ]);
       expect(daemon.getOwnerSessionId()).toBe(replacementOwnerSession);
 
@@ -1086,7 +1089,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       });
 
       expect(await getClientOwnerIds()).toEqual([
-        replacementOwnerSession as string,
+        replacementOwnerSession ?? "",
       ]);
 
       monitorClient.disconnect();
@@ -1156,7 +1159,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         await waitFor(() => sessionId !== null);
         return {
           transport,
-          sessionId: sessionId as string,
+          sessionId: sessionId ?? "",
         };
       };
 

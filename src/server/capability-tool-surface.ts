@@ -92,10 +92,9 @@ export function parseCapabilityToolRequest(
     arguments: isRecord(parsedArgs["arguments"])
       ? (parsedArgs["arguments"] as Record<string, unknown>)
       : {},
-    confirmationToken:
-      typeof parsedArgs["confirmation_token"] === "string"
-        ? parsedArgs["confirmation_token"]
-        : undefined,
+    ...(typeof parsedArgs["confirmation_token"] === "string"
+      ? { confirmationToken: parsedArgs["confirmation_token"] }
+      : {}),
   };
 }
 

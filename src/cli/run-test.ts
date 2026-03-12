@@ -5,7 +5,7 @@ import {
   validateConfig,
   validateUpstreamConfig,
 } from "../config/index.js";
-import type { UpstreamConfig } from "../config/schema.js";
+import type { UpstreamServerConfig } from "../config/schema.js";
 import { type TestResult, testUpstreamConnection } from "../upstream/index.js";
 
 interface LoadConfigResult {
@@ -188,7 +188,7 @@ export async function runTestCommand(
 
     const result = await testUpstreamConnection(
       name,
-      upstream as UpstreamConfig,
+      upstream as UpstreamServerConfig,
       {
         verbose,
       },

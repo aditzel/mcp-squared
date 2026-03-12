@@ -15,12 +15,12 @@ import {
 
 type CatalogStatus = {
   status: string;
-  error: Error | undefined;
+  error: Error | string | undefined;
 };
 
 type InventoryTool = {
   name: string;
-  description?: string;
+  description: string | undefined;
   serverKey: string;
   inputSchema: ToolInputSchema;
 };

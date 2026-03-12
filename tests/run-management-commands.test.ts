@@ -29,9 +29,9 @@ describe("management CLI command runners", () => {
       verbose: true,
     } as const;
 
-    await runImportCommand(options, { runImport });
+    await runImportCommand(options as never, { runImport });
 
-    expect(runImport).toHaveBeenCalledWith(options);
+    expect(runImport).toHaveBeenCalledWith(options as never);
   });
 
   test("runInstallCommand delegates to the install runner", async () => {

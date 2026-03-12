@@ -45,7 +45,7 @@ describe("runDaemonCommand", () => {
   });
 
   beforeEach(() => {
-    process.env.MCP_SQUARED_DAEMON_SECRET = "env-secret";
+    process.env["MCP_SQUARED_DAEMON_SECRET"] = "env-secret";
   });
 
   test("starts the daemon, registers shutdown handlers, and exits cleanly on signal", async () => {
@@ -69,7 +69,7 @@ describe("runDaemonCommand", () => {
     const deleteInstanceEntry = spyOn(
       await import("@/config"),
       "deleteInstanceEntry",
-    ).mockImplementation(() => {});
+    ).mockImplementation(() => false);
     const ensureRegistry = spyOn(
       await import("@/config"),
       "ensureInstanceRegistryDir",

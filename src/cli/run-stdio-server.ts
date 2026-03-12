@@ -126,11 +126,13 @@ export async function startStdioServer(
     monitorSocketPath: socketPath,
   });
 
+  const launcher = resolveLauncherHint(processRef.env);
+
   const registration = createInstanceRegistration(
     buildCliInstanceEntry({
       configPath,
       id: instanceId,
-      launcher: resolveLauncherHint(processRef.env),
+      launcher,
       processRef,
       role: "server",
       socketPath,

@@ -116,11 +116,13 @@ export async function runDaemonCommand(
 
   prepareCliRuntimeFilesystem();
 
+  const launcher = resolveLauncherHint(processRef.env);
+
   const registration = createInstanceRegistration(
     buildCliInstanceEntry({
       configPath,
       id: `daemon-${configHash}`,
-      launcher: resolveLauncherHint(processRef.env),
+      launcher,
       processRef,
       role: "daemon",
       socketPath: monitorSocketPath,

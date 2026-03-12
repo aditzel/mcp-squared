@@ -19,7 +19,7 @@ describe("server runtime lifecycle", () => {
     registerRuntimeRefreshHooks({
       indexRefreshManager: {
         on: (event, handler) => {
-          listeners.set(event, handler);
+          listeners.set(String(event), handler);
           return undefined as never;
         },
       },
@@ -44,15 +44,15 @@ describe("server runtime lifecycle", () => {
       ...DEFAULT_CONFIG,
       upstreams: {
         alpha: {
+          env: {},
           transport: "stdio",
-          command: "alpha",
-          args: [],
+          stdio: { command: "alpha", args: [] },
           enabled: true,
         },
         beta: {
+          env: {},
           transport: "stdio",
-          command: "beta",
-          args: [],
+          stdio: { command: "beta", args: [] },
           enabled: false,
         },
       },
@@ -101,7 +101,10 @@ describe("server runtime lifecycle", () => {
     expect(connect).toHaveBeenCalledTimes(1);
     expect(connect).toHaveBeenCalledWith(
       "alpha",
-      expect.objectContaining({ command: "alpha", enabled: true }),
+      expect.objectContaining({
+        enabled: true,
+        stdio: expect.objectContaining({ command: "alpha" }),
+      }),
     );
     expect(syncIndex).toHaveBeenCalledTimes(1);
     expect(initializeEmbeddings).toHaveBeenCalledTimes(1);

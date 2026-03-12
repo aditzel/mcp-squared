@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Documented the short-term accepted OpenTUI transitive `file-type` advisory in `docs/DEPENDENCY_EXCEPTIONS.md` and tightened the dependency-maintenance/release process so temporary audit exceptions are only allowed when reviewed reachability remains low and local-only.
+
 ## [0.8.1] - 2026-03-11
 
 ### Changed

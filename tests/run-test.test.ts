@@ -17,9 +17,9 @@ function createTestDeps(
         ...DEFAULT_CONFIG,
         upstreams: {
           github: {
-            command: "node",
-            args: ["server.js"],
+            env: {},
             enabled: true,
+            stdio: { args: ["server.js"], command: "node" },
             transport: "stdio",
           },
         },
@@ -29,6 +29,7 @@ function createTestDeps(
     processRef: { exit: mock(((_code?: number) => undefined) as never) },
     testUpstreamConnection: mock(async () => ({
       durationMs: 12,
+      error: "",
       serverName: "GitHub",
       serverVersion: "1.0.0",
       stderr: "",
@@ -83,21 +84,21 @@ describe("runTestCommand", () => {
           ...DEFAULT_CONFIG,
           upstreams: {
             broken: {
-              command: "node",
-              args: ["broken.js"],
+              env: {},
               enabled: true,
+              stdio: { args: ["broken.js"], command: "node" },
               transport: "stdio",
             },
             disabled: {
-              command: "node",
-              args: ["disabled.js"],
+              env: {},
               enabled: false,
+              stdio: { args: ["disabled.js"], command: "node" },
               transport: "stdio",
             },
             github: {
-              command: "node",
-              args: ["server.js"],
+              env: {},
               enabled: true,
+              stdio: { args: ["server.js"], command: "node" },
               transport: "stdio",
             },
           },

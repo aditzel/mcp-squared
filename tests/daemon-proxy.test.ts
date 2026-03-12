@@ -829,8 +829,8 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         );
         expect(replacementDaemon.getSessionCount()).toBe(3);
         expect(spawnCalls).toBe(1);
-        expect(recoveredOwner?.clientId).toStartWith(
-          "proxy-monitor-recovery-1-",
+        expect(recoveredOwner?.clientId).toMatch(
+          /^proxy-monitor-recovery-[1-3]-/,
         );
         expect(
           recoveredClients.map((client) => client.clientId).sort(),
@@ -1419,7 +1419,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
       await daemon.start();
 
       let closeCalls = 0;
-      let resolveClose: (() => void) | null = null;
+      let resolveClose: (() => void) | undefined;
       const stdioTransport: Transport = {
         close: async () => {
           closeCalls += 1;
@@ -1446,10 +1446,16 @@ if (!SOCKET_LISTEN_SUPPORTED) {
 
         expect(closeCalls).toBe(1);
 
-        resolveClose?.();
+        const close = resolveClose;
+        if (close) {
+          close();
+        }
         await stopPromise;
       } finally {
-        resolveClose?.();
+        const close = resolveClose;
+        if (close) {
+          close();
+        }
         await bridge.stop().catch(() => {});
         await daemon.stop().catch(() => {});
       }

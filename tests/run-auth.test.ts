@@ -43,6 +43,7 @@ describe("runAuthCommand", () => {
           ...DEFAULT_CONFIG,
           upstreams: {
             github: {
+              env: {},
               enabled: true,
               sse: {
                 auth: { callbackPort: 4317, clientName: "mcp-squared" },
@@ -98,8 +99,9 @@ describe("runAuthCommand", () => {
           ...DEFAULT_CONFIG,
           upstreams: {
             github: {
+              env: {},
               enabled: true,
-              sse: { url: "https://example.com/sse" },
+              sse: { headers: {}, url: "https://example.com/sse" },
               transport: "sse",
             },
           },
@@ -181,6 +183,6 @@ describe("runAuthCommand", () => {
 
     expect(typeof deps.loadConfig).toBe("function");
     expect(typeof deps.resolveOAuthProviderOptions).toBe("function");
-    expect(deps.processRef).toBe(process);
+    expect(deps.processRef.exit).toBe(process.exit);
   });
 });

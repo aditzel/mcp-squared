@@ -48,9 +48,19 @@ describe("server session surface helpers", () => {
   test("registerResponseResources returns stored resources when present", async () => {
     let readHandler:
       | ((uri: URL) =>
-          | Promise<{ contents: Array<{ text: string }> }>
+          | Promise<{
+              contents: Array<{
+                mimeType: string;
+                text: string;
+                uri: string;
+              }>;
+            }>
           | {
-              contents: Array<{ text: string }>;
+              contents: Array<{
+                mimeType: string;
+                text: string;
+                uri: string;
+              }>;
             })
       | undefined;
 
@@ -88,9 +98,19 @@ describe("server session surface helpers", () => {
   test("registerResponseResources returns a not found payload for expired resources", async () => {
     let readHandler:
       | ((uri: URL) =>
-          | Promise<{ contents: Array<{ text: string }> }>
+          | Promise<{
+              contents: Array<{
+                mimeType: string;
+                text: string;
+                uri: string;
+              }>;
+            }>
           | {
-              contents: Array<{ text: string }>;
+              contents: Array<{
+                mimeType: string;
+                text: string;
+                uri: string;
+              }>;
             })
       | undefined;
 

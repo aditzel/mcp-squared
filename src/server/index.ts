@@ -328,7 +328,7 @@ export class McpSquaredServer {
         startTime,
       }) => {
         this.statsCollector.endRequest(
-          requestId,
+          Number(requestId),
           success,
           Date.now() - startTime,
           capability,
@@ -350,17 +350,21 @@ export class McpSquaredServer {
     confirmationToken?: string;
   }): Promise<{
     content: Array<{ type: "text"; text: string }>;
-    isError: boolean;
+    isError?: boolean;
     structuredContent?: Record<string, unknown>;
   }> {
     return executeCapabilityTool({
       capability: args.capability,
       action: args.action,
-      policyAction: args.policyAction,
-      routeId: args.routeId,
+      ...(args.policyAction === undefined
+        ? {}
+        : { policyAction: args.policyAction }),
+      ...(args.routeId === undefined ? {} : { routeId: args.routeId }),
       toolNameForCall: args.toolNameForCall,
       args: args.args,
-      confirmationToken: args.confirmationToken,
+      ...(args.confirmationToken === undefined
+        ? {}
+        : { confirmationToken: args.confirmationToken }),
       config: this.config,
       responseResourceManager: this.responseResourceManager,
       enforceGuard: ({ tool, action, params }) => {
@@ -382,17 +386,25 @@ export class McpSquaredServer {
             env: this.guard.agentEnv,
           },
           () => this.cataloger.callTool(toolNameForCall, callArgs),
-        ),
-      onSuccessfulSelection: this.config.operations.selectionCache.enabled
-        ? (toolKey) => {
-            this.selectionTracker.trackToolUsage(toolKey);
-            if (this.selectionTracker.getSessionToolCount() >= 2) {
-              this.selectionTracker.flushToStore(
-                this.retriever.getIndexStore(),
-              );
-            }
+        ).then((result) => ({
+          content: result.content,
+          ...(result.isError === undefined ? {} : { isError: result.isError }),
+          ...(result.structuredContent === undefined
+            ? {}
+            : { structuredContent: result.structuredContent }),
+        })),
+      ...(this.config.operations.selectionCache.enabled
+        ? {
+            onSuccessfulSelection: (toolKey: string) => {
+              this.selectionTracker.trackToolUsage(toolKey);
+              if (this.selectionTracker.getSessionToolCount() >= 2) {
+                this.selectionTracker.flushToStore(
+                  this.retriever.getIndexStore(),
+                );
+              }
+            },
           }
-        : undefined,
+        : {}),
     });
   }
 

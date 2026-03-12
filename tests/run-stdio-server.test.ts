@@ -32,8 +32,8 @@ describe("startStdioServer", () => {
       })),
       createServer: mock(() => ({ start, stop })),
       getSocketFilePath: () => "/tmp/monitor.sock",
-      listActiveInstanceEntries: async ({ prune }) => {
-        calls.push(`prune:${String(prune)}`);
+      listActiveInstanceEntries: async (options) => {
+        calls.push(`prune:${String(options?.prune)}`);
         return [];
       },
       loadConfig: async () => ({
@@ -47,6 +47,7 @@ describe("startStdioServer", () => {
         calls.push("security");
       }),
       performPreflightAuth: async () => ({
+        alreadyValid: [],
         authenticated: [],
         failed: [],
       }),
@@ -109,6 +110,7 @@ describe("startStdioServer", () => {
       logSearchModeProfile: () => {},
       logSecurityProfile: () => {},
       performPreflightAuth: async () => ({
+        alreadyValid: [],
         authenticated: ["github"],
         failed: [{ error: "denied", name: "slack" }],
       }),

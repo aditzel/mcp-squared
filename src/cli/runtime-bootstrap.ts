@@ -26,9 +26,9 @@ export interface InstanceRegistration {
 export interface BuildCliInstanceEntryOptions {
   configPath: string;
   id: string;
-  launcher?: string;
+  launcher: string | undefined;
   processRef?: Pick<CliProcessLike, "argv" | "cwd" | "pid">;
-  role: InstanceRegistryEntry["role"];
+  role: NonNullable<InstanceRegistryEntry["role"]>;
   socketPath: string;
   startedAt?: number;
   version: string;

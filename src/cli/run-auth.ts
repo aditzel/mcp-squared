@@ -23,6 +23,10 @@ interface OAuthProviderLike {
   clearCodeVerifier(): void;
 }
 
+type StreamableHttpTransportOptions = NonNullable<
+  ConstructorParameters<typeof StreamableHTTPClientTransport>[1]
+>;
+
 interface OAuthCallbackServerLike {
   getCallbackUrl(): string;
   waitForCallback(): Promise<{
@@ -82,11 +86,20 @@ export function createRunAuthDependencies(): RunAuthDependencies {
         version: VERSION,
       }),
     createTokenStorage: () => new TokenStorage(),
-    createTransport: ({ authProvider, headers, url }) =>
-      new StreamableHTTPClientTransport(new URL(url), {
-        authProvider,
+    createTransport: ({ authProvider, headers, url }) => {
+      const transportOptions: StreamableHttpTransportOptions = {
         requestInit: { headers: { ...headers } },
-      }),
+        ...(authProvider
+          ? {
+              authProvider: authProvider as unknown as NonNullable<
+                StreamableHttpTransportOptions["authProvider"]
+              >,
+            }
+          : {}),
+      };
+
+      return new StreamableHTTPClientTransport(new URL(url), transportOptions);
+    },
     loadConfig,
     processRef: process,
     resolveOAuthProviderOptions,

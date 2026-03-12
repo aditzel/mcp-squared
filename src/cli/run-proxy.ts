@@ -54,11 +54,13 @@ export async function runProxyCommand(
 
   prepareCliRuntimeFilesystem();
 
+  const launcher = resolveLauncherHint(processRef.env);
+
   const registration = createInstanceRegistration(
     buildCliInstanceEntry({
       configPath,
       id: `proxy-${processRef.pid}`,
-      launcher: resolveLauncherHint(processRef.env),
+      launcher,
       processRef,
       role: "proxy",
       socketPath: monitorSocketPath,

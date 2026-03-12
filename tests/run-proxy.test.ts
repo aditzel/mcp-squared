@@ -44,7 +44,7 @@ describe("runProxyCommand", () => {
     const deleteInstanceEntry = spyOn(
       await import("@/config"),
       "deleteInstanceEntry",
-    ).mockImplementation(() => {});
+    ).mockImplementation(() => false);
     const ensureRegistry = spyOn(
       await import("@/config"),
       "ensureInstanceRegistryDir",
@@ -100,7 +100,7 @@ describe("runProxyCommand", () => {
     const deleteInstanceEntry = spyOn(
       await import("@/config"),
       "deleteInstanceEntry",
-    ).mockImplementation(() => {});
+    ).mockImplementation(() => false);
     spyOn(await import("@/config"), "writeInstanceEntry").mockImplementation(
       () => "/tmp/proxy-entry.json",
     );

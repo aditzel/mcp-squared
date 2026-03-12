@@ -38,7 +38,7 @@ This checklist is for maintainers publishing `mcp-squared` to npm.
    bun run release:check
    ```
    This includes `bun run audit` as a hard gate and verifies `dist/index.js` has no unresolved `@/...` runtime imports.
-   If an advisory is temporarily accepted, record it in `docs/DEPENDENCY_EXCEPTIONS.md` and link the tracking issue before proceeding.
+   If an advisory is temporarily accepted, record it in `docs/DEPENDENCY_EXCEPTIONS.md`, verify the reviewed reachability is still low for the current release, and link the tracking issue before proceeding.
 5. Confirm npm will accept the version:
    ```bash
    npm view mcp-squared version

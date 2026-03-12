@@ -57,7 +57,7 @@ function createDependencies(
       startServer: async () => {},
     }),
     dispatchCliRuntime: async () => {},
-    parseArgs: createCliArgs,
+    parseArgs: createCliArgs as never,
     printHelp: () => {},
     processRef: process,
     version: VERSION,
@@ -79,7 +79,7 @@ describe("runCliMain", () => {
       ["--help"],
       createDependencies({
         dispatchCliRuntime,
-        parseArgs: () => createCliArgs({ help: true }),
+        parseArgs: (() => createCliArgs({ help: true })) as never,
         printHelp,
         processRef: { ...process, exit },
       }),
@@ -99,7 +99,7 @@ describe("runCliMain", () => {
       ["--version"],
       createDependencies({
         dispatchCliRuntime,
-        parseArgs: () => createCliArgs({ version: true }),
+        parseArgs: (() => createCliArgs({ version: true })) as never,
         processRef: { ...process, exit },
       }),
     );
@@ -135,7 +135,7 @@ describe("runCliMain", () => {
       createDependencies({
         createRuntimeDispatchDependencies,
         dispatchCliRuntime,
-        parseArgs: () => parsedArgs,
+        parseArgs: (() => parsedArgs) as never,
       }),
     );
 
@@ -154,7 +154,7 @@ describe("runCliMain", () => {
       ["status", "--verbose"],
       createDependencies({
         dispatchCliRuntime,
-        parseArgs: () => parsedArgs,
+        parseArgs: (() => parsedArgs) as never,
       }),
     );
 
@@ -163,7 +163,7 @@ describe("runCliMain", () => {
       expect.objectContaining({
         isStderrTty: true,
         isStdinTty: true,
-      }),
+      }) as never,
     );
   });
 });
