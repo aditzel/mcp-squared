@@ -27,6 +27,31 @@ function createSecurityConfig(security: {
         confirm: security.confirm ?? [],
       },
     },
+    operations: {
+      ...DEFAULT_CONFIG.operations,
+      dynamicToolSurface: {
+        ...DEFAULT_CONFIG.operations.dynamicToolSurface,
+        capabilityOverrides: {
+          ...DEFAULT_CONFIG.operations.dynamicToolSurface.capabilityOverrides,
+        },
+        facetOverrides: {
+          ...DEFAULT_CONFIG.operations.dynamicToolSurface.facetOverrides,
+        },
+      },
+      findTools: {
+        ...DEFAULT_CONFIG.operations.findTools,
+        preferredNamespacesByIntent: {
+          ...DEFAULT_CONFIG.operations.findTools.preferredNamespacesByIntent,
+          codeSearch: [
+            ...DEFAULT_CONFIG.operations.findTools.preferredNamespacesByIntent
+              .codeSearch,
+          ],
+        },
+      },
+      responseResource: {
+        ...DEFAULT_CONFIG.operations.responseResource,
+      },
+    },
   };
 }
 
@@ -138,6 +163,67 @@ function mockCatalogerForSingleTool(server: McpSquaredServer): {
   return { callToolRequests };
 }
 
+function mockCatalogerForTools(
+  server: McpSquaredServer,
+  statusEntries: Array<[string, { status: "connected"; error: undefined }]>,
+  toolsByServer: Record<
+    string,
+    Array<{
+      name: string;
+      description: string;
+      serverKey: string;
+      inputSchema?: { type: "object"; properties?: Record<string, unknown> };
+    }>
+  >,
+): {
+  callToolRequests: Array<{
+    toolName: string;
+    args: Record<string, unknown>;
+  }>;
+} {
+  const callToolRequests: Array<{
+    toolName: string;
+    args: Record<string, unknown>;
+  }> = [];
+  const cataloger = server.getCataloger() as unknown as {
+    getStatus: () => Map<string, { status: "connected"; error: undefined }>;
+    getToolsForServer: (key: string) => Array<{
+      name: string;
+      description: string;
+      serverKey: string;
+      inputSchema: { type: "object"; properties?: Record<string, unknown> };
+    }>;
+    callTool: (
+      toolName: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ content: unknown[]; isError: boolean | undefined }>;
+  };
+
+  cataloger.getStatus = () => new Map(statusEntries);
+  cataloger.getToolsForServer = (key: string) =>
+    (toolsByServer[key] ?? []).map((tool) => ({
+      ...tool,
+      inputSchema: tool.inputSchema ?? { type: "object" },
+    }));
+  cataloger.callTool = async (
+    toolName: string,
+    args: Record<string, unknown>,
+  ) => {
+    callToolRequests.push({ toolName, args });
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ ok: true, toolName, args }),
+        },
+      ],
+      isError: false,
+    };
+  };
+
+  return { callToolRequests };
+}
+
 describe("execute tool policy normalization", () => {
   let server: McpSquaredServer | null = null;
 
@@ -238,6 +324,123 @@ describe("execute tool policy normalization", () => {
       "github:delete_file",
       "github:delete_file",
     ]);
+  });
+
+  test("describes visible actions and metadata", async () => {
+    const config = createSecurityConfig({
+      allow: ["general:*"],
+      confirm: ["general:delete_file"],
+    });
+    server = new McpSquaredServer({ config });
+    mockCatalogerForSingleTool(server);
+    const execute = getCapabilityHandler(server, "general");
+
+    const describeResult = await execute({
+      action: "__describe_actions",
+      arguments: {},
+    });
+    const describePayload = parseExecutePayload(describeResult);
+    const actions = describePayload["actions"] as Array<
+      Record<string, unknown>
+    >;
+
+    expect(describeResult.isError).toBeUndefined();
+    expect(describePayload["capability"]).toBe("general");
+    expect(describePayload["totalActions"]).toBe(1);
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({
+      action: "delete_file",
+      requiresConfirmation: false,
+      summary: "Delete file",
+    });
+    expect(actions[0]?.["inputSchema"]).toEqual({ type: "object" });
+  });
+
+  test("returns an error when action is missing", async () => {
+    server = new McpSquaredServer({
+      config: createSecurityConfig({ allow: ["*:*"] }),
+    });
+    mockCatalogerForSingleTool(server);
+    const execute = getCapabilityHandler(server, "general");
+
+    const result = await execute({ action: "", arguments: {} });
+    const payload = parseExecutePayload(result);
+
+    expect(result.isError).toBe(true);
+    expect(payload).toEqual({
+      error: "Missing required action",
+      capability: "general",
+    });
+  });
+
+  test("returns available actions when action is unknown", async () => {
+    server = new McpSquaredServer({
+      config: createSecurityConfig({ allow: ["*:*"] }),
+    });
+    mockCatalogerForSingleTool(server);
+    const execute = getCapabilityHandler(server, "general");
+
+    const result = await execute({
+      action: "archive_file",
+      arguments: {},
+    });
+    const payload = parseExecutePayload(result);
+
+    expect(result.isError).toBe(true);
+    expect(payload).toEqual({
+      error: "Unknown action",
+      capability: "general",
+      action: "archive_file",
+      availableActions: ["delete_file"],
+    });
+  });
+
+  test("requires disambiguation when multiple visible routes share a base action", async () => {
+    const config = createSecurityConfig({ allow: ["docs:*"] });
+    config.operations.dynamicToolSurface.capabilityOverrides = {
+      docs: "docs",
+      research: "docs",
+    };
+    server = new McpSquaredServer({ config });
+    const { callToolRequests } = mockCatalogerForTools(
+      server,
+      [
+        ["docs", { status: "connected", error: undefined }],
+        ["research", { status: "connected", error: undefined }],
+      ],
+      {
+        docs: [
+          {
+            name: "search_web",
+            description: "Search docs",
+            serverKey: "docs",
+          },
+        ],
+        research: [
+          {
+            name: "search_web",
+            description: "Search research",
+            serverKey: "research",
+          },
+        ],
+      },
+    );
+    const execute = getCapabilityHandler(server, "docs");
+
+    const result = await execute({
+      action: "search_web",
+      arguments: {},
+    });
+    const payload = parseExecutePayload(result);
+
+    expect(result.isError).toBe(true);
+    expect(payload).toEqual({
+      requires_disambiguation: true,
+      capability: "docs",
+      action: "search_web",
+      candidates: ["search_web__docs", "search_web__research"],
+    });
+    expect(callToolRequests).toEqual([]);
   });
 });
 

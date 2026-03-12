@@ -829,6 +829,34 @@ describe("validateConfig", () => {
     expect(issues.length).toBe(1);
     expect(issues[0]?.severity).toBe("warning");
     expect(issues[0]?.message).toContain("literal bearer token");
+    expect(issues[0]?.suggestion).toContain("Bearer $API_TOKEN");
+  });
+
+  test("warns with OAuth-specific guidance for literal bearer tokens on OAuth-enabled SSE upstreams", () => {
+    const config: McpSquaredConfig = {
+      ...DEFAULT_CONFIG,
+      upstreams: {
+        remote: {
+          transport: "sse",
+          enabled: true,
+          env: {},
+          sse: {
+            url: "https://example.com/mcp",
+            auth: true,
+            headers: {
+              Authorization: "Bearer super-secret-token",
+            },
+          },
+        },
+      },
+    };
+
+    const issues = validateConfig(config);
+    expect(issues.length).toBe(1);
+    expect(issues[0]?.severity).toBe("warning");
+    expect(issues[0]?.message).toContain("OAuth-enabled SSE upstream");
+    expect(issues[0]?.suggestion).toContain("Remove the Authorization header");
+    expect(issues[0]?.suggestion).toContain("auth = true");
   });
 });
 

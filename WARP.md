@@ -5,7 +5,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 ## Project Overview
 MCP² (Mercury Control Plane) is a local-first meta-server and proxy for the Model Context Protocol (MCP). It acts as middleware to manage tool context bloat by progressively disclosing tools to LLMs via a stable interface (`find_tools`, `describe_tools`, `execute`, plus supporting meta-tools).
 
-**Status**: Alpha (v0.1.x)
+**Status**: Alpha (v0.8.x) — core functionality is implemented and tested; CLI, auth integrations, and configuration details may still evolve between releases.
 
 ## Package Manager Policy
 

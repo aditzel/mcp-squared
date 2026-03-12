@@ -1,6 +1,6 @@
 {
   "name": "mcp-squared",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "MCP² (Mercury Control Plane) - A local-first meta-server and proxy for the Model Context Protocol",
   "author": "aditzel",
   "license": "Apache-2.0",
@@ -40,8 +40,8 @@
     "eval:routing": "bun run scripts/eval-tool-routing.ts"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.4",
-    "@types/bun": "^1.3.9",
+    "@biomejs/biome": "^2.4.6",
+    "@types/bun": "^1.3.10",
     "typescript": "^5.9.3"
   },
   "engines": {
@@ -63,10 +63,10 @@
     "@hono/node-server": "^1.19.11",
     "@huggingface/transformers": "^3.8.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "@opentui/core": "^0.1.82",
-    "hono": "^4.12.5",
+    "@opentui/core": "^0.1.87",
+    "hono": "^4.12.7",
     "smol-toml": "^1.6.0",
-    "tar": "^7.5.10",
+    "tar": "^7.5.11",
     "yaml": "^2.8.2",
     "zod": "^4.3.6"
   },
@@ -79,8 +79,8 @@
     "ajv": "^8.18.0",
     "diff": "8.0.3",
     "express-rate-limit": "8.2.2",
-    "hono": "^4.12.5",
+    "hono": "^4.12.7",
     "qs": "6.15.0",
-    "tar": "^7.5.10"
+    "tar": "^7.5.11"
   }
 }

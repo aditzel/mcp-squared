@@ -8,8 +8,6 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
 import {
   build_sink,
   Guard,
@@ -22,34 +20,39 @@ import {
 } from "../../agent_safety_kit/index.js";
 import { IndexRefreshManager } from "../background/index.js";
 import { SelectionTracker } from "../caching/index.js";
-import {
-  type CapabilityId,
-  groupNamespacesByCapability,
-} from "../capabilities/inference.js";
-import {
-  buildCapabilityRouters as buildRouters,
-  type CapabilityRouter,
-} from "../capabilities/routing.js";
+import type { CapabilityId } from "../capabilities/inference.js";
+import type { CapabilityRouter } from "../capabilities/routing.js";
 import { ensureSocketDir, getSocketFilePath } from "../config/index.js";
 import { DEFAULT_CONFIG, type McpSquaredConfig } from "../config/schema.js";
 import { Retriever } from "../retriever/index.js";
-import {
-  type CompiledPolicy,
-  compilePolicy,
-  evaluatePolicy,
-  getToolVisibilityCompiled,
-} from "../security/index.js";
-import { Cataloger, type ToolInputSchema } from "../upstream/index.js";
-import {
-  capabilitySummary as sharedCapabilitySummary,
-  capabilityTitle as sharedCapabilityTitle,
-} from "../utils/capability-meta.js";
+import { type CompiledPolicy, compilePolicy } from "../security/index.js";
+import { Cataloger } from "../upstream/index.js";
 import { VERSION } from "../version.js";
+import {
+  buildCapabilityRouters as buildServerCapabilityRouters,
+  buildServerInstructions,
+  capabilitySummary,
+  capabilityTitle,
+} from "./capability-surface.js";
+import { executeCapabilityTool } from "./capability-tool-executor.js";
+import { registerCapabilityTools } from "./capability-tool-surface.js";
 import { MonitorServer } from "./monitor-server.js";
 import {
   DEFAULT_RESPONSE_RESOURCE_CONFIG,
   ResponseResourceManager,
 } from "./response-resource.js";
+import {
+  classifyNamespacesSemantic,
+  registerRuntimeRefreshHooks,
+  startServerRuntimeCore,
+  stopServerRuntimeCore,
+} from "./runtime-lifecycle.js";
+import {
+  createSessionServer as createConfiguredSessionServer,
+  startPrimaryServerSession,
+  stopPrimaryServerSession,
+} from "./server-shell.js";
+import { registerConfiguredSessionSurface } from "./session-surface.js";
 import { type ServerStats, StatsCollector, type ToolStats } from "./stats.js";
 
 /**
@@ -76,12 +79,6 @@ export interface McpSquaredServerOptions {
   monitorSocketPath?: string;
 }
 
-const DESCRIBE_ACTION = "__describe_actions";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
  * The main MCP² server class that exposes capability routers.
  *
@@ -96,7 +93,6 @@ export class McpSquaredServer {
   private readonly cataloger: Cataloger;
   private readonly retriever: Retriever;
   private readonly config: McpSquaredConfig;
-  private transport: StdioServerTransport | null = null;
   private readonly ownsCataloger: boolean;
   private readonly selectionTracker: SelectionTracker;
   private readonly compiledPolicy: CompiledPolicy;
@@ -175,7 +171,7 @@ export class McpSquaredServer {
       DEFAULT_RESPONSE_RESOURCE_CONFIG;
     this.responseResourceManager = new ResponseResourceManager(rrConfig);
 
-    this.mcpServer = this.createMcpServer(name, version);
+    this.mcpServer = this.buildMcpServer(name, version);
 
     this.selectionTracker = new SelectionTracker();
     this.compiledPolicy = compilePolicy(this.config);
@@ -199,18 +195,11 @@ export class McpSquaredServer {
       cataloger: this.cataloger,
     });
 
-    // Hook into index refresh events to update stats and generate embeddings
-    this.indexRefreshManager.on("refresh:complete", () => {
-      this.statsCollector.updateIndexRefreshTime(Date.now());
-      // Generate embeddings for any new tools added during refresh
-      if (this.config.operations.embeddings.enabled) {
-        this.retriever.generateToolEmbeddings().catch((err) => {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error(
-            `[mcp²] Background embedding generation failed — ${message}`,
-          );
-        });
-      }
+    registerRuntimeRefreshHooks({
+      indexRefreshManager: this.indexRefreshManager,
+      statsCollector: this.statsCollector,
+      retriever: this.retriever,
+      embeddingsEnabled: this.config.operations.embeddings.enabled,
     });
   }
 
@@ -218,7 +207,7 @@ export class McpSquaredServer {
    * Creates a new MCP server instance with the configured capabilities.
    * @internal
    */
-  private createMcpServer(name: string, version: string): McpServer {
+  private buildMcpServer(name: string, version: string): McpServer {
     return new McpServer(
       {
         name,
@@ -247,12 +236,7 @@ export class McpSquaredServer {
    * and action-oriented.
    */
   private buildServerInstructions(): string {
-    return [
-      "Tool surface is generated at connect time from inferred upstream capabilities.",
-      "Each capability tool accepts `action`, `arguments`, and optional `confirmation_token`.",
-      'Call a capability tool with `action = "__describe_actions"` to inspect available actions and schemas.',
-      "Use returned action IDs for execution calls; if disambiguation is required, choose one candidate action and retry.",
-    ].join(" ");
+    return buildServerInstructions();
   }
 
   /**
@@ -260,47 +244,21 @@ export class McpSquaredServer {
    * Use this for multi-client transports (daemon mode).
    */
   createSessionServer(): McpServer {
-    const server = this.createMcpServer(this.serverName, this.serverVersion);
-    this.registerConfiguredToolSurface(server);
-    return server;
+    return createConfiguredSessionServer({
+      name: this.serverName,
+      version: this.serverVersion,
+      createMcpServer: (name, version) => this.buildMcpServer(name, version),
+      registerConfiguredSessionSurface: (server) =>
+        this.registerConfiguredSessionSurface(server),
+    });
   }
 
-  private registerConfiguredToolSurface(server: McpServer): void {
-    this.registerCapabilityRouters(server);
-    if (this.responseResourceManager.isEnabled()) {
-      this.registerResponseResources(server);
-    }
-  }
-
-  private registerResponseResources(server: McpServer): void {
-    const mgr = this.responseResourceManager;
-
-    server.registerResource(
-      "response-resources",
-      "mcp2://response/{capability}/{id}",
-      {
-        description:
-          "Temporary resources containing full tool responses that exceeded the inline size threshold.",
-        mimeType: "text/plain",
-      },
-      async (uri) => {
-        const result = mgr.readResource(uri.href);
-        if (!result) {
-          return {
-            contents: [
-              {
-                uri: uri.href,
-                mimeType: "text/plain",
-                text: JSON.stringify({
-                  error: "Resource not found or expired",
-                }),
-              },
-            ],
-          };
-        }
-        return result;
-      },
-    );
+  private registerConfiguredSessionSurface(server: McpServer): void {
+    registerConfiguredSessionSurface({
+      server,
+      registerCapabilityTools: () => this.registerCapabilityRouters(server),
+      responseResourceManager: this.responseResourceManager,
+    });
   }
 
   private runTaskSpan<T>(
@@ -320,50 +278,23 @@ export class McpSquaredServer {
   }
 
   private capabilityTitle(capability: CapabilityId): string {
-    return sharedCapabilityTitle(capability);
+    return capabilityTitle(capability);
   }
 
   private capabilitySummary(capability: CapabilityId): string {
-    return sharedCapabilitySummary(capability);
-  }
-
-  private actionSummary(
-    description: string | null | undefined,
-    capability: CapabilityId,
-  ): string {
-    if (typeof description === "string") {
-      const singleLine = description.split(/\r?\n/, 1)[0]?.trim() ?? "";
-      if (singleLine.length > 0) {
-        return singleLine;
-      }
-    }
-    return `Execute ${this.capabilityTitle(capability)} action`;
+    return capabilitySummary(capability);
   }
 
   private buildCapabilityRouters(): CapabilityRouter[] {
-    const status = this.cataloger.getStatus();
-    const inventories = [...status.entries()]
-      .filter(([, info]) => info.status === "connected")
-      .map(([namespace]) => ({
-        namespace,
-        title: this.config.upstreams[namespace]?.label ?? namespace,
-        tools: this.cataloger.getToolsForServer(namespace),
-      }))
-      .sort((a, b) => a.namespace.localeCompare(b.namespace));
-
-    if (inventories.length === 0) {
-      return [];
-    }
-
-    const overrides = {
-      ...this.computedCapabilityOverrides,
-      ...this.config.operations.dynamicToolSurface.capabilityOverrides,
-    };
-    const grouping = groupNamespacesByCapability(inventories, overrides);
-
-    return buildRouters(inventories, grouping, (desc, cap) =>
-      this.actionSummary(desc, cap),
-    );
+    return buildServerCapabilityRouters({
+      statusEntries: this.cataloger.getStatus().entries(),
+      getToolsForServer: (namespace) =>
+        this.cataloger.getToolsForServer(namespace),
+      upstreams: this.config.upstreams,
+      computedCapabilityOverrides: this.computedCapabilityOverrides,
+      configuredCapabilityOverrides:
+        this.config.operations.dynamicToolSurface.capabilityOverrides,
+    });
   }
 
   private getCapabilityRouter(capability: CapabilityId): CapabilityRouter {
@@ -378,257 +309,33 @@ export class McpSquaredServer {
   }
 
   private registerCapabilityRouters(server: McpServer): void {
-    const routers = this.buildCapabilityRouters();
-    for (const router of routers) {
-      if (router.actions.length === 0) {
-        continue;
-      }
-
-      const capability = router.capability;
-
-      server.registerTool(
+    registerCapabilityTools({
+      server,
+      routers: this.buildCapabilityRouters(),
+      getCapabilityTitle: (capability) => this.capabilityTitle(capability),
+      getCapabilitySummary: (capability) => this.capabilitySummary(capability),
+      getLiveRouter: (capability) => this.getCapabilityRouter(capability),
+      compiledPolicy: this.compiledPolicy,
+      runCapabilityTask: (capability, run) => this.runTaskSpan(capability, run),
+      onCapabilityRequestStarted: () => ({
+        requestId: this.statsCollector.startRequest(),
+        startTime: Date.now(),
+      }),
+      onCapabilityRequestFinished: ({
+        requestId,
         capability,
-        {
-          title: this.capabilityTitle(capability),
-          description: this.capabilitySummary(capability),
-          annotations: {
-            readOnlyHint: false,
-            destructiveHint: false,
-            openWorldHint: true,
-          },
-          inputSchema: {
-            action: z
-              .string()
-              .describe(
-                `Action ID for ${capability}. Use "${DESCRIBE_ACTION}" to inspect available actions and schemas.`,
-              ),
-            arguments: z
-              .record(z.string(), z.unknown())
-              .default({})
-              .describe("Arguments for the selected capability action"),
-            confirmation_token: z
-              .string()
-              .optional()
-              .describe(
-                "Optional confirmation token for actions that require explicit confirmation",
-              ),
-          },
-        },
-        async (rawArgs) =>
-          this.runTaskSpan(capability, async () => {
-            const requestId = this.statsCollector.startRequest();
-            const startTime = Date.now();
-            let success = false;
-
-            try {
-              const liveRouter = this.getCapabilityRouter(capability);
-              const parsedArgs: Record<string, unknown> = isRecord(rawArgs)
-                ? { ...rawArgs }
-                : {};
-              const action =
-                typeof parsedArgs["action"] === "string"
-                  ? parsedArgs["action"]
-                  : "";
-              const confirmationToken =
-                typeof parsedArgs["confirmation_token"] === "string"
-                  ? parsedArgs["confirmation_token"]
-                  : undefined;
-              const actionArgs = isRecord(parsedArgs["arguments"])
-                ? (parsedArgs["arguments"] as Record<string, unknown>)
-                : {};
-
-              if (action.length === 0) {
-                return {
-                  content: [
-                    {
-                      type: "text" as const,
-                      text: JSON.stringify({
-                        error: "Missing required action",
-                        capability,
-                      }),
-                    },
-                  ],
-                  isError: true,
-                };
-              }
-
-              const visibleRoutes = liveRouter.actions
-                .map((route) => {
-                  const visibility = getToolVisibilityCompiled(
-                    capability,
-                    route.action,
-                    this.compiledPolicy,
-                  );
-                  if (!visibility.visible) {
-                    return null;
-                  }
-                  return {
-                    route,
-                    requiresConfirmation: visibility.requiresConfirmation,
-                  };
-                })
-                .filter(
-                  (
-                    entry,
-                  ): entry is {
-                    route: CapabilityRouter["actions"][number];
-                    requiresConfirmation: boolean;
-                  } => entry !== null,
-                );
-
-              const visibleActions = visibleRoutes
-                .map(({ route, requiresConfirmation }) => {
-                  const actionInfo: {
-                    action: string;
-                    summary: string;
-                    inputSchema: ToolInputSchema;
-                    requiresConfirmation: boolean;
-                    baseAction?: string;
-                    instance?: string;
-                    instanceTitle?: string;
-                  } = {
-                    action: route.action,
-                    summary: route.summary,
-                    inputSchema: route.inputSchema,
-                    requiresConfirmation,
-                  };
-
-                  if ((route.collisionGroupSize ?? 1) > 1) {
-                    actionInfo.baseAction = route.baseAction;
-                    actionInfo.instance = route.instanceKey ?? route.serverKey;
-                    actionInfo.instanceTitle =
-                      route.instanceTitle ??
-                      route.instanceKey ??
-                      route.serverKey;
-                  }
-
-                  return actionInfo;
-                })
-                .sort((a, b) => a.action.localeCompare(b.action));
-
-              if (action === DESCRIBE_ACTION) {
-                success = true;
-                return {
-                  content: [
-                    {
-                      type: "text" as const,
-                      text: JSON.stringify({
-                        capability,
-                        actions: visibleActions,
-                        totalActions: visibleActions.length,
-                      }),
-                    },
-                  ],
-                };
-              }
-
-              const exactRoute = liveRouter.actions.find(
-                (entry) =>
-                  entry.action === action ||
-                  (entry.legacyActions ?? []).includes(action),
-              );
-
-              const ambiguousCandidates = visibleRoutes
-                .filter(({ route }) => route.baseAction === action)
-                .map(({ route }) => route.action)
-                .sort((a, b) => a.localeCompare(b));
-
-              if (ambiguousCandidates.length > 1) {
-                return {
-                  content: [
-                    {
-                      type: "text" as const,
-                      text: JSON.stringify({
-                        requires_disambiguation: true,
-                        capability,
-                        action,
-                        candidates: ambiguousCandidates,
-                      }),
-                    },
-                  ],
-                  isError: true,
-                };
-              }
-
-              const selectedRoute =
-                exactRoute ??
-                (ambiguousCandidates.length === 1
-                  ? visibleRoutes.find(
-                      ({ route }) => route.baseAction === action,
-                    )?.route
-                  : undefined);
-
-              if (selectedRoute == null) {
-                return {
-                  content: [
-                    {
-                      type: "text" as const,
-                      text: JSON.stringify({
-                        error: "Unknown action",
-                        capability,
-                        action,
-                        availableActions: visibleActions.map((a) => a.action),
-                      }),
-                    },
-                  ],
-                  isError: true,
-                };
-              }
-
-              const callResult = await this.executeRoutedTool({
-                capability,
-                action: selectedRoute.action,
-                policyAction:
-                  exactRoute != null ? action : selectedRoute.action,
-                routeId:
-                  selectedRoute.canonicalRouteId ??
-                  `${capability}:${selectedRoute.action}`,
-                qualifiedToolName: selectedRoute.qualifiedName,
-                toolNameForCall: selectedRoute.qualifiedName,
-                args: actionArgs,
-                ...(confirmationToken != null ? { confirmationToken } : {}),
-              });
-              success = !callResult.isError;
-              return callResult;
-            } catch {
-              return {
-                content: [
-                  {
-                    type: "text" as const,
-                    text: JSON.stringify({
-                      error: "Action execution failed",
-                    }),
-                  },
-                ],
-                isError: true,
-              };
-            } finally {
-              const responseTime = Date.now() - startTime;
-              this.statsCollector.endRequest(
-                requestId,
-                success,
-                responseTime,
-                capability,
-                "capability",
-              );
-            }
-          }),
-      );
-    }
-  }
-
-  private normalizeToolResultContent(content: unknown[]): Array<{
-    type: "text";
-    text: string;
-  }> {
-    return content.map((entry) => {
-      if (typeof entry === "object" && entry !== null && "type" in entry) {
-        return entry as { type: "text"; text: string };
-      }
-      return {
-        type: "text" as const,
-        text: JSON.stringify(entry),
-      };
+        success,
+        startTime,
+      }) => {
+        this.statsCollector.endRequest(
+          Number(requestId),
+          success,
+          Date.now() - startTime,
+          capability,
+          "capability",
+        );
+      },
+      executeRoute: (args) => this.executeRoutedTool(args),
     });
   }
 
@@ -643,105 +350,62 @@ export class McpSquaredServer {
     confirmationToken?: string;
   }): Promise<{
     content: Array<{ type: "text"; text: string }>;
-    isError: boolean;
+    isError?: boolean;
     structuredContent?: Record<string, unknown>;
   }> {
-    const policyResult = evaluatePolicy(
-      {
-        capability: args.capability,
-        action: args.policyAction ?? args.action,
-        confirmationToken: args.confirmationToken,
+    return executeCapabilityTool({
+      capability: args.capability,
+      action: args.action,
+      ...(args.policyAction === undefined
+        ? {}
+        : { policyAction: args.policyAction }),
+      ...(args.routeId === undefined ? {} : { routeId: args.routeId }),
+      toolNameForCall: args.toolNameForCall,
+      args: args.args,
+      ...(args.confirmationToken === undefined
+        ? {}
+        : { confirmationToken: args.confirmationToken }),
+      config: this.config,
+      responseResourceManager: this.responseResourceManager,
+      enforceGuard: ({ tool, action, params }) => {
+        this.guard.enforce({
+          agent: this.safetyAgent,
+          tool,
+          action,
+          params,
+        });
       },
-      this.config,
-    );
-
-    if (policyResult.decision === "block") {
-      return {
-        content: [
+      callTool: (toolNameForCall, callArgs) =>
+        tool_span(
+          this.obsSink,
           {
-            type: "text" as const,
-            text: JSON.stringify({
-              error: "Action blocked by security policy",
-              blocked: true,
-            }),
+            agent: this.safetyAgent,
+            tool: args.routeId ?? `${args.capability}:${args.action}`,
+            action: "call",
+            playbook: this.guard.playbook,
+            env: this.guard.agentEnv,
           },
-        ],
-        isError: true,
-      };
-    }
-
-    if (policyResult.decision === "confirm") {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({
-              requires_confirmation: true,
-              confirmation_token: policyResult.confirmationToken,
-              message: "Action requires confirmation by security policy",
-            }),
-          },
-        ],
-        isError: false,
-      };
-    }
-
-    this.guard.enforce({
-      agent: this.safetyAgent,
-      tool: args.routeId ?? `${args.capability}:${args.action}`,
-      action: "call",
-      params: args.args,
+          () => this.cataloger.callTool(toolNameForCall, callArgs),
+        ).then((result) => ({
+          content: result.content,
+          ...(result.isError === undefined ? {} : { isError: result.isError }),
+          ...(result.structuredContent === undefined
+            ? {}
+            : { structuredContent: result.structuredContent }),
+        })),
+      ...(this.config.operations.selectionCache.enabled
+        ? {
+            onSuccessfulSelection: (toolKey: string) => {
+              this.selectionTracker.trackToolUsage(toolKey);
+              if (this.selectionTracker.getSessionToolCount() >= 2) {
+                this.selectionTracker.flushToStore(
+                  this.retriever.getIndexStore(),
+                );
+              }
+            },
+          }
+        : {}),
     });
-
-    const result = await tool_span(
-      this.obsSink,
-      {
-        agent: this.safetyAgent,
-        tool: args.routeId ?? `${args.capability}:${args.action}`,
-        action: "call",
-        playbook: this.guard.playbook,
-        env: this.guard.agentEnv,
-      },
-      () => this.cataloger.callTool(args.toolNameForCall, args.args),
-    );
-
-    if (!result.isError && this.config.operations.selectionCache.enabled) {
-      const toolKey = args.routeId ?? `${args.capability}:${args.action}`;
-      this.selectionTracker.trackToolUsage(toolKey);
-      if (this.selectionTracker.getSessionToolCount() >= 2) {
-        this.selectionTracker.flushToStore(this.retriever.getIndexStore());
-      }
-    }
-
-    const normalizedContent = this.normalizeToolResultContent(result.content);
-    const structuredContent = result.structuredContent;
-
-    // Offload large responses to MCP Resources when enabled
-    if (
-      !result.isError &&
-      this.responseResourceManager.isEnabled() &&
-      this.responseResourceManager.shouldOffload(normalizedContent)
-    ) {
-      try {
-        const offloaded = this.responseResourceManager.offload(
-          normalizedContent,
-          { capability: args.capability, action: args.action },
-        );
-        return {
-          content: offloaded.inlineContent,
-          isError: false,
-          ...(structuredContent != null ? { structuredContent } : {}),
-        };
-      } catch {
-        // Fall through to inline response on offload failure
-      }
-    }
-
-    return {
-      content: normalizedContent,
-      isError: result.isError ?? false,
-      ...(structuredContent != null ? { structuredContent } : {}),
-    };
   }
 
   /**
@@ -782,6 +446,13 @@ export class McpSquaredServer {
   }
 
   /**
+   * Returns the active monitor socket endpoint.
+   */
+  getMonitorSocketPath(): string {
+    return this.monitorServer.getSocketPath();
+  }
+
+  /**
    * Injects a client info provider for the monitor server (daemon mode).
    */
   setMonitorClientProvider(
@@ -815,46 +486,14 @@ export class McpSquaredServer {
    * the existing capability routing system.
    */
   private async classifyNamespacesSemantic(): Promise<void> {
-    const generator = this.retriever.getEmbeddingGenerator();
-    if (!generator) {
-      console.error(
-        "[mcp²] Hybrid inference: embeddings not available, falling back to heuristic.",
-      );
-      return;
-    }
-
-    try {
-      const { SemanticCapabilityClassifier } = await import(
-        "../capabilities/semantic-classifier.js"
-      );
-      const threshold =
-        this.config.operations.dynamicToolSurface.semanticConfidenceThreshold;
-      const classifier = new SemanticCapabilityClassifier(generator, {
-        confidenceThreshold: threshold,
-      });
-      await classifier.initializeReferences();
-
-      const status = this.cataloger.getStatus();
-      const inventories = [...status.entries()]
-        .filter(([, info]) => info.status === "connected")
-        .map(([namespace]) => ({
-          namespace,
-          tools: this.cataloger.getToolsForServer(namespace),
-        }));
-
-      const result = await classifier.classifyBatch(inventories);
-      this.computedCapabilityOverrides = result.overrides;
-
-      const count = Object.keys(result.overrides).length;
-      console.error(
-        `[mcp²] Hybrid inference: classified ${count}/${inventories.length} namespaces semantically (${Math.round(result.inferenceMs)}ms).`,
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(
-        `[mcp²] Hybrid inference: classification failed — ${message}. Falling back to heuristic.`,
-      );
-    }
+    await classifyNamespacesSemantic({
+      config: this.config,
+      retriever: this.retriever,
+      cataloger: this.cataloger,
+      setComputedCapabilityOverrides: (overrides) => {
+        this.computedCapabilityOverrides = overrides;
+      },
+    });
   }
 
   /**
@@ -864,19 +503,16 @@ export class McpSquaredServer {
    * @returns Promise that resolves when the server is ready
    */
   async start(): Promise<void> {
-    await this.startCore();
+    const state = await startPrimaryServerSession({
+      startCore: () => this.startCore(),
+      baseToolsRegistered: this.baseToolsRegistered,
+      server: this.mcpServer,
+      registerConfiguredSessionSurface: (server) =>
+        this.registerConfiguredSessionSurface(server),
+      statsCollector: this.statsCollector,
+    });
 
-    if (!this.baseToolsRegistered) {
-      this.registerConfiguredToolSurface(this.mcpServer);
-      this.baseToolsRegistered = true;
-    }
-
-    // Start the MCP transport (stdio)
-    this.transport = new StdioServerTransport();
-    await this.mcpServer.connect(this.transport);
-
-    // Track active connection
-    this.statsCollector.incrementActiveConnections();
+    this.baseToolsRegistered = state.baseToolsRegistered;
   }
 
   /**
@@ -889,67 +525,17 @@ export class McpSquaredServer {
     }
     this.isCoreStarted = true;
 
-    ensureSocketDir();
-
-    // Connect to all enabled upstream servers in parallel
-    const upstreamEntries = Object.entries(this.config.upstreams);
-    const enabledUpstreams = upstreamEntries.filter(
-      ([_, upstream]) => upstream.enabled,
-    );
-
-    // Parallel connections - all upstreams connect concurrently
-    const connectionPromises = enabledUpstreams.map(async ([key, upstream]) => {
-      try {
-        await this.cataloger.connect(key, upstream);
-        return { key, success: true as const };
-      } catch {
-        // Log error but continue with other upstreams
-        // Individual upstream failures shouldn't prevent server startup
-        return { key, success: false as const };
-      }
+    await startServerRuntimeCore({
+      config: this.config,
+      cataloger: this.cataloger,
+      retriever: this.retriever,
+      statsCollector: this.statsCollector,
+      indexRefreshManager: this.indexRefreshManager,
+      monitorServer: this.monitorServer,
+      ensureSocketDir,
+      syncIndex: () => this.syncIndex(),
+      classifyNamespacesSemantic: () => this.classifyNamespacesSemantic(),
     });
-
-    await Promise.all(connectionPromises);
-
-    // Sync the tool index after connecting to upstreams
-    this.syncIndex();
-
-    // Initialize embeddings if enabled in config
-    if (this.config.operations.embeddings.enabled) {
-      try {
-        await this.retriever.initializeEmbeddings();
-        const embeddingCount = await this.retriever.generateToolEmbeddings();
-        const toolCount = this.retriever.getIndexedToolCount();
-        if (this.retriever.hasEmbeddings()) {
-          console.error(
-            `[mcp²] Embeddings: initialized (${embeddingCount}/${toolCount} tools embedded). Search modes: semantic, hybrid available.`,
-          );
-        } else {
-          console.error(
-            `[mcp²] Embeddings: enabled but runtime unavailable (onnxruntime not found). Falling back to fast (FTS5) search.`,
-          );
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(
-          `[mcp²] Embeddings: initialization failed — ${message}. Falling back to fast (FTS5) search.`,
-        );
-      }
-    }
-
-    // Run semantic classification if hybrid inference is configured
-    if (this.config.operations.dynamicToolSurface.inference === "hybrid") {
-      await this.classifyNamespacesSemantic();
-    }
-
-    // Update index refresh time
-    this.statsCollector.updateIndexRefreshTime(Date.now());
-
-    // Start background index refresh
-    this.indexRefreshManager.start();
-
-    // Start the monitor server
-    await this.monitorServer.start();
   }
 
   /**
@@ -959,13 +545,11 @@ export class McpSquaredServer {
    * @returns Promise that resolves when shutdown is complete
    */
   async stop(): Promise<void> {
-    await this.mcpServer.close();
-    this.transport = null;
-
-    // Decrement active connection
-    this.statsCollector.decrementActiveConnections();
-
-    await this.stopCore();
+    await stopPrimaryServerSession({
+      server: this.mcpServer,
+      statsCollector: this.statsCollector,
+      stopCore: () => this.stopCore(),
+    });
   }
 
   /**
@@ -979,16 +563,13 @@ export class McpSquaredServer {
     }
     this.isCoreStarted = false;
 
-    // Stop background refresh first
-    this.indexRefreshManager.stop();
-
-    // Stop the monitor server
-    await this.monitorServer.stop();
-
-    this.retriever.close();
-    if (this.ownsCataloger) {
-      await this.cataloger.disconnectAll();
-    }
+    await stopServerRuntimeCore({
+      indexRefreshManager: this.indexRefreshManager,
+      monitorServer: this.monitorServer,
+      retriever: this.retriever,
+      ownsCataloger: this.ownsCataloger,
+      cataloger: this.cataloger,
+    });
   }
 
   /**
