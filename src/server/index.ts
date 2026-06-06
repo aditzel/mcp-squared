@@ -25,6 +25,7 @@ import type { CapabilityRouter } from "../capabilities/routing.js";
 import { ensureSocketDir, getSocketFilePath } from "../config/index.js";
 import { DEFAULT_CONFIG, type McpSquaredConfig } from "../config/schema.js";
 import { Retriever } from "../retriever/index.js";
+import type { RuntimeCallContext } from "../runtime/supervisor.js";
 import { type CompiledPolicy, compilePolicy } from "../security/index.js";
 import { Cataloger } from "../upstream/index.js";
 import { VERSION } from "../version.js";
@@ -35,7 +36,10 @@ import {
   capabilityTitle,
 } from "./capability-surface.js";
 import { executeCapabilityTool } from "./capability-tool-executor.js";
-import { registerCapabilityTools } from "./capability-tool-surface.js";
+import {
+  type CapabilityToolHandlerExtra,
+  registerCapabilityTools,
+} from "./capability-tool-surface.js";
 import { MonitorServer } from "./monitor-server.js";
 import {
   DEFAULT_RESPONSE_RESOURCE_CONFIG,
@@ -77,6 +81,10 @@ export interface McpSquaredServerOptions {
   enableToolStats?: boolean;
   /** Monitor socket path override */
   monitorSocketPath?: string;
+}
+
+export interface SessionServerOptions {
+  getRuntimeCallContext?: () => RuntimeCallContext | undefined;
 }
 
 /**
@@ -243,20 +251,24 @@ export class McpSquaredServer {
    * Creates a new MCP server session bound to this runtime.
    * Use this for multi-client transports (daemon mode).
    */
-  createSessionServer(): McpServer {
+  createSessionServer(options: SessionServerOptions = {}): McpServer {
     return createConfiguredSessionServer({
       name: this.serverName,
       version: this.serverVersion,
       createMcpServer: (name, version) => this.buildMcpServer(name, version),
       registerConfiguredSessionSurface: (server) =>
-        this.registerConfiguredSessionSurface(server),
+        this.registerConfiguredSessionSurface(server, options),
     });
   }
 
-  private registerConfiguredSessionSurface(server: McpServer): void {
+  private registerConfiguredSessionSurface(
+    server: McpServer,
+    options: SessionServerOptions = {},
+  ): void {
     registerConfiguredSessionSurface({
       server,
-      registerCapabilityTools: () => this.registerCapabilityRouters(server),
+      registerCapabilityTools: () =>
+        this.registerCapabilityRouters(server, options),
       responseResourceManager: this.responseResourceManager,
     });
   }
@@ -308,7 +320,10 @@ export class McpSquaredServer {
     );
   }
 
-  private registerCapabilityRouters(server: McpServer): void {
+  private registerCapabilityRouters(
+    server: McpServer,
+    options: SessionServerOptions = {},
+  ): void {
     registerCapabilityTools({
       server,
       routers: this.buildCapabilityRouters(),
@@ -335,8 +350,29 @@ export class McpSquaredServer {
           "capability",
         );
       },
+      getRuntimeCallContext: (extra) =>
+        this.buildRuntimeCallContext(extra, options.getRuntimeCallContext?.()),
       executeRoute: (args) => this.executeRoutedTool(args),
     });
+  }
+
+  private buildRuntimeCallContext(
+    extra: CapabilityToolHandlerExtra | undefined,
+    baseContext?: RuntimeCallContext,
+  ): RuntimeCallContext | undefined {
+    const context: RuntimeCallContext = {
+      ...(baseContext ?? {}),
+    };
+
+    if (extra?.sessionId !== undefined) {
+      context.sessionId = extra.sessionId;
+    }
+
+    if (extra?.requestId !== undefined) {
+      context.requestId = String(extra.requestId);
+    }
+
+    return Object.keys(context).length > 0 ? context : undefined;
   }
 
   private async executeRoutedTool(args: {
@@ -348,6 +384,7 @@ export class McpSquaredServer {
     toolNameForCall: string;
     args: Record<string, unknown>;
     confirmationToken?: string;
+    runtimeCallContext?: RuntimeCallContext;
   }): Promise<{
     content: Array<{ type: "text"; text: string }>;
     isError?: boolean;
@@ -385,7 +422,12 @@ export class McpSquaredServer {
             playbook: this.guard.playbook,
             env: this.guard.agentEnv,
           },
-          () => this.cataloger.callTool(toolNameForCall, callArgs),
+          () =>
+            this.cataloger.callTool(
+              toolNameForCall,
+              callArgs,
+              args.runtimeCallContext,
+            ),
         ).then((result) => ({
           content: result.content,
           ...(result.isError === undefined ? {} : { isError: result.isError }),

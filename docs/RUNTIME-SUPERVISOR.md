@@ -50,7 +50,11 @@ The implementation is intentionally split:
 - `session_affine`: serialize calls only when a session or agent identity is provided; otherwise run in parallel.
 - `parallel`: do not serialize calls.
 
-Today, MCP² has reliable global stdio serialization because all no-context stdio calls default to `exclusive`. The next identity phase should pass daemon/proxy session and agent IDs into the runtime call context so `session_affine` can provide remote per-agent ordering.
+MCP² now threads session-aware identity into `RuntimeCallContext` for shared daemon/proxy sessions:
+
+- direct stdio mode still runs without session identity, so the default stdio `exclusive` policy remains globally serialized;
+- daemon/proxy sessions forward the MCP session ID plus stable proxy `clientId` as `agentId` when available;
+- remote `session_affine` upstreams now serialize only within the same session/agent while different sessions (or no-context calls) remain parallel.
 
 ## mcporter Direction
 
@@ -64,9 +68,8 @@ mcporter should not become the central runtime. That would make remote proxying,
 
 ## Remaining 0.9 Work
 
-- Add daemon/proxy session identity to `RuntimeCallContext`.
 - Introduce leases for agents that need temporary exclusive access to a singleton stdio server.
 - Persist runtime health, restart counts, and audit events for dark-factory operations.
 - Split Cataloger transport connection code into concrete runtime adapters.
 - Add mcporter-generated SDK adapter support for local stdio servers.
-- Add remote proxy middleware for auth/session affinity once request identity is available.
+- Add richer remote proxy middleware for auth/session affinity beyond the current session/client identity threading.

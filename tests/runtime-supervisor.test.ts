@@ -93,11 +93,11 @@ describe("UpstreamRuntimeSupervisor", () => {
 });
 
 describe("UpstreamCallSupervisor", () => {
-  test("serializes exclusive upstream calls", async () => {
+  test("stdio upstreams remain globally exclusive by default", async () => {
     const supervisor = new UpstreamCallSupervisor();
     const releaseFirst = deferred();
     const order: string[] = [];
-    const config = makeStdioConfig({ concurrency: "exclusive" });
+    const config = makeStdioConfig();
 
     const first = supervisor.run("local", config, async () => {
       order.push("first:start");
@@ -172,6 +172,93 @@ describe("UpstreamCallSupervisor", () => {
       "session-b:start",
       "session-a:first:end",
       "session-a:second:start",
+    ]);
+  });
+
+  test("session-affine calls serialize by agent identity when session id is absent", async () => {
+    const supervisor = new UpstreamCallSupervisor();
+    const releaseFirst = deferred();
+    const order: string[] = [];
+    const config = makeSseConfig({ concurrency: "session_affine" });
+
+    const first = supervisor.run(
+      "remote",
+      config,
+      async () => {
+        order.push("agent-a:first:start");
+        await releaseFirst.promise;
+        order.push("agent-a:first:end");
+        return "first";
+      },
+      { agentId: "agent-a" },
+    );
+    await Bun.sleep(0);
+
+    const sameAgent = supervisor.run(
+      "remote",
+      config,
+      async () => {
+        order.push("agent-a:second:start");
+        return "same-agent";
+      },
+      { agentId: "agent-a" },
+    );
+    const differentAgent = supervisor.run(
+      "remote",
+      config,
+      async () => {
+        order.push("agent-b:start");
+        return "different-agent";
+      },
+      { agentId: "agent-b" },
+    );
+    await Bun.sleep(0);
+
+    expect(order).toEqual(["agent-a:first:start", "agent-b:start"]);
+
+    releaseFirst.resolve();
+    expect(await Promise.all([first, sameAgent, differentAgent])).toEqual([
+      "first",
+      "same-agent",
+      "different-agent",
+    ]);
+    expect(order).toEqual([
+      "agent-a:first:start",
+      "agent-b:start",
+      "agent-a:first:end",
+      "agent-a:second:start",
+    ]);
+  });
+
+  test("session-affine remote calls without identity remain parallel", async () => {
+    const supervisor = new UpstreamCallSupervisor();
+    const releaseBoth = deferred();
+    const order: string[] = [];
+    const config = makeSseConfig({ concurrency: "session_affine" });
+
+    const first = supervisor.run("remote", config, async () => {
+      order.push("first:start");
+      await releaseBoth.promise;
+      order.push("first:end");
+      return "first";
+    });
+    const second = supervisor.run("remote", config, async () => {
+      order.push("second:start");
+      await releaseBoth.promise;
+      order.push("second:end");
+      return "second";
+    });
+    await Bun.sleep(0);
+
+    expect(order).toEqual(["first:start", "second:start"]);
+
+    releaseBoth.resolve();
+    expect(await Promise.all([first, second])).toEqual(["first", "second"]);
+    expect(order).toEqual([
+      "first:start",
+      "second:start",
+      "first:end",
+      "second:end",
     ]);
   });
 });

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Documented the short-term accepted OpenTUI transitive `file-type` advisory in `docs/DEPENDENCY_EXCEPTIONS.md` and tightened the dependency-maintenance/release process so temporary audit exceptions are only allowed when reviewed reachability remains low and local-only.
 - Routed cataloged upstream tool execution through the runtime call supervisor so local stdio upstreams default to exclusive singleton-safe execution while remote SSE/HTTP upstreams keep proxy-style behavior.
+- Threaded daemon/proxy session identity into `RuntimeCallContext` so remote `session_affine` upstreams serialize per session/client when identity exists, while no-context remote calls remain parallel and direct stdio behavior stays unchanged.
 
 ## [0.8.1] - 2026-03-11
 

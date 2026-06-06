@@ -338,11 +338,18 @@ export class DaemonServer {
 
   private handleConnection(socket: Socket): void {
     const sessionId = randomUUID();
-    const sessionServer = this.runtime.createSessionServer();
     const transport = new SocketServerTransport(socket);
     transport.sessionId = sessionId;
 
-    const session: DaemonSession = {
+    let session!: DaemonSession;
+    const sessionServer = this.runtime.createSessionServer({
+      getRuntimeCallContext: () => ({
+        sessionId,
+        ...(session?.clientId ? { agentId: session.clientId } : {}),
+      }),
+    });
+
+    session = {
       id: sessionId,
       authenticated: false,
       connectedAt: Date.now(),

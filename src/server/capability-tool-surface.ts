@@ -1,6 +1,12 @@
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type {
+  ServerNotification,
+  ServerRequest,
+} from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { CapabilityId } from "../capabilities/inference.js";
 import type { CapabilityRouter } from "../capabilities/routing.js";
+import type { RuntimeCallContext } from "../runtime/supervisor.js";
 import {
   type CompiledPolicy,
   getToolVisibilityCompiled,
@@ -36,12 +42,20 @@ export type CapabilityActionDescription = {
   instanceTitle?: string;
 };
 
+export type CapabilityToolHandlerExtra = Pick<
+  RequestHandlerExtra<ServerRequest, ServerNotification>,
+  "requestId" | "sessionId"
+>;
+
 type RegisterCapabilityToolsArgs = {
   server: {
     registerTool: (
       name: string,
       config: Record<string, unknown>,
-      handler: (args: unknown) => Promise<CapabilityToolResult>,
+      handler: (
+        args: unknown,
+        extra?: CapabilityToolHandlerExtra,
+      ) => Promise<CapabilityToolResult>,
     ) => void;
   };
   routers: CapabilityRouter[];
@@ -72,7 +86,11 @@ type RegisterCapabilityToolsArgs = {
     toolNameForCall: string;
     args: Record<string, unknown>;
     confirmationToken?: string;
+    runtimeCallContext?: RuntimeCallContext;
   }) => Promise<CapabilityToolResult>;
+  getRuntimeCallContext?: (
+    extra: CapabilityToolHandlerExtra | undefined,
+  ) => RuntimeCallContext | undefined;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -204,6 +222,7 @@ export function registerCapabilityTools({
   onCapabilityRequestStarted,
   onCapabilityRequestFinished,
   executeRoute,
+  getRuntimeCallContext,
 }: RegisterCapabilityToolsArgs): void {
   for (const router of routers) {
     if (router.actions.length === 0) {
@@ -218,7 +237,7 @@ export function registerCapabilityTools({
         title: getCapabilityTitle(capability),
         description: getCapabilitySummary(capability),
       }),
-      async (rawArgs) =>
+      async (rawArgs, extra) =>
         runCapabilityTask(capability, async () => {
           const { requestId, startTime } = onCapabilityRequestStarted();
           let success = false;
@@ -299,6 +318,7 @@ export function registerCapabilityTools({
               );
             }
 
+            const runtimeCallContext = getRuntimeCallContext?.(extra);
             const callResult = await executeRoute({
               capability,
               action: selectedRoute.action,
@@ -314,6 +334,11 @@ export function registerCapabilityTools({
               args: parsedRequest.arguments,
               ...(parsedRequest.confirmationToken != null
                 ? { confirmationToken: parsedRequest.confirmationToken }
+                : {}),
+              ...(runtimeCallContext
+                ? {
+                    runtimeCallContext,
+                  }
                 : {}),
             });
             success = !callResult.isError;

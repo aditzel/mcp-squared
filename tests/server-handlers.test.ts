@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { DEFAULT_CONFIG, type McpSquaredConfig } from "@/config/schema";
+import type { RuntimeCallContext } from "@/runtime/supervisor";
 import {
   clearPendingConfirmations,
   compilePolicy,
@@ -93,6 +94,7 @@ type SessionWithRegisteredTools = {
     {
       handler?: (
         args: CapabilityHandlerArgs,
+        extra?: { sessionId?: string; requestId?: string | number },
       ) => Promise<CapabilityHandlerResult>;
     }
   >;
@@ -179,11 +181,13 @@ function mockCatalogerForTools(
   callToolRequests: Array<{
     toolName: string;
     args: Record<string, unknown>;
+    context: RuntimeCallContext | undefined;
   }>;
 } {
   const callToolRequests: Array<{
     toolName: string;
     args: Record<string, unknown>;
+    context: RuntimeCallContext | undefined;
   }> = [];
   const cataloger = server.getCataloger() as unknown as {
     getStatus: () => Map<string, { status: "connected"; error: undefined }>;
@@ -196,6 +200,7 @@ function mockCatalogerForTools(
     callTool: (
       toolName: string,
       args: Record<string, unknown>,
+      context?: RuntimeCallContext,
     ) => Promise<{ content: unknown[]; isError: boolean | undefined }>;
   };
 
@@ -208,8 +213,9 @@ function mockCatalogerForTools(
   cataloger.callTool = async (
     toolName: string,
     args: Record<string, unknown>,
+    context?: RuntimeCallContext,
   ) => {
-    callToolRequests.push({ toolName, args });
+    callToolRequests.push({ toolName, args, context });
     return {
       content: [
         {
@@ -441,6 +447,56 @@ describe("execute tool policy normalization", () => {
       candidates: ["search_web__docs", "search_web__research"],
     });
     expect(callToolRequests).toEqual([]);
+  });
+
+  test("threads session and agent identity into upstream tool calls", async () => {
+    const config = createSecurityConfig({ allow: ["general:*"] });
+    server = new McpSquaredServer({ config });
+    const { callToolRequests } = mockCatalogerForTools(
+      server,
+      [["github", { status: "connected", error: undefined }]],
+      {
+        github: [
+          {
+            name: "delete_file",
+            description: "Delete file",
+            serverKey: "github",
+          },
+        ],
+      },
+    );
+
+    const session = server.createSessionServer({
+      getRuntimeCallContext: () => ({ agentId: "proxy-client-7" }),
+    }) as unknown as SessionWithRegisteredTools;
+    const execute = session._registeredTools?.["general"]?.handler;
+    if (!execute) {
+      throw new Error("general handler is not registered");
+    }
+
+    const result = await execute(
+      {
+        action: "delete_file",
+        arguments: {},
+      },
+      {
+        sessionId: "daemon-session-42",
+        requestId: "req-123",
+      },
+    );
+
+    expect(result.isError).toBe(false);
+    expect(callToolRequests).toEqual([
+      {
+        toolName: "github:delete_file",
+        args: {},
+        context: {
+          agentId: "proxy-client-7",
+          sessionId: "daemon-session-42",
+          requestId: "req-123",
+        },
+      },
+    ]);
   });
 });
 
