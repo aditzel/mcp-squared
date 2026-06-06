@@ -46,6 +46,11 @@ schemaVersion = 1
 #
 # [upstreams.example]
 # transport = "stdio"
+# Runtime policy is optional. Stdio defaults to singleton/exclusive so multiple
+# local agents share one process safely through the daemon.
+# [upstreams.example.runtime]
+# lifecycle = "singleton"
+# concurrency = "exclusive"
 # [upstreams.example.stdio]
 # command = "npx"
 # args = ["-y", "@modelcontextprotocol/server-example"]

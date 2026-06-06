@@ -17,6 +17,7 @@ import {
   loadConfigFromPath,
   type McpSquaredConfig,
   migrateConfig,
+  resolveUpstreamRuntimeDefaults,
   saveConfig,
   UnknownSchemaVersionError,
   validateConfig,
@@ -241,6 +242,30 @@ describe("ConfigSchema", () => {
     }
   });
 
+  test("resolves stdio upstream runtime defaults to singleton exclusive", () => {
+    const config = ConfigSchema.parse({
+      upstreams: {
+        local: {
+          transport: "stdio",
+          stdio: {
+            command: "mcp-server-local",
+            args: [],
+          },
+        },
+      },
+    });
+    const upstream = config.upstreams["local"];
+    expect(upstream?.transport).toBe("stdio");
+    if (upstream) {
+      expect(resolveUpstreamRuntimeDefaults(upstream)).toEqual({
+        lifecycle: "singleton",
+        concurrency: "exclusive",
+        maxPoolSize: 1,
+        restart: "on_failure",
+      });
+    }
+  });
+
   test("parses valid sse upstream", () => {
     const config = ConfigSchema.parse({
       upstreams: {
@@ -257,6 +282,77 @@ describe("ConfigSchema", () => {
     if (upstream?.transport === "sse") {
       expect(upstream.sse.url).toBe("https://example.com/mcp/sse");
     }
+  });
+
+  test("resolves sse upstream runtime defaults to proxy session affinity", () => {
+    const config = ConfigSchema.parse({
+      upstreams: {
+        remote: {
+          transport: "sse",
+          sse: {
+            url: "https://example.com/mcp/sse",
+          },
+        },
+      },
+    });
+    const upstream = config.upstreams["remote"];
+    expect(upstream?.transport).toBe("sse");
+    if (upstream) {
+      expect(resolveUpstreamRuntimeDefaults(upstream)).toEqual({
+        lifecycle: "proxy",
+        concurrency: "session_affine",
+        maxPoolSize: 1,
+        restart: "never",
+      });
+    }
+  });
+
+  test("parses explicit upstream runtime policy", () => {
+    const config = ConfigSchema.parse({
+      upstreams: {
+        worker: {
+          transport: "stdio",
+          runtime: {
+            lifecycle: "pooled",
+            concurrency: "parallel",
+            maxPoolSize: 3,
+            restart: "never",
+          },
+          stdio: {
+            command: "mcp-worker",
+            args: [],
+          },
+        },
+      },
+    });
+    const upstream = config.upstreams["worker"];
+    expect(upstream).toBeDefined();
+    if (upstream) {
+      expect(resolveUpstreamRuntimeDefaults(upstream)).toEqual({
+        lifecycle: "pooled",
+        concurrency: "parallel",
+        maxPoolSize: 3,
+        restart: "never",
+      });
+    }
+  });
+
+  test("rejects invalid upstream runtime policy", () => {
+    expect(() =>
+      ConfigSchema.parse({
+        upstreams: {
+          bad: {
+            transport: "stdio",
+            runtime: {
+              lifecycle: "daemonized",
+            },
+            stdio: {
+              command: "mcp-worker",
+            },
+          },
+        },
+      }),
+    ).toThrow();
   });
 
   test("rejects invalid upstream transport", () => {

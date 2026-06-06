@@ -15,6 +15,7 @@ graph TD
         Embeddings["Embedding Generator (Transformers.js)"]
         Executor["Executor"]
         Cataloger["Cataloger"]
+        RuntimeSupervisor["Runtime Supervisor"]
         Refresh["Index Refresh Manager"]
         Stats["Stats Collector"]
         Monitor["Monitor Server (UDS/TCP)"]
@@ -33,8 +34,9 @@ graph TD
     Router --> Security
     Security --> Executor
     Executor --> Cataloger
-    Cataloger --> S1
-    Cataloger --> S2
+    Cataloger --> RuntimeSupervisor
+    RuntimeSupervisor --> S1
+    RuntimeSupervisor --> S2
     Refresh --> Cataloger
     Refresh --> Retriever
     API --> Stats
@@ -47,7 +49,17 @@ graph TD
 2. **Connect-Time Surface Build**: At session creation, MCP² infers namespace capabilities and registers one public tool per non-empty capability (`code_search`, `docs`, etc.). Upstream identifiers stay internal. In `hybrid` inference mode, embedding-based semantic classification runs during `startCore()` and pre-computes overrides that are merged before the sync routing chain executes (user config overrides always win).
 3. **Action Introspection (`action = "__describe_actions"`)**: Each capability router returns a capability-local action catalog with summaries, input schemas, and confirmation requirements.
 4. **Execution**: Capability/action requests are checked against allow/block/confirm rules (`capability:action`). Confirm-required actions return a short-lived token bound to that capability/action. Successful executions are tracked for selection caching.
-5. **Internal Dispatch**: Router actions resolve deterministically to upstream qualified tool calls, then execute through the cataloger.
+5. **Internal Dispatch**: Router actions resolve deterministically to upstream qualified tool calls, then execute through the cataloger and runtime supervisor. The supervisor applies per-upstream lifecycle/concurrency policy before the MCP client call reaches a local stdio process or remote HTTP/SSE endpoint.
+
+## Runtime Supervision
+
+Upstream runtime policy is configured per upstream under `[upstreams.<name>.runtime]`.
+The defaults are transport-aware:
+
+- `stdio` upstreams default to `lifecycle = "singleton"` and `concurrency = "exclusive"` so a shared daemon can expose one local MCP server process to multiple agents without concurrent writes to the same stdio transport.
+- `sse`/HTTP upstreams default to `lifecycle = "proxy"` and `concurrency = "session_affine"` so MCP² can act as a policy, identity, and monitoring proxy rather than owning a local process.
+
+The first 0.9 supervisor layer separates call scheduling and retained runtime handles from the cataloger transport code. This preserves the existing capability-router contract while creating a dedicated place for future dark-factory features: agent identity, leases, audit trails, restart policy, mcporter-generated local SDK adapters, and richer remote proxy behavior.
 
 ## Indexing & Search
 

@@ -31,11 +31,64 @@ export type LogLevel = z.infer<typeof LogLevelSchema>;
 /** Schema for environment variable mappings */
 const EnvRecordSchema = z.record(z.string(), z.string()).default({});
 
+/** Runtime lifecycle policy for upstream MCP servers. */
+export const RuntimeLifecycleModeSchema = z.enum([
+  "singleton",
+  "pooled",
+  "ephemeral",
+  "proxy",
+]);
+
+/** Runtime lifecycle mode. */
+export type RuntimeLifecycleMode = z.infer<typeof RuntimeLifecycleModeSchema>;
+
+/** Runtime concurrency policy for upstream MCP server calls. */
+export const RuntimeConcurrencyModeSchema = z.enum([
+  "exclusive",
+  "shared_read",
+  "session_affine",
+  "parallel",
+]);
+
+/** Runtime concurrency mode. */
+export type RuntimeConcurrencyMode = z.infer<
+  typeof RuntimeConcurrencyModeSchema
+>;
+
+/** Restart policy for supervised upstream runtimes. */
+export const RuntimeRestartPolicySchema = z.enum(["never", "on_failure"]);
+
+/** Runtime restart policy. */
+export type RuntimeRestartPolicy = z.infer<typeof RuntimeRestartPolicySchema>;
+
+/**
+ * Optional upstream runtime policy. Defaults are resolved by transport with
+ * resolveUpstreamRuntimeDefaults() so old config files remain unchanged.
+ */
+export const UpstreamRuntimeSchema = z.object({
+  lifecycle: RuntimeLifecycleModeSchema.optional(),
+  concurrency: RuntimeConcurrencyModeSchema.optional(),
+  maxPoolSize: z.number().int().min(1).optional(),
+  restart: RuntimeRestartPolicySchema.optional(),
+});
+
+/** Optional upstream runtime policy. */
+export type UpstreamRuntimeConfig = z.infer<typeof UpstreamRuntimeSchema>;
+
+/** Effective upstream runtime policy after transport-aware defaults apply. */
+export interface EffectiveUpstreamRuntimeConfig {
+  lifecycle: RuntimeLifecycleMode;
+  concurrency: RuntimeConcurrencyMode;
+  maxPoolSize: number;
+  restart: RuntimeRestartPolicy;
+}
+
 /** Base schema for all upstream server configurations */
 const UpstreamBaseSchema = z.object({
   label: z.string().min(1).optional(),
   enabled: z.boolean().default(true),
   env: EnvRecordSchema,
+  runtime: UpstreamRuntimeSchema.optional(),
 });
 
 /** Schema for stdio transport configuration (local processes) */
@@ -102,6 +155,45 @@ export type UpstreamStdioServerConfig = z.infer<typeof UpstreamStdioSchema>;
 
 /** SSE-specific upstream server configuration */
 export type UpstreamSseServerConfig = z.infer<typeof UpstreamSseSchema>;
+
+/** Default runtime policy for local stdio upstream servers. */
+export const DEFAULT_STDIO_RUNTIME_CONFIG: EffectiveUpstreamRuntimeConfig = {
+  lifecycle: "singleton",
+  concurrency: "exclusive",
+  maxPoolSize: 1,
+  restart: "on_failure",
+};
+
+/** Default runtime policy for remote HTTP/SSE upstream servers. */
+export const DEFAULT_SSE_RUNTIME_CONFIG: EffectiveUpstreamRuntimeConfig = {
+  lifecycle: "proxy",
+  concurrency: "session_affine",
+  maxPoolSize: 1,
+  restart: "never",
+};
+
+/**
+ * Resolves the effective runtime policy for an upstream server.
+ *
+ * Stdio/local servers default to a singleton runtime with exclusive call
+ * scheduling. Remote SSE/HTTP servers default to proxy lifecycle with
+ * session-affine scheduling.
+ */
+export function resolveUpstreamRuntimeDefaults(
+  config: UpstreamServerConfig,
+): EffectiveUpstreamRuntimeConfig {
+  const defaults =
+    config.transport === "stdio"
+      ? DEFAULT_STDIO_RUNTIME_CONFIG
+      : DEFAULT_SSE_RUNTIME_CONFIG;
+
+  return {
+    lifecycle: config.runtime?.lifecycle ?? defaults.lifecycle,
+    concurrency: config.runtime?.concurrency ?? defaults.concurrency,
+    maxPoolSize: config.runtime?.maxPoolSize ?? defaults.maxPoolSize,
+    restart: config.runtime?.restart ?? defaults.restart,
+  };
+}
 
 /**
  * Schema for tool security policies (allow/block/confirm lists).

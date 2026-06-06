@@ -1,10 +1,11 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import {
   DEFAULT_CONFIG,
   type McpSquaredConfig,
   type UpstreamSseServerConfig,
 } from "../src/config/schema.js";
+import { UpstreamCallSupervisor } from "../src/runtime/supervisor.js";
 import {
   Cataloger,
   isAuthError,
@@ -196,6 +197,61 @@ describe("Cataloger", () => {
       await expect(cataloger.callTool("nonexistent", {})).rejects.toThrow(
         "Tool not found: nonexistent",
       );
+    });
+
+    test("routes upstream tool calls through the runtime call supervisor", async () => {
+      const callSupervisor = new UpstreamCallSupervisor();
+      const runSpy = spyOn(callSupervisor, "run");
+      const cataloger = new Cataloger({ callSupervisor });
+      const internals = cataloger as unknown as CatalogerAccess;
+      const callToolMock = mock(async () => ({
+        content: [{ type: "text", text: "ok" }],
+        isError: false,
+      }));
+
+      internals.connections.set("local", {
+        key: "local",
+        config: {
+          transport: "stdio",
+          enabled: true,
+          env: {},
+          runtime: { concurrency: "exclusive" },
+          stdio: {
+            command: "mcp-server-local",
+            args: [],
+          },
+        },
+        status: "connected",
+        error: undefined,
+        serverName: "local",
+        serverVersion: "1.0.0",
+        tools: [
+          {
+            name: "echo",
+            description: "Echo input",
+            inputSchema: { type: "object" },
+            serverKey: "local",
+          },
+        ],
+        client: {
+          callTool: callToolMock,
+        } as unknown as NonNullable<ServerConnection["client"]>,
+        transport: null,
+        authProvider: null,
+        authPending: false,
+        authStateVersion: 0,
+      });
+
+      await expect(
+        cataloger.callTool("local:echo", { value: 1 }),
+      ).resolves.toEqual({
+        content: [{ type: "text", text: "ok" }],
+        isError: false,
+      });
+
+      expect(runSpy).toHaveBeenCalledTimes(1);
+      expect(runSpy.mock.calls[0]?.[0]).toBe("local");
+      expect(callToolMock).toHaveBeenCalledTimes(1);
     });
   });
 
