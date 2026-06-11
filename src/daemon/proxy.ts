@@ -35,6 +35,8 @@ export interface ProxyBridgeOptions extends ProxyOptions {
   heartbeatIntervalMs?: number;
   debug?: boolean;
   spawnDaemon?: (sharedSecret?: string) => void;
+  /** Explicit client name override. When provided, bypasses MCP_CLIENT_NAME env var. */
+  clientName?: string;
 }
 
 export interface ProxyBridge {
@@ -126,6 +128,7 @@ export async function createProxyBridge(
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   const debug = options.debug ?? process.env["MCP_SQUARED_PROXY_DEBUG"] === "1";
   const launcherHint =
+    options.clientName ??
     process.env["MCP_SQUARED_LAUNCHER"] ??
     process.env["MCP_CLIENT_NAME"] ??
     process.env["MCP_SQUARED_AGENT"];

@@ -557,21 +557,21 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         }
       };
 
-      process.env["MCP_CLIENT_NAME"] = "proxy-concurrent-recovery-1";
       const firstBridge = await createProxyBridge({
         stdioTransport: firstProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-concurrent-recovery-1",
       });
-      process.env["MCP_CLIENT_NAME"] = "proxy-concurrent-recovery-2";
       const secondBridge = await createProxyBridge({
         stdioTransport: secondProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-concurrent-recovery-2",
       });
 
       try {
@@ -651,29 +651,29 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         }
       };
 
-      process.env["MCP_CLIENT_NAME"] = "proxy-three-client-recovery-1";
       const firstBridge = await createProxyBridge({
         stdioTransport: firstProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-three-client-recovery-1",
       });
-      process.env["MCP_CLIENT_NAME"] = "proxy-three-client-recovery-2";
       const secondBridge = await createProxyBridge({
         stdioTransport: secondProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-three-client-recovery-2",
       });
-      process.env["MCP_CLIENT_NAME"] = "proxy-three-client-recovery-3";
       const thirdBridge = await createProxyBridge({
         stdioTransport: thirdProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-three-client-recovery-3",
       });
 
       try {
@@ -759,29 +759,29 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         }
       };
 
-      process.env["MCP_CLIENT_NAME"] = "proxy-monitor-recovery-1";
       const firstBridge = await createProxyBridge({
         stdioTransport: firstProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-monitor-recovery-1",
       });
-      process.env["MCP_CLIENT_NAME"] = "proxy-monitor-recovery-2";
       const secondBridge = await createProxyBridge({
         stdioTransport: secondProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-monitor-recovery-2",
       });
-      process.env["MCP_CLIENT_NAME"] = "proxy-monitor-recovery-3";
       const thirdBridge = await createProxyBridge({
         stdioTransport: thirdProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-monitor-recovery-3",
       });
 
       try {
@@ -916,29 +916,29 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         }
       };
 
-      process.env["MCP_CLIENT_NAME"] = "proxy-config-recovery-1";
       const firstBridge = await createProxyBridge({
         stdioTransport: firstProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-config-recovery-1",
       });
-      process.env["MCP_CLIENT_NAME"] = "proxy-config-recovery-2";
       const secondBridge = await createProxyBridge({
         stdioTransport: secondProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-config-recovery-2",
       });
-      process.env["MCP_CLIENT_NAME"] = "proxy-config-recovery-3";
       const thirdBridge = await createProxyBridge({
         stdioTransport: thirdProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-config-recovery-3",
       });
 
       try {
@@ -1087,29 +1087,29 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         }
       };
 
-      process.env["MCP_CLIENT_NAME"] = "proxy-stale-registry-recovery-1";
       const firstBridge = await createProxyBridge({
         stdioTransport: firstProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-stale-registry-recovery-1",
       });
-      process.env["MCP_CLIENT_NAME"] = "proxy-stale-registry-recovery-2";
       const secondBridge = await createProxyBridge({
         stdioTransport: secondProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-stale-registry-recovery-2",
       });
-      process.env["MCP_CLIENT_NAME"] = "proxy-stale-registry-recovery-3";
       const thirdBridge = await createProxyBridge({
         stdioTransport: thirdProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-stale-registry-recovery-3",
       });
 
       try {
@@ -1277,29 +1277,29 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         }
       };
 
-      process.env["MCP_CLIENT_NAME"] = "proxy-convergence-recovery-1";
       const firstBridge = await createProxyBridge({
         stdioTransport: firstProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-convergence-recovery-1",
       });
-      process.env["MCP_CLIENT_NAME"] = "proxy-convergence-recovery-2";
       const secondBridge = await createProxyBridge({
         stdioTransport: secondProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-convergence-recovery-2",
       });
-      process.env["MCP_CLIENT_NAME"] = "proxy-convergence-recovery-3";
       const thirdBridge = await createProxyBridge({
         stdioTransport: thirdProxyTransport,
         endpoint: firstDaemon.getSocketPath(),
         configHash,
         heartbeatIntervalMs: 50,
         spawnDaemon: spawnReplacementDaemon,
+        clientName: "proxy-convergence-recovery-3",
       });
 
       try {
