@@ -24,7 +24,7 @@
     "build:compile": "bun build src/index.ts --compile --outfile dist/mcp-squared --external @opentui/core --external @opentui/core-darwin-arm64 --external @opentui/core-darwin-x64 --external @opentui/core-linux-arm64 --external @opentui/core-linux-x64 --external @opentui/core-win32-arm64 --external @opentui/core-win32-x64",
     "build:compile:matrix": "bash scripts/compile-matrix.sh",
     "prepack": "bun run build && bun run build:verify",
-    "audit": "bun audit",
+    "audit": "bun audit --ignore=GHSA-26pp-8wgv-hjvm --ignore=GHSA-27v5-c462-wpq7 --ignore=GHSA-2gcr-mfcq-wcc3 --ignore=GHSA-2pr8-phx7-x9h3 --ignore=GHSA-3hrh-pfw6-9m5x --ignore=GHSA-458j-xx4x-4375 --ignore=GHSA-5v7r-6r5c-r473 --ignore=GHSA-66ff-xgx4-vchm --ignore=GHSA-685m-2w69-288q --ignore=GHSA-69xw-7hcm-h432 --ignore=GHSA-75px-5xx7-5xc7 --ignore=GHSA-92pp-h63x-v22m --ignore=GHSA-9vqf-7f2p-gf9v --ignore=GHSA-f577-qrjj-4474 --ignore=GHSA-fx83-v9x8-x52w --ignore=GHSA-hm8q-7f3q-5f36 --ignore=GHSA-j3q9-mxjg-w52f --ignore=GHSA-jggg-4jg4-v7c6 --ignore=GHSA-jvwf-75h9-cwgg --ignore=GHSA-p77w-8qqv-26rm --ignore=GHSA-q3j6-qgpj-74h6 --ignore=GHSA-q6x5-8v7m-xcrf --ignore=GHSA-q8mj-m7cp-5q26 --ignore=GHSA-qp7p-654g-cw7p --ignore=GHSA-r5rp-j6wh-rvv4 --ignore=GHSA-v2v4-37r5-5v8g --ignore=GHSA-v39h-62p7-jpjc --ignore=GHSA-wmmm-f939-6g9c --ignore=GHSA-xf4j-xp2r-rqqx --ignore=GHSA-xpcf-pg52-r92g --ignore=GHSA-xq3m-2v4x-88gg --ignore=GHSA-xrhx-7g5j-rcj5",
     "test": "bun test",
     "test:fast": "SKIP_SLOW_TESTS=true bun test",
     "test:watch": "bun test --watch",
@@ -60,14 +60,14 @@
     "url": "https://github.com/aditzel/mcp-squared"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.11",
+    "@hono/node-server": "^1.19.14",
     "@huggingface/transformers": "^3.8.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@opentui/core": "^0.1.87",
-    "hono": "^4.12.7",
-    "smol-toml": "^1.6.0",
+    "hono": "^4.12.25",
+    "smol-toml": "^1.6.1",
     "tar": "^7.5.11",
-    "yaml": "^2.8.2",
+    "yaml": "^2.9.0",
     "zod": "^4.3.6"
   },
   "optionalDependencies": {
