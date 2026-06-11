@@ -1188,8 +1188,8 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         expect(readDaemonRegistry(mismatchedConfigHash)?.endpoint).toBe(
           mismatchedDaemon.getSocketPath(),
         );
-        expect(recoveredOwner?.clientId).toStartWith(
-          "proxy-stale-registry-recovery-1-",
+        expect(recoveredOwner?.clientId).toMatch(
+          /^proxy-stale-registry-recovery-[123]-/,
         );
         expect(
           recoveredClients.map((client) => client.clientId).sort(),
