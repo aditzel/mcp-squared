@@ -55,6 +55,23 @@ export type RuntimeConcurrencyMode = z.infer<
   typeof RuntimeConcurrencyModeSchema
 >;
 
+/** Agent lease configuration for exclusive upstream access. */
+export const RuntimeLeaseSchema = z.object({
+  /** Enable agent leases for this upstream (default: false). */
+  enabled: z.boolean().default(false),
+  /** Maximum lease duration in milliseconds (default: 300000 = 5 minutes). */
+  maxDurationMs: z.number().int().min(1000).default(300_000),
+});
+
+/** Agent lease configuration type. */
+export type RuntimeLeaseConfig = z.infer<typeof RuntimeLeaseSchema>;
+
+/** Effective lease configuration after defaults. */
+export interface EffectiveRuntimeLeaseConfig {
+  enabled: boolean;
+  maxDurationMs: number;
+}
+
 /** Restart policy for supervised upstream runtimes. */
 export const RuntimeRestartPolicySchema = z.enum(["never", "on_failure"]);
 
@@ -70,6 +87,7 @@ export const UpstreamRuntimeSchema = z.object({
   concurrency: RuntimeConcurrencyModeSchema.optional(),
   maxPoolSize: z.number().int().min(1).optional(),
   restart: RuntimeRestartPolicySchema.optional(),
+  lease: RuntimeLeaseSchema.optional(),
 });
 
 /** Optional upstream runtime policy. */
@@ -81,6 +99,7 @@ export interface EffectiveUpstreamRuntimeConfig {
   concurrency: RuntimeConcurrencyMode;
   maxPoolSize: number;
   restart: RuntimeRestartPolicy;
+  lease: EffectiveRuntimeLeaseConfig;
 }
 
 /** Base schema for all upstream server configurations */
@@ -156,12 +175,19 @@ export type UpstreamStdioServerConfig = z.infer<typeof UpstreamStdioSchema>;
 /** SSE-specific upstream server configuration */
 export type UpstreamSseServerConfig = z.infer<typeof UpstreamSseSchema>;
 
+/** Default lease configuration (disabled). */
+export const DEFAULT_LEASE_CONFIG: EffectiveRuntimeLeaseConfig = {
+  enabled: false,
+  maxDurationMs: 300_000,
+};
+
 /** Default runtime policy for local stdio upstream servers. */
 export const DEFAULT_STDIO_RUNTIME_CONFIG: EffectiveUpstreamRuntimeConfig = {
   lifecycle: "singleton",
   concurrency: "exclusive",
   maxPoolSize: 1,
   restart: "on_failure",
+  lease: DEFAULT_LEASE_CONFIG,
 };
 
 /** Default runtime policy for remote HTTP/SSE upstream servers. */
@@ -170,6 +196,7 @@ export const DEFAULT_SSE_RUNTIME_CONFIG: EffectiveUpstreamRuntimeConfig = {
   concurrency: "session_affine",
   maxPoolSize: 1,
   restart: "never",
+  lease: DEFAULT_LEASE_CONFIG,
 };
 
 /**
@@ -192,6 +219,11 @@ export function resolveUpstreamRuntimeDefaults(
     concurrency: config.runtime?.concurrency ?? defaults.concurrency,
     maxPoolSize: config.runtime?.maxPoolSize ?? defaults.maxPoolSize,
     restart: config.runtime?.restart ?? defaults.restart,
+    lease: {
+      enabled: config.runtime?.lease?.enabled ?? defaults.lease.enabled,
+      maxDurationMs:
+        config.runtime?.lease?.maxDurationMs ?? defaults.lease.maxDurationMs,
+    },
   };
 }
 
@@ -400,6 +432,20 @@ export const SelectionCacheSchema = z.object({
 export type SelectionCacheConfig = z.infer<typeof SelectionCacheSchema>;
 
 /**
+ * Schema for health tracking and audit event configuration.
+ * Controls upstream health persistence and audit event logging.
+ */
+export const HealthTrackingSchema = z.object({
+  /** Enable health tracking and audit event persistence (default: false) */
+  enabled: z.boolean().default(false),
+  /** Maximum number of audit events to retain (default: 1000) */
+  maxAuditEvents: z.number().int().min(100).default(1000),
+});
+
+/** Health tracking configuration type */
+export type HealthTrackingConfig = z.infer<typeof HealthTrackingSchema>;
+
+/**
  * Schema for operations configuration section.
  * Contains settings for retrieval, indexing, logging, and selection caching.
  */
@@ -435,6 +481,10 @@ export const OperationsSchema = z
       defaultAdapter: "mcp2",
       adapters: {},
     }),
+    healthTracking: HealthTrackingSchema.default({
+      enabled: false,
+      maxAuditEvents: 1000,
+    }),
   })
   .default({
     findTools: {
@@ -464,6 +514,10 @@ export const OperationsSchema = z
       enabled: false,
       defaultAdapter: "mcp2",
       adapters: {},
+    },
+    healthTracking: {
+      enabled: false,
+      maxAuditEvents: 1000,
     },
   });
 

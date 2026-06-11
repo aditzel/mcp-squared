@@ -262,6 +262,7 @@ describe("ConfigSchema", () => {
         concurrency: "exclusive",
         maxPoolSize: 1,
         restart: "on_failure",
+        lease: { enabled: false, maxDurationMs: 300_000 },
       });
     }
   });
@@ -303,6 +304,7 @@ describe("ConfigSchema", () => {
         concurrency: "session_affine",
         maxPoolSize: 1,
         restart: "never",
+        lease: { enabled: false, maxDurationMs: 300_000 },
       });
     }
   });
@@ -333,6 +335,7 @@ describe("ConfigSchema", () => {
         concurrency: "parallel",
         maxPoolSize: 3,
         restart: "never",
+        lease: { enabled: false, maxDurationMs: 300_000 },
       });
     }
   });

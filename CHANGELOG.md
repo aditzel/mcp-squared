@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added the 0.9 runtime-supervisor foundation: optional per-upstream runtime policy, transport-aware stdio/SSE defaults, singleton/proxy runtime-handle supervision, and serialized upstream call scheduling.
 - Added verbose status output for effective upstream lifecycle/concurrency policy plus `docs/RUNTIME-SUPERVISOR.md` to capture the dark-factory and multi-agent runtime direction.
+- Added agent lease system (`AgentLeaseManager`) for temporary exclusive access to singleton stdio servers, with configurable TTL and automatic expiry.
+- Added lease-aware call supervision so non-holder calls queue until lease release or expiry.
+- Added `runtime.lease` config option per-upstream to enable agent leases with configurable `maxDurationMs`.
+- Added runtime health tracking (`HealthTracker`) for upstream health state, restart counts, and audit events with optional JSON persistence.
+- Added `operations.healthTracking` config option to enable/disable health persistence and audit event logging.
+- Added `getDataDir()` and `ensureDataDir()` to config paths for persistent data storage.
+- Added runtime adapter system (`UpstreamAdapter` interface) with built-in `stdioAdapter` and `sseAdapter` for transport-specific logic.
+- Added adapter registry for registering custom adapters and selecting the appropriate one based on transport type.
+- Added mcporter SDK adapter factory for wrapping generated typed SDKs with MCP² policy and audit.
+- Added proxy middleware system (`ProxyMiddleware`) with built-in session affinity, request logging, retry with exponential backoff, and auth injection middlewares.
 
 ### Changed
 - Documented the short-term accepted OpenTUI transitive `file-type` advisory in `docs/DEPENDENCY_EXCEPTIONS.md` and tightened the dependency-maintenance/release process so temporary audit exceptions are only allowed when reviewed reachability remains low and local-only.

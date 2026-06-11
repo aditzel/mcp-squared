@@ -19,6 +19,7 @@ const SOCKET_FILENAME = "mcp-squared.sock";
 const INSTANCE_DIR_NAME = "instances";
 const SOCKET_DIR_NAME = "sockets";
 const DAEMON_DIR_NAME = "daemon";
+const DATA_DIR_NAME = "data";
 const DAEMON_REGISTRY_FILENAME = "daemon.json";
 const DAEMON_SOCKET_FILENAME = "daemon.sock";
 
@@ -164,6 +165,15 @@ export function getSocketDir(): string {
 }
 
 /**
+ * Gets the directory used for persistent data (health, audit events).
+ *
+ * @returns Path to the data directory
+ */
+export function getDataDir(): string {
+  return join(getUserConfigDir(), DATA_DIR_NAME);
+}
+
+/**
  * Ensures the instance registry directory exists.
  */
 export function ensureInstanceRegistryDir(): void {
@@ -175,6 +185,16 @@ export function ensureInstanceRegistryDir(): void {
  */
 export function ensureSocketDir(): void {
   ensureDir(getSocketDir());
+}
+
+/**
+ * Ensures the data directory exists.
+ */
+export function ensureDataDir(): void {
+  const dataDir = getDataDir();
+  if (!existsSync(dataDir)) {
+    mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  }
 }
 
 /**

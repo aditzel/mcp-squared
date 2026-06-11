@@ -13,6 +13,8 @@ import {
   resolveUpstreamRuntimeDefaults,
   type UpstreamServerConfig,
 } from "../config/schema.js";
+import type { AgentLeaseManager } from "./agent-lease.js";
+import type { HealthTracker } from "./health-tracker.js";
 
 /** Runtime call identity supplied by daemon/proxy/session-aware callers. */
 export interface RuntimeCallContext {
@@ -36,12 +38,27 @@ export interface RuntimeCallRunner {
   ): Promise<T>;
 }
 
+/** Options for constructing an UpstreamCallSupervisor. */
+export interface UpstreamCallSupervisorOptions {
+  /** Optional agent lease manager for exclusive access control. */
+  leaseManager?: AgentLeaseManager;
+  /** Optional health tracker for audit events and metrics. */
+  healthTracker?: HealthTracker;
+}
+
 /**
  * Serializes or parallelizes calls for an upstream according to effective
  * runtime policy.
  */
 export class UpstreamCallSupervisor implements RuntimeCallRunner {
   private readonly queues = new Map<string, Promise<unknown>>();
+  private readonly leaseManager: AgentLeaseManager | undefined;
+  private readonly healthTracker: HealthTracker | undefined;
+
+  constructor(options: UpstreamCallSupervisorOptions = {}) {
+    this.leaseManager = options.leaseManager;
+    this.healthTracker = options.healthTracker;
+  }
 
   async run<T>(
     upstreamKey: string,
@@ -51,11 +68,16 @@ export class UpstreamCallSupervisor implements RuntimeCallRunner {
   ): Promise<T> {
     const runtime = resolveUpstreamRuntimeDefaults(config);
     const lockKey = this.getLockKey(upstreamKey, runtime, context);
-    if (!lockKey) {
-      return operation();
+
+    if (this.leaseManager && context.agentId) {
+      return this.runLeaseAware(lockKey, upstreamKey, operation, context);
     }
 
-    return this.runLocked(lockKey, operation);
+    if (!lockKey) {
+      return this.runWithTracking(upstreamKey, operation, context);
+    }
+
+    return this.runLocked(lockKey, operation, upstreamKey, context);
   }
 
   private getLockKey(
@@ -80,9 +102,14 @@ export class UpstreamCallSupervisor implements RuntimeCallRunner {
   private runLocked<T>(
     lockKey: string,
     operation: () => Promise<T> | T,
+    upstreamKey?: string,
+    context?: RuntimeCallContext,
   ): Promise<T> {
+    const wrappedOp = upstreamKey
+      ? () => this.runWithTracking(upstreamKey, operation, context)
+      : operation;
     const previous = this.queues.get(lockKey) ?? Promise.resolve();
-    const current = previous.catch(() => undefined).then(operation);
+    const current = previous.catch(() => undefined).then(wrappedOp);
 
     let cleanup: Promise<unknown>;
     cleanup = current.finally(() => {
@@ -93,6 +120,95 @@ export class UpstreamCallSupervisor implements RuntimeCallRunner {
     this.queues.set(lockKey, cleanup);
 
     return current;
+  }
+
+  /**
+   * Wraps an operation with health tracking. Records tool call duration
+   * and errors for audit purposes.
+   */
+  private async runWithTracking<T>(
+    upstreamKey: string,
+    operation: () => Promise<T> | T,
+    context?: RuntimeCallContext,
+  ): Promise<T> {
+    if (!this.healthTracker) {
+      return operation();
+    }
+
+    const start = Date.now();
+    try {
+      const result = await operation();
+      const durationMs = Date.now() - start;
+      this.healthTracker.recordToolCall(upstreamKey, durationMs, {
+        ...(context?.agentId != null ? { agentId: context.agentId } : {}),
+        ...(context?.sessionId != null ? { sessionId: context.sessionId } : {}),
+        ...(context?.requestId != null ? { requestId: context.requestId } : {}),
+      });
+      return result;
+    } catch (error) {
+      const durationMs = Date.now() - start;
+      const message = error instanceof Error ? error.message : String(error);
+      this.healthTracker.recordToolError(upstreamKey, message, durationMs, {
+        ...(context?.agentId != null ? { agentId: context.agentId } : {}),
+        ...(context?.sessionId != null ? { sessionId: context.sessionId } : {}),
+        ...(context?.requestId != null ? { requestId: context.requestId } : {}),
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Runs an operation with lease awareness. If the upstream is leased by
+   * another agent, the call waits for the lease to be released before
+   * proceeding with normal lock-based serialization.
+   */
+  private async runLeaseAware<T>(
+    lockKey: string | null,
+    upstreamKey: string,
+    operation: () => Promise<T> | T,
+    context: RuntimeCallContext,
+  ): Promise<T> {
+    if (!this.leaseManager) {
+      return lockKey
+        ? this.runLocked(lockKey, operation, upstreamKey, context)
+        : this.runWithTracking(upstreamKey, operation, context);
+    }
+
+    const agentId = context.agentId ?? "";
+    const isLeaseHolder = this.leaseManager.isLeaseHolder(upstreamKey, agentId);
+
+    if (!isLeaseHolder && this.leaseManager.isLeased(upstreamKey)) {
+      await this.waitForLeaseRelease(upstreamKey, agentId);
+    }
+
+    if (!lockKey) {
+      return this.runWithTracking(upstreamKey, operation, context);
+    }
+
+    return this.runLocked(lockKey, operation, upstreamKey, context);
+  }
+
+  /**
+   * Waits for a lease to be released on an upstream, polling periodically.
+   * The lease manager's TTL provides automatic expiry, so this will unblock.
+   */
+  private waitForLeaseRelease(
+    upstreamKey: string,
+    requestAgentId: string,
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      const check = () => {
+        if (
+          !this.leaseManager?.isLeased(upstreamKey) ||
+          this.leaseManager.isLeaseHolder(upstreamKey, requestAgentId)
+        ) {
+          resolve();
+        } else {
+          setTimeout(check, 10);
+        }
+      };
+      check();
+    });
   }
 }
 

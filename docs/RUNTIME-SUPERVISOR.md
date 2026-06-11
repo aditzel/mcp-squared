@@ -68,8 +68,8 @@ mcporter should not become the central runtime. That would make remote proxying,
 
 ## Remaining 0.9 Work
 
-- Introduce leases for agents that need temporary exclusive access to a singleton stdio server.
-- Persist runtime health, restart counts, and audit events for dark-factory operations.
-- Split Cataloger transport connection code into concrete runtime adapters.
-- Add mcporter-generated SDK adapter support for local stdio servers.
-- Add richer remote proxy middleware for auth/session affinity beyond the current session/client identity threading.
+- ~~Introduce leases for agents that need temporary exclusive access to a singleton stdio server.~~ **Done** — see `src/runtime/agent-lease.ts` and `AgentLeaseManager`.
+- ~~Persist runtime health, restart counts, and audit events for dark-factory operations.~~ **Done** — see `src/runtime/health-tracker.ts` and `HealthTracker`.
+- ~~Split Cataloger transport connection code into concrete runtime adapters.~~ **Done** — see `src/upstream/adapter.ts`, `src/upstream/adapters/stdio.ts`, `src/upstream/adapters/sse.ts`, and `src/upstream/adapter-registry.ts`.
+- ~~Add mcporter-generated SDK adapter support for local stdio servers.~~ **Done** — see `src/upstream/adapters/mcporter.ts`.
+- ~~Add richer remote proxy middleware for auth/session affinity beyond the current session/client identity threading.~~ **Done** — see `src/upstream/proxy-middleware.ts`.

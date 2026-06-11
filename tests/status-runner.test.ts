@@ -69,6 +69,7 @@ describe("formatStatus", () => {
             concurrency: "exclusive",
             maxPoolSize: 1,
             restart: "on_failure",
+            lease: { enabled: false, maxDurationMs: 300_000 },
           },
         }),
       ],
