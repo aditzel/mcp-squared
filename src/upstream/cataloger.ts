@@ -22,6 +22,11 @@ import type {
   UpstreamStdioServerConfig,
 } from "../config/schema.js";
 import { McpOAuthProvider, TokenStorage } from "../oauth/index.js";
+import {
+  type RuntimeCallContext,
+  type RuntimeCallRunner,
+  UpstreamCallSupervisor,
+} from "../runtime/supervisor.js";
 import { sanitizeDescription } from "../security/index.js";
 import {
   formatQualifiedName,
@@ -144,6 +149,8 @@ export interface ServerConnection {
 export interface CatalogerOptions {
   /** Connection timeout in milliseconds (default: 30000) */
   connectTimeoutMs?: number;
+  /** Runtime call scheduler (testing/advanced integrations only) */
+  callSupervisor?: RuntimeCallRunner;
 }
 
 /**
@@ -194,6 +201,7 @@ function resolveEnvVars(env: Record<string, string>): Record<string, string> {
 export class Cataloger {
   private readonly connections = new Map<string, ServerConnection>();
   private readonly connectTimeoutMs: number;
+  private readonly callSupervisor: RuntimeCallRunner;
 
   /**
    * Creates a new Cataloger instance.
@@ -203,6 +211,8 @@ export class Cataloger {
    */
   constructor(options: CatalogerOptions = {}) {
     this.connectTimeoutMs = options.connectTimeoutMs ?? 30_000;
+    this.callSupervisor =
+      options.callSupervisor ?? new UpstreamCallSupervisor();
   }
 
   /**
@@ -603,6 +613,7 @@ export class Cataloger {
   async callTool(
     toolName: string,
     args: Record<string, unknown>,
+    context?: RuntimeCallContext,
   ): Promise<{
     content: unknown[];
     isError: boolean | undefined;
@@ -621,7 +632,8 @@ export class Cataloger {
     }
 
     const connection = this.connections.get(result.tool.serverKey);
-    if (!connection?.client || connection.status !== "connected") {
+    const client = connection?.client;
+    if (!connection || !client || connection.status !== "connected") {
       throw new Error(`Server not connected: ${result.tool.serverKey}`);
     }
 
@@ -629,10 +641,16 @@ export class Cataloger {
     const parsed = parseQualifiedName(toolName);
     const bareToolName = parsed.toolName;
 
-    const callResult = await connection.client.callTool({
-      name: bareToolName,
-      arguments: args,
-    });
+    const callResult = await this.callSupervisor.run(
+      connection.key,
+      connection.config,
+      () =>
+        client.callTool({
+          name: bareToolName,
+          arguments: args,
+        }),
+      context,
+    );
 
     const response: {
       content: unknown[];

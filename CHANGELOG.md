@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added the 0.9 runtime-supervisor foundation: optional per-upstream runtime policy, transport-aware stdio/SSE defaults, singleton/proxy runtime-handle supervision, and serialized upstream call scheduling.
+- Added verbose status output for effective upstream lifecycle/concurrency policy plus `docs/RUNTIME-SUPERVISOR.md` to capture the dark-factory and multi-agent runtime direction.
+
 ### Changed
 - Documented the short-term accepted OpenTUI transitive `file-type` advisory in `docs/DEPENDENCY_EXCEPTIONS.md` and tightened the dependency-maintenance/release process so temporary audit exceptions are only allowed when reviewed reachability remains low and local-only.
+- Routed cataloged upstream tool execution through the runtime call supervisor so local stdio upstreams default to exclusive singleton-safe execution while remote SSE/HTTP upstreams keep proxy-style behavior.
 
 ## [0.8.1] - 2026-03-11
 

@@ -21,9 +21,11 @@ import {
   type CapabilityRouter,
 } from "../capabilities/routing.js";
 import {
+  type EffectiveUpstreamRuntimeConfig,
   formatValidationIssues,
   loadConfig,
   type McpSquaredConfig,
+  resolveUpstreamRuntimeDefaults,
   validateConfig,
 } from "../config/index.js";
 import type { ConnectionStatus } from "../upstream/cataloger.js";
@@ -48,6 +50,7 @@ export interface UpstreamStatus {
   toolCount: number;
   serverName?: string | undefined;
   serverVersion?: string | undefined;
+  runtime?: EffectiveUpstreamRuntimeConfig | undefined;
 }
 
 /** Result of the status command (for testing). */
@@ -70,6 +73,12 @@ const RED = "\x1b[31m";
 const DIM = "\x1b[90m";
 const BOLD = "\x1b[1m";
 const RESET = "\x1b[0m";
+
+function formatRuntimePolicyLine(
+  runtime: EffectiveUpstreamRuntimeConfig,
+): string {
+  return `    ${DIM}runtime=${runtime.lifecycle}/${runtime.concurrency} pool=${runtime.maxPoolSize} restart=${runtime.restart}${RESET}`;
+}
 
 /**
  * Collects status data by connecting to upstreams and computing routing.
@@ -94,6 +103,7 @@ export async function collectStatus(
           enabled: false,
           status: "disconnected",
           toolCount: 0,
+          runtime: resolveUpstreamRuntimeDefaults(serverConfig),
         });
         continue;
       }
@@ -109,6 +119,7 @@ export async function collectStatus(
         toolCount: connection?.tools.length ?? 0,
         serverName: connection?.serverName,
         serverVersion: connection?.serverVersion,
+        runtime: resolveUpstreamRuntimeDefaults(serverConfig),
       });
     }
 
@@ -211,20 +222,32 @@ export function formatStatus(
       lines.push(
         `  ${GREEN}✓${RESET} ${upstream.name.padEnd(24)} connected  ${toolInfo}${version}`,
       );
+      if (options.verbose && upstream.runtime) {
+        lines.push(formatRuntimePolicyLine(upstream.runtime));
+      }
     } else if (upstream.status === "needs_auth") {
       const errorMsg = upstream.error ?? "Authentication required";
       lines.push(
         `  ${YELLOW}⚠${RESET} ${upstream.name.padEnd(24)} needs auth ${DIM}${errorMsg}${RESET}`,
       );
+      if (options.verbose && upstream.runtime) {
+        lines.push(formatRuntimePolicyLine(upstream.runtime));
+      }
     } else if (upstream.status === "error") {
       const errorMsg = upstream.error ?? "Unknown error";
       lines.push(
         `  ${RED}✗${RESET} ${upstream.name.padEnd(24)} error      ${DIM}${errorMsg}${RESET}`,
       );
+      if (options.verbose && upstream.runtime) {
+        lines.push(formatRuntimePolicyLine(upstream.runtime));
+      }
     } else {
       lines.push(
         `  ${DIM}? ${upstream.name.padEnd(24)} ${upstream.status}${RESET}`,
       );
+      if (options.verbose && upstream.runtime) {
+        lines.push(formatRuntimePolicyLine(upstream.runtime));
+      }
     }
   }
 

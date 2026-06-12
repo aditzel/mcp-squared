@@ -163,6 +163,27 @@ auth = true
 
 For OAuth-only SSE upstreams, set `auth = true` and omit any manual `Authorization` header. MCP² handles browser auth, stores the OAuth token under `~/.config/mcp-squared/tokens/<upstream>.json`, and reuses it on future connections.
 
+### Upstream Runtime Policy
+
+Each upstream can define an optional runtime policy:
+
+```toml
+[upstreams.local.runtime]
+lifecycle = "singleton"
+concurrency = "exclusive"
+maxPoolSize = 1
+restart = "on_failure"
+
+[upstreams.remote.runtime]
+lifecycle = "proxy"
+concurrency = "session_affine"
+restart = "never"
+```
+
+Defaults are transport-aware. Local `stdio` upstreams default to `singleton` lifecycle with `exclusive` call scheduling so one daemon can safely share a single local MCP server process across multiple agents. Remote `sse`/HTTP upstreams default to `proxy` lifecycle with `session_affine` scheduling, so MCP² behaves as a policy/identity/control-plane proxy rather than owning a local process.
+
+Supported lifecycle modes are `singleton`, `pooled`, `ephemeral`, and `proxy`. Supported concurrency modes are `exclusive`, `shared_read`, `session_affine`, and `parallel`. Use `mcp-squared status --verbose` to inspect the effective runtime policy for configured upstreams.
+
 Security policies (allow/block/confirm) live under `security.tools` and are matched against `capability:action` patterns. Confirmation flows return a short-lived token that must be provided to the same capability/action call to proceed. OAuth tokens for SSE upstreams are stored under `~/.config/mcp-squared/tokens/<upstream>.json`.
 
 `mcp-squared init` seeds code-search routing preferences so internal retrieval/routing heuristics prioritize common code indexers by default:
