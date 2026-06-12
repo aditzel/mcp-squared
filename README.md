@@ -3,7 +3,7 @@
 MCP² (Mercury Control Plane) is a local-first meta-server and proxy for the Model Context Protocol (MCP). It addresses tool context bloat by enabling dynamic, progressive disclosure of tools to LLMs. Instead of flooding the model context with every available tool schema, MCP² exposes a stable, minimal surface area for tool discovery and execution.
 
 ## Status
-**Alpha (v0.6.x)** - Core functionality is implemented and tested; CLI and config details may evolve.
+**Alpha (v0.8.x)** - Core functionality is implemented and tested; CLI, auth integrations, and config details may still evolve between releases.
 
 ## Install & Run
 
@@ -160,6 +160,29 @@ transport = "sse"
 url = "https://example.com/mcp"
 auth = true
 ```
+
+For OAuth-only SSE upstreams, set `auth = true` and omit any manual `Authorization` header. MCP² handles browser auth, stores the OAuth token under `~/.config/mcp-squared/tokens/<upstream>.json`, and reuses it on future connections.
+
+### Upstream Runtime Policy
+
+Each upstream can define an optional runtime policy:
+
+```toml
+[upstreams.local.runtime]
+lifecycle = "singleton"
+concurrency = "exclusive"
+maxPoolSize = 1
+restart = "on_failure"
+
+[upstreams.remote.runtime]
+lifecycle = "proxy"
+concurrency = "session_affine"
+restart = "never"
+```
+
+Defaults are transport-aware. Local `stdio` upstreams default to `singleton` lifecycle with `exclusive` call scheduling so one daemon can safely share a single local MCP server process across multiple agents. Remote `sse`/HTTP upstreams default to `proxy` lifecycle with `session_affine` scheduling, so MCP² behaves as a policy/identity/control-plane proxy rather than owning a local process.
+
+Supported lifecycle modes are `singleton`, `pooled`, `ephemeral`, and `proxy`. Supported concurrency modes are `exclusive`, `shared_read`, `session_affine`, and `parallel`. Use `mcp-squared status --verbose` to inspect the effective runtime policy for configured upstreams.
 
 Security policies (allow/block/confirm) live under `security.tools` and are matched against `capability:action` patterns. Confirmation flows return a short-lived token that must be provided to the same capability/action call to proceed. OAuth tokens for SSE upstreams are stored under `~/.config/mcp-squared/tokens/<upstream>.json`.
 

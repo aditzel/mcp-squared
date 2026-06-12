@@ -58,6 +58,28 @@ describe("formatStatus", () => {
     expect(output).toContain("v1.0.0");
   });
 
+  test("verbose output shows upstream runtime policy", () => {
+    const result: StatusResult = {
+      upstreams: [
+        makeUpstream({
+          name: "local",
+          status: "connected",
+          runtime: {
+            lifecycle: "singleton",
+            concurrency: "exclusive",
+            maxPoolSize: 1,
+            restart: "on_failure",
+            lease: { enabled: false, maxDurationMs: 300_000 },
+          },
+        }),
+      ],
+      routers: [],
+    };
+    const output = stripAnsi(formatStatus(result, { verbose: true }));
+    expect(output).toContain("runtime=singleton/exclusive");
+    expect(output).toContain("restart=on_failure");
+  });
+
   test("shows single tool without plural", () => {
     const result: StatusResult = {
       upstreams: [

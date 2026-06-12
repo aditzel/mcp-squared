@@ -220,10 +220,14 @@ describe("server runtime coverage", () => {
     });
 
     expect(result.isError).toBe(false);
-    expect(callToolSpy).toHaveBeenCalledWith("auggie:codebase-retrieval", {
-      information_request: "find auth middleware",
-      directory_path: "/Users/allan/projects/personal/mcp-squared",
-    });
+    expect(callToolSpy).toHaveBeenCalledWith(
+      "auggie:codebase-retrieval",
+      {
+        information_request: "find auth middleware",
+        directory_path: "/Users/allan/projects/personal/mcp-squared",
+      },
+      undefined,
+    );
   });
 
   test("__describe_actions returns action catalog without upstream identifiers", async () => {
@@ -466,9 +470,13 @@ describe("server runtime coverage", () => {
     });
 
     expect(result.isError).toBe(false);
-    expect(callToolSpy).toHaveBeenCalledWith("server-b:do_search", {
-      query: "foo",
-    });
+    expect(callToolSpy).toHaveBeenCalledWith(
+      "server-b:do_search",
+      {
+        query: "foo",
+      },
+      undefined,
+    );
   });
 
   test("legacy numeric aliases still satisfy explicit security policy patterns", async () => {
@@ -518,9 +526,13 @@ describe("server runtime coverage", () => {
     });
 
     expect(result.isError).toBe(false);
-    expect(callToolSpy).toHaveBeenCalledWith("server-b:do_search", {
-      query: "legacy",
-    });
+    expect(callToolSpy).toHaveBeenCalledWith(
+      "server-b:do_search",
+      {
+        query: "legacy",
+      },
+      undefined,
+    );
   });
 
   test("hidden sibling routes do not force disambiguation", async () => {
@@ -582,7 +594,11 @@ describe("server runtime coverage", () => {
     });
 
     expect(result.isError).toBe(false);
-    expect(callToolSpy).toHaveBeenCalledWith("github-safe:delete_file", {});
+    expect(callToolSpy).toHaveBeenCalledWith(
+      "github-safe:delete_file",
+      {},
+      undefined,
+    );
   });
 
   test("hidden exact action ids return blocked responses", async () => {
@@ -791,10 +807,14 @@ describe("server runtime coverage", () => {
     });
 
     expect(second.isError).toBe(false);
-    expect(callToolSpy).toHaveBeenCalledWith("auggie:codebase-retrieval", {
-      information_request: "find auth middleware",
-      directory_path: "/Users/allan/projects/personal/mcp-squared",
-    });
+    expect(callToolSpy).toHaveBeenCalledWith(
+      "auggie:codebase-retrieval",
+      {
+        information_request: "find auth middleware",
+        directory_path: "/Users/allan/projects/personal/mcp-squared",
+      },
+      undefined,
+    );
   });
 
   test("reserved action names are rewritten deterministically", async () => {

@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { DEFAULT_CONFIG, type McpSquaredConfig } from "@/config/schema";
+import type { RuntimeCallContext } from "@/runtime/supervisor";
 import {
   clearPendingConfirmations,
   compilePolicy,
@@ -25,6 +26,31 @@ function createSecurityConfig(security: {
         allow: security.allow ?? ["*:*"],
         block: security.block ?? [],
         confirm: security.confirm ?? [],
+      },
+    },
+    operations: {
+      ...DEFAULT_CONFIG.operations,
+      dynamicToolSurface: {
+        ...DEFAULT_CONFIG.operations.dynamicToolSurface,
+        capabilityOverrides: {
+          ...DEFAULT_CONFIG.operations.dynamicToolSurface.capabilityOverrides,
+        },
+        facetOverrides: {
+          ...DEFAULT_CONFIG.operations.dynamicToolSurface.facetOverrides,
+        },
+      },
+      findTools: {
+        ...DEFAULT_CONFIG.operations.findTools,
+        preferredNamespacesByIntent: {
+          ...DEFAULT_CONFIG.operations.findTools.preferredNamespacesByIntent,
+          codeSearch: [
+            ...DEFAULT_CONFIG.operations.findTools.preferredNamespacesByIntent
+              .codeSearch,
+          ],
+        },
+      },
+      responseResource: {
+        ...DEFAULT_CONFIG.operations.responseResource,
       },
     },
   };
@@ -68,6 +94,7 @@ type SessionWithRegisteredTools = {
     {
       handler?: (
         args: CapabilityHandlerArgs,
+        extra?: { sessionId?: string; requestId?: string | number },
       ) => Promise<CapabilityHandlerResult>;
     }
   >;
@@ -131,6 +158,71 @@ function mockCatalogerForSingleTool(server: McpSquaredServer): {
     callToolRequests.push(toolName);
     return {
       content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
+      isError: false,
+    };
+  };
+
+  return { callToolRequests };
+}
+
+function mockCatalogerForTools(
+  server: McpSquaredServer,
+  statusEntries: Array<[string, { status: "connected"; error: undefined }]>,
+  toolsByServer: Record<
+    string,
+    Array<{
+      name: string;
+      description: string;
+      serverKey: string;
+      inputSchema?: { type: "object"; properties?: Record<string, unknown> };
+    }>
+  >,
+): {
+  callToolRequests: Array<{
+    toolName: string;
+    args: Record<string, unknown>;
+    context: RuntimeCallContext | undefined;
+  }>;
+} {
+  const callToolRequests: Array<{
+    toolName: string;
+    args: Record<string, unknown>;
+    context: RuntimeCallContext | undefined;
+  }> = [];
+  const cataloger = server.getCataloger() as unknown as {
+    getStatus: () => Map<string, { status: "connected"; error: undefined }>;
+    getToolsForServer: (key: string) => Array<{
+      name: string;
+      description: string;
+      serverKey: string;
+      inputSchema: { type: "object"; properties?: Record<string, unknown> };
+    }>;
+    callTool: (
+      toolName: string,
+      args: Record<string, unknown>,
+      context?: RuntimeCallContext,
+    ) => Promise<{ content: unknown[]; isError: boolean | undefined }>;
+  };
+
+  cataloger.getStatus = () => new Map(statusEntries);
+  cataloger.getToolsForServer = (key: string) =>
+    (toolsByServer[key] ?? []).map((tool) => ({
+      ...tool,
+      inputSchema: tool.inputSchema ?? { type: "object" },
+    }));
+  cataloger.callTool = async (
+    toolName: string,
+    args: Record<string, unknown>,
+    context?: RuntimeCallContext,
+  ) => {
+    callToolRequests.push({ toolName, args, context });
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ ok: true, toolName, args }),
+        },
+      ],
       isError: false,
     };
   };
@@ -237,6 +329,173 @@ describe("execute tool policy normalization", () => {
     expect(callToolRequests).toEqual([
       "github:delete_file",
       "github:delete_file",
+    ]);
+  });
+
+  test("describes visible actions and metadata", async () => {
+    const config = createSecurityConfig({
+      allow: ["general:*"],
+      confirm: ["general:delete_file"],
+    });
+    server = new McpSquaredServer({ config });
+    mockCatalogerForSingleTool(server);
+    const execute = getCapabilityHandler(server, "general");
+
+    const describeResult = await execute({
+      action: "__describe_actions",
+      arguments: {},
+    });
+    const describePayload = parseExecutePayload(describeResult);
+    const actions = describePayload["actions"] as Array<
+      Record<string, unknown>
+    >;
+
+    expect(describeResult.isError).toBeUndefined();
+    expect(describePayload["capability"]).toBe("general");
+    expect(describePayload["totalActions"]).toBe(1);
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({
+      action: "delete_file",
+      requiresConfirmation: false,
+      summary: "Delete file",
+    });
+    expect(actions[0]?.["inputSchema"]).toEqual({ type: "object" });
+  });
+
+  test("returns an error when action is missing", async () => {
+    server = new McpSquaredServer({
+      config: createSecurityConfig({ allow: ["*:*"] }),
+    });
+    mockCatalogerForSingleTool(server);
+    const execute = getCapabilityHandler(server, "general");
+
+    const result = await execute({ action: "", arguments: {} });
+    const payload = parseExecutePayload(result);
+
+    expect(result.isError).toBe(true);
+    expect(payload).toEqual({
+      error: "Missing required action",
+      capability: "general",
+    });
+  });
+
+  test("returns available actions when action is unknown", async () => {
+    server = new McpSquaredServer({
+      config: createSecurityConfig({ allow: ["*:*"] }),
+    });
+    mockCatalogerForSingleTool(server);
+    const execute = getCapabilityHandler(server, "general");
+
+    const result = await execute({
+      action: "archive_file",
+      arguments: {},
+    });
+    const payload = parseExecutePayload(result);
+
+    expect(result.isError).toBe(true);
+    expect(payload).toEqual({
+      error: "Unknown action",
+      capability: "general",
+      action: "archive_file",
+      availableActions: ["delete_file"],
+    });
+  });
+
+  test("requires disambiguation when multiple visible routes share a base action", async () => {
+    const config = createSecurityConfig({ allow: ["docs:*"] });
+    config.operations.dynamicToolSurface.capabilityOverrides = {
+      docs: "docs",
+      research: "docs",
+    };
+    server = new McpSquaredServer({ config });
+    const { callToolRequests } = mockCatalogerForTools(
+      server,
+      [
+        ["docs", { status: "connected", error: undefined }],
+        ["research", { status: "connected", error: undefined }],
+      ],
+      {
+        docs: [
+          {
+            name: "search_web",
+            description: "Search docs",
+            serverKey: "docs",
+          },
+        ],
+        research: [
+          {
+            name: "search_web",
+            description: "Search research",
+            serverKey: "research",
+          },
+        ],
+      },
+    );
+    const execute = getCapabilityHandler(server, "docs");
+
+    const result = await execute({
+      action: "search_web",
+      arguments: {},
+    });
+    const payload = parseExecutePayload(result);
+
+    expect(result.isError).toBe(true);
+    expect(payload).toEqual({
+      requires_disambiguation: true,
+      capability: "docs",
+      action: "search_web",
+      candidates: ["search_web__docs", "search_web__research"],
+    });
+    expect(callToolRequests).toEqual([]);
+  });
+
+  test("threads session and agent identity into upstream tool calls", async () => {
+    const config = createSecurityConfig({ allow: ["general:*"] });
+    server = new McpSquaredServer({ config });
+    const { callToolRequests } = mockCatalogerForTools(
+      server,
+      [["github", { status: "connected", error: undefined }]],
+      {
+        github: [
+          {
+            name: "delete_file",
+            description: "Delete file",
+            serverKey: "github",
+          },
+        ],
+      },
+    );
+
+    const session = server.createSessionServer({
+      getRuntimeCallContext: () => ({ agentId: "proxy-client-7" }),
+    }) as unknown as SessionWithRegisteredTools;
+    const execute = session._registeredTools?.["general"]?.handler;
+    if (!execute) {
+      throw new Error("general handler is not registered");
+    }
+
+    const result = await execute(
+      {
+        action: "delete_file",
+        arguments: {},
+      },
+      {
+        sessionId: "daemon-session-42",
+        requestId: "req-123",
+      },
+    );
+
+    expect(result.isError).toBe(false);
+    expect(callToolRequests).toEqual([
+      {
+        toolName: "github:delete_file",
+        args: {},
+        context: {
+          agentId: "proxy-client-7",
+          sessionId: "daemon-session-42",
+          requestId: "req-123",
+        },
+      },
     ]);
   });
 });

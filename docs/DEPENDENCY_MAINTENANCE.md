@@ -34,3 +34,5 @@ If `bun run audit` reports an advisory that cannot be remediated immediately:
 3. Keep the issue open until remediation lands or the exception is renewed with updated rationale.
 
 Exceptions are temporary and must have an explicit review date.
+
+Short-term acceptance is allowed only when reachability is demonstrably low, for example when the vulnerable package is confined to a lazily loaded local-only surface and reviewed code paths do not accept untrusted binary payloads. If later work makes the dependency reachable from non-interactive commands, network-facing runtime paths, or remote-controlled binary/image inputs, the exception must be re-evaluated before release.

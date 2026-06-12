@@ -1,6 +1,6 @@
 # Contributing to MCP²
 
-Thank you for your interest in contributing to MCP²! The project is in **alpha (v0.1.x)** with core functionality implemented and active development underway.
+Thank you for your interest in contributing to MCP²! The project is in **alpha (v0.8.x)** with core functionality implemented and active development underway; CLI, auth integrations, and configuration details may still evolve between releases.
 
 ## Getting Started
 
