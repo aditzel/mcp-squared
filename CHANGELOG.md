@@ -20,11 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added adapter registry for registering custom adapters and selecting the appropriate one based on transport type.
 - Added mcporter SDK adapter factory for wrapping generated typed SDKs with MCP² policy and audit.
 - Added proxy middleware system (`ProxyMiddleware`) with built-in session affinity, request logging, retry with exponential backoff, and auth injection middlewares.
+- Added production-hardening regression coverage for upstream client failure cleanup, install idempotency, and bounded daemon/proxy soak behavior.
 
 ### Changed
 - Documented the short-term accepted OpenTUI transitive `file-type` advisory in `docs/DEPENDENCY_EXCEPTIONS.md` and tightened the dependency-maintenance/release process so temporary audit exceptions are only allowed when reviewed reachability remains low and local-only.
 - Routed cataloged upstream tool execution through the runtime call supervisor so local stdio upstreams default to exclusive singleton-safe execution while remote SSE/HTTP upstreams keep proxy-style behavior.
 - Threaded daemon/proxy session identity into `RuntimeCallContext` so remote `session_affine` upstreams serialize per session/client when identity exists, while no-context remote calls remain parallel and direct stdio behavior stays unchanged.
+- Hardened coverage threshold behavior so strict checks fail when branch data is missing by default, while `coverage:check` explicitly allows Bun 1.3.14 branchless LCOV output and `coverage:check:strict` remains available for branch-data environments.
+
+### Fixed
+- Preserved SSE `auth` settings during common config imports, including boolean values and filtered auth object fields.
+
+### Security
+- Remediated dependency audit findings by updating/pinning patched `tar`, `@opentelemetry/api`, `hono`, `@hono/node-server`, `protobufjs`, `qs`, `fast-uri`, `express-rate-limit`, `ip-address`, and `path-to-regexp` ranges and removing the unused optional `@opentelemetry/sdk-trace-base` dependency.
+- Rejected OAuth callbacks that include an authorization code but omit `state`, and closed callback resources for the rejected flow.
 
 ## [0.8.1] - 2026-03-11
 

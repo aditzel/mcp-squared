@@ -265,18 +265,43 @@ export function meetsLineCoverageThreshold(
 }
 
 /**
+ * Options controlling how coverage thresholds are evaluated.
+ */
+export interface CoverageThresholdOptions {
+  /**
+   * When true (the default), a report that lacks branch coverage data fails the
+   * check instead of silently passing. Set this to false to explicitly tolerate
+   * runners that cannot emit branch coverage data (for example, Bun's `lcov`
+   * reporter, which currently omits `BRDA`/`BRF`/`BRH` records).
+   */
+  requireBranchData?: boolean;
+}
+
+/**
  * Returns whether both line and branch coverage meet the provided threshold.
+ *
+ * Missing branch data is NOT treated as full coverage. When the report contains
+ * no branch totals, the check fails unless callers explicitly opt out via
+ * `options.requireBranchData = false`.
  *
  * @param summary - Aggregated line/branch coverage summary
  * @param thresholdPercent - Required minimum coverage percentage
+ * @param options - Threshold evaluation options
  */
 export function meetsCoverageThresholds(
   summary: CoverageSummary,
   thresholdPercent: number,
+  options: CoverageThresholdOptions = {},
 ): boolean {
-  return (
-    summary.lineCoveragePct >= thresholdPercent &&
-    (!summary.hasBranchCoverage ||
-      summary.branchCoveragePct >= thresholdPercent)
-  );
+  const { requireBranchData = true } = options;
+
+  if (summary.lineCoveragePct < thresholdPercent) {
+    return false;
+  }
+
+  if (!summary.hasBranchCoverage) {
+    return !requireBranchData;
+  }
+
+  return summary.branchCoveragePct >= thresholdPercent;
 }

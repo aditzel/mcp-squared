@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -516,6 +522,49 @@ describe("performInstallation", () => {
 
     expect(result.success).toBe(true);
     expect(result.error).toContain("already exists");
+  });
+
+  test("is idempotent across repeated installs with identical config in add mode", () => {
+    const configPath = join(tempDir, "mcp.json");
+
+    const firstResult = performInstallation({
+      tool: "cursor",
+      path: configPath,
+      scope: "user",
+      mode: "add",
+      serverName: "mcp-squared",
+      command: "mcp-squared",
+      dryRun: false,
+    });
+
+    expect(firstResult.success).toBe(true);
+    expect(firstResult.created).toBe(true);
+    expect(firstResult.backupPath).toBeUndefined();
+    expect(firstResult.error).toBeUndefined();
+
+    const originalContent = readFileSync(configPath, "utf-8");
+
+    const secondResult = performInstallation({
+      tool: "cursor",
+      path: configPath,
+      scope: "user",
+      mode: "add",
+      serverName: "mcp-squared",
+      command: "mcp-squared",
+      dryRun: false,
+    });
+
+    expect(secondResult.success).toBe(true);
+    expect(secondResult.created).toBe(false);
+    expect(secondResult.error).toContain(
+      "already exists with the same configuration",
+    );
+    expect(secondResult.backupPath).toBeUndefined();
+    expect(readFileSync(configPath, "utf-8")).toBe(originalContent);
+
+    const content = JSON.parse(readFileSync(configPath, "utf-8"));
+    expect(Object.keys(content.mcpServers)).toEqual(["mcp-squared"]);
+    expect(existsSync(`${configPath}.bak`)).toBe(false);
   });
 
   test("treats different args as different config", () => {

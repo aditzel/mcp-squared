@@ -81,6 +81,10 @@ describe("BaseConfigParser helpers", () => {
         TOKEN: "abc",
         RETRIES: 3,
       },
+      auth: {
+        callbackPort: 4388,
+        clientName: "Imported Client",
+      },
       alwaysAllow: ["read_file", 1, "search"],
       disabled: true,
     });
@@ -94,8 +98,46 @@ describe("BaseConfigParser helpers", () => {
       httpUrl: "https://example.com/http",
       headers: { Authorization: "Bearer token" },
       env: { TOKEN: "abc" },
+      auth: {
+        callbackPort: 4388,
+        clientName: "Imported Client",
+      },
       alwaysAllow: ["read_file", "search"],
       disabled: true,
+    });
+  });
+
+  test("parseServerEntry preserves boolean auth settings", () => {
+    expect(
+      parser.parseEntry("remote", {
+        url: "https://example.com/sse",
+        auth: true,
+      }),
+    ).toEqual({
+      name: "remote",
+      url: "https://example.com/sse",
+      auth: true,
+    });
+  });
+
+  test("parseServerEntry filters malformed auth object fields", () => {
+    expect(
+      parser.parseEntry("remote", {
+        url: "https://example.com/sse",
+        auth: {
+          callbackPort: 4388,
+          clientName: "Imported Client",
+          extra: "ignored",
+          invalidPort: "4388",
+        },
+      }),
+    ).toEqual({
+      name: "remote",
+      url: "https://example.com/sse",
+      auth: {
+        callbackPort: 4388,
+        clientName: "Imported Client",
+      },
     });
   });
 

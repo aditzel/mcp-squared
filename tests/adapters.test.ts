@@ -41,10 +41,9 @@ describe("resolveEnvVars", () => {
     );
   });
 
-  test("resolves ${VAR} syntax", () => {
-    expect(resolveEnvVars("${API_KEY}/api", { API_KEY: "secret" })).toBe(
-      "secret/api",
-    );
+  test("resolves braced variable syntax", () => {
+    const input = `$${"{API_KEY}"}/api`;
+    expect(resolveEnvVars(input, { API_KEY: "secret" })).toBe("secret/api");
   });
 
   test("falls back to process.env", () => {

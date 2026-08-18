@@ -10,6 +10,29 @@
 
 import type { ExternalServer, ParseResult, ToolId } from "../types.js";
 
+function parseAuthOptions(value: unknown): ExternalServer["auth"] | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+
+  const input = value as Record<string, unknown>;
+  const auth: NonNullable<Exclude<ExternalServer["auth"], boolean>> = {};
+
+  if (typeof input["callbackPort"] === "number") {
+    auth.callbackPort = input["callbackPort"];
+  }
+
+  if (typeof input["clientName"] === "string") {
+    auth.clientName = input["clientName"];
+  }
+
+  return Object.keys(auth).length > 0 ? auth : undefined;
+}
+
 /**
  * Abstract base class for configuration parsers.
  * Each supported tool has a parser that extends this class.
@@ -126,6 +149,11 @@ export abstract class BaseConfigParser {
 
     if (typeof c["headers"] === "object" && c["headers"] !== null) {
       server.headers = this.parseStringRecord(c["headers"]);
+    }
+
+    const auth = parseAuthOptions(c["auth"]);
+    if (auth !== undefined) {
+      server.auth = auth;
     }
 
     // Environment variables

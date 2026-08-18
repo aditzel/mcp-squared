@@ -80,6 +80,7 @@ if (!SOCKET_LISTEN_SUPPORTED) {
   test.skip("Daemon proxy bridge (socket listen unsupported)", () => {});
 } else {
   describe.serial("daemon proxy bridge", () => {
+    const soakTest = process.env["SKIP_SLOW_TESTS"] ? test.skip : test;
     let restoreEnv: () => void;
 
     beforeEach(async () => {
@@ -132,6 +133,60 @@ if (!SOCKET_LISTEN_SUPPORTED) {
         await daemon.stop().catch(() => {});
       }
     });
+
+    soakTest(
+      "sustains repeated listTools over a stable bridge without leaking sessions",
+      async () => {
+        const runtime = new McpSquaredServer({
+          config: DEFAULT_CONFIG,
+          monitorSocketPath: "tcp://127.0.0.1:0",
+        });
+        mockCapabilitySurface(runtime);
+        const daemon = new DaemonServer({
+          runtime,
+          socketPath: "tcp://127.0.0.1:0",
+          idleTimeoutMs: 5000,
+          heartbeatTimeoutMs: 5000,
+        });
+
+        await daemon.start();
+
+        const [clientTransport, proxyTransport] =
+          InMemoryTransport.createLinkedPair();
+        const bridge = await createProxyBridge({
+          stdioTransport: proxyTransport,
+          endpoint: daemon.getSocketPath(),
+          heartbeatIntervalMs: 50,
+        });
+
+        const client = new Client({
+          name: "proxy-soak-test",
+          version: "0.0.0",
+        });
+
+        try {
+          await client.connect(clientTransport);
+
+          for (let iteration = 0; iteration < 8; iteration += 1) {
+            const { tools } = await client.listTools();
+            const toolNames = tools.map((tool) => tool.name);
+            expect(toolNames).toContain("time_util");
+            expect(toolNames).not.toContain("find_tools");
+          }
+
+          await waitFor(
+            async () => daemon.getSessionCount(),
+            (sessionCount) => sessionCount === 1,
+            1000,
+          );
+          expect(daemon.getSessionCount()).toBe(1);
+        } finally {
+          await client.close().catch(() => {});
+          await bridge.stop().catch(() => {});
+          await daemon.stop().catch(() => {});
+        }
+      },
+    );
 
     test("uses shared secret from daemon registry when auto-discovering endpoint", async () => {
       const configHash = computeConfigHash(DEFAULT_CONFIG);

@@ -21,6 +21,8 @@ function main(): void {
   const summaryPath = process.argv[2] ?? "coverage/coverage-summary.txt";
   const lcovPath = process.argv[3] ?? "coverage/lcov.info";
   const threshold = parseThreshold(process.argv[4]);
+  const allowMissingBranchCoverage =
+    process.env["MCP2_ALLOW_MISSING_BRANCH_COVERAGE"] === "true";
 
   const coverageText = readFileSync(summaryPath, "utf-8");
   const lineCoveragePct = parseBunTextLineCoveragePercent(coverageText);
@@ -33,7 +35,16 @@ function main(): void {
     lineCoveragePct,
   };
 
-  if (!meetsCoverageThresholds(summary, threshold)) {
+  if (
+    !meetsCoverageThresholds(summary, threshold, {
+      requireBranchData: !allowMissingBranchCoverage,
+    })
+  ) {
+    if (!summary.hasBranchCoverage && !allowMissingBranchCoverage) {
+      console.error(
+        "[coverage] Branch coverage totals were not present in LCOV output. Refusing to treat missing branch data as fully covered; set MCP2_ALLOW_MISSING_BRANCH_COVERAGE=true only for known runner limitations.",
+      );
+    }
     console.error(
       `[coverage] Coverage below required ${threshold}%: lines=${summary.lineCoveragePct.toFixed(2)}%, branches=${summary.branchCoveragePct.toFixed(2)}%.`,
     );
@@ -42,7 +53,7 @@ function main(): void {
 
   if (!summary.hasBranchCoverage) {
     console.warn(
-      "[coverage] Branch coverage totals were not present in LCOV output; treating branch coverage as fully covered for this run.",
+      "[coverage] Branch coverage totals were not present in LCOV output; continuing only because MCP2_ALLOW_MISSING_BRANCH_COVERAGE=true.",
     );
   }
 

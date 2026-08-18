@@ -1,27 +1,41 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { UpstreamServerConfig } from "@/config/schema";
 import { AgentLeaseManager } from "@/runtime/agent-lease";
 import { HealthTracker } from "@/runtime/health-tracker";
 import { UpstreamCallSupervisor } from "@/runtime/supervisor";
-import { ProxyMiddleware } from "@/upstream/proxy-middleware";
 import {
-  createSessionAffinityMiddleware,
-  createRetryMiddleware,
   createAuthInjectionMiddleware,
+  createRetryMiddleware,
+  createSessionAffinityMiddleware,
+  type MiddlewareContext,
+  ProxyMiddleware,
 } from "@/upstream/proxy-middleware";
+
+function expectPresent<T>(
+  value: T | null | undefined,
+  label: string,
+): NonNullable<T> {
+  expect(value).not.toBeNull();
+  expect(value).toBeDefined();
+  if (value == null) {
+    throw new Error(`${label} should be present`);
+  }
+  return value;
+}
 
 function deferred(): {
   promise: Promise<void>;
   resolve: () => void;
 } {
-  let resolve!: () => void;
+  let resolve: (() => void) | undefined;
   const promise = new Promise<void>((innerResolve) => {
     resolve = innerResolve;
   });
-  return { promise, resolve };
+  const resolved = expectPresent(resolve, "deferred resolver");
+  return { promise, resolve: resolved };
 }
 
 function makeStdioConfig(
@@ -89,20 +103,24 @@ describe("Integration: Full call path with leases, health, and middleware", () =
 
     expect(result).toEqual({ content: [{ type: "text", text: "ok" }] });
 
-    const health = healthTracker.getHealth("local");
-    expect(health).not.toBeNull();
-    expect(health!.totalToolCalls).toBe(1);
-    expect(health!.totalErrors).toBe(0);
-    expect(health!.totalResponseTimeMs).toBeGreaterThanOrEqual(0);
+    const health = expectPresent(
+      healthTracker.getHealth("local"),
+      "local health",
+    );
+    expect(health.totalToolCalls).toBe(1);
+    expect(health.totalErrors).toBe(0);
+    expect(health.totalResponseTimeMs).toBeGreaterThanOrEqual(0);
 
     const events = healthTracker.getAuditEvents();
     expect(events.length).toBeGreaterThanOrEqual(1);
-    const toolCallEvent = events.find((e) => e.type === "tool_call");
-    expect(toolCallEvent).toBeDefined();
-    expect(toolCallEvent!.upstreamKey).toBe("local");
-    expect(toolCallEvent!.agentId).toBe("agent-a");
-    expect(toolCallEvent!.sessionId).toBe("sess-1");
-    expect(toolCallEvent!.requestId).toBe("req-1");
+    const toolCallEvent = expectPresent(
+      events.find((e) => e.type === "tool_call"),
+      "tool call audit event",
+    );
+    expect(toolCallEvent.upstreamKey).toBe("local");
+    expect(toolCallEvent.agentId).toBe("agent-a");
+    expect(toolCallEvent.sessionId).toBe("sess-1");
+    expect(toolCallEvent.requestId).toBe("req-1");
   });
 
   test("health tracker records tool errors", async () => {
@@ -112,18 +130,21 @@ describe("Integration: Full call path with leases, health, and middleware", () =
       requestId: "req-1",
     });
 
-    const health = healthTracker.getHealth("local");
-    expect(health).not.toBeNull();
-    expect(health!.totalToolCalls).toBe(1);
-    expect(health!.totalErrors).toBe(1);
-    expect(health!.totalResponseTimeMs).toBe(100);
+    const health = expectPresent(
+      healthTracker.getHealth("local"),
+      "local health",
+    );
+    expect(health.totalToolCalls).toBe(1);
+    expect(health.totalErrors).toBe(1);
+    expect(health.totalResponseTimeMs).toBe(100);
 
     const events = healthTracker.getAuditEvents({ type: "tool_error" });
     expect(events).toHaveLength(1);
-    expect(events[0].upstreamKey).toBe("local");
-    expect(events[0].agentId).toBe("agent-a");
-    expect(events[0].durationMs).toBe(100);
-    expect(events[0].details).toEqual({ message: "upstream timeout" });
+    const event = expectPresent(events[0], "tool error audit event");
+    expect(event.upstreamKey).toBe("local");
+    expect(event.agentId).toBe("agent-a");
+    expect(event.durationMs).toBe(100);
+    expect(event.details).toEqual({ message: "upstream timeout" });
   });
 
   test("lease holder calls proceed while lease is active", async () => {
@@ -162,8 +183,11 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     releaseFirst.resolve();
     expect(await Promise.all([first, second])).toEqual(["first", "second"]);
 
-    const health = healthTracker.getHealth("local");
-    expect(health!.totalToolCalls).toBe(2);
+    const health = expectPresent(
+      healthTracker.getHealth("local"),
+      "local health",
+    );
+    expect(health.totalToolCalls).toBe(2);
   });
 
   test("non-holder calls queue until lease is released", async () => {
@@ -192,18 +216,16 @@ describe("Integration: Full call path with leases, health, and middleware", () =
 
     const events = healthTracker.getAuditEvents({ type: "tool_call" });
     expect(events).toHaveLength(1);
-    expect(events[0].agentId).toBe("agent-b");
+    const event = expectPresent(events[0], "tool call audit event");
+    expect(event.agentId).toBe("agent-b");
   });
 
   test("health tracking persists across tracker instances", async () => {
     const config = makeStdioConfig();
 
-    await supervisor.run(
-      "local",
-      config,
-      async () => "ok",
-      { agentId: "agent-a" },
-    );
+    await supervisor.run("local", config, async () => "ok", {
+      agentId: "agent-a",
+    });
 
     await healthTracker.save();
 
@@ -214,9 +236,11 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     });
     await newTracker.load();
 
-    const health = newTracker.getHealth("local");
-    expect(health).not.toBeNull();
-    expect(health!.totalToolCalls).toBe(1);
+    const health = expectPresent(
+      newTracker.getHealth("local"),
+      "persisted health",
+    );
+    expect(health.totalToolCalls).toBe(1);
 
     const events = newTracker.getAuditEvents();
     expect(events.length).toBeGreaterThanOrEqual(1);
@@ -250,12 +274,9 @@ describe("Integration: Full call path with leases, health, and middleware", () =
 
     expect(order).toEqual(["first", "second"]);
 
-    const result = await supervisor.run(
-      "local",
-      config,
-      async () => "ok",
-      { agentId: "agent-a" },
-    );
+    const result = await supervisor.run("local", config, async () => "ok", {
+      agentId: "agent-a",
+    });
 
     expect(result).toBe("ok");
   });
@@ -266,14 +287,14 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     const affinity = createSessionAffinityMiddleware();
     middleware.use(affinity.name, affinity.fn, affinity.options);
 
-    const ctx1 = {
+    const ctx1: MiddlewareContext = {
       upstreamKey: "remote-a",
       callContext: { agentId: "agent-a", sessionId: "sess-1" },
       state: {},
     };
     await middleware.execute("before_call", ctx1);
 
-    const ctx2 = {
+    const ctx2: MiddlewareContext = {
       upstreamKey: "remote-b",
       callContext: { agentId: "agent-b", sessionId: "sess-1" },
       state: {},
@@ -283,12 +304,9 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     expect(ctx2.state["sessionAffinityConflict"]).toBe(true);
     expect(ctx2.state["previousUpstream"]).toBe("remote-a");
 
-    const result = await supervisor.run(
-      "remote-a",
-      config,
-      async () => "ok",
-      { sessionId: "sess-1" },
-    );
+    const result = await supervisor.run("remote-a", config, async () => "ok", {
+      sessionId: "sess-1",
+    });
     expect(result).toBe("ok");
   });
 
@@ -297,7 +315,7 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     const retry = createRetryMiddleware(3, 100);
     middleware.use(retry.name, retry.fn, retry.options);
 
-    const ctx = {
+    const ctx: MiddlewareContext = {
       upstreamKey: "local",
       callContext: { agentId: "agent-a" },
       state: {},
@@ -315,7 +333,7 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     const auth = createAuthInjectionMiddleware();
     middleware.use(auth.name, auth.fn, auth.options);
 
-    const ctx = {
+    const ctx: MiddlewareContext = {
       upstreamKey: "local",
       callContext: { agentId: "agent-a" },
       state: { authToken: "secret-token" },
@@ -332,26 +350,24 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     const configA = makeStdioConfig();
     const configB = makeSseConfig();
 
-    await supervisor.run(
-      "local-a",
-      configA,
-      async () => "a",
-      { agentId: "agent-a" },
+    await supervisor.run("local-a", configA, async () => "a", {
+      agentId: "agent-a",
+    });
+    await supervisor.run("remote-b", configB, async () => "b", {
+      agentId: "agent-b",
+    });
+
+    const healthA = expectPresent(
+      healthTracker.getHealth("local-a"),
+      "local-a health",
     );
-    await supervisor.run(
-      "remote-b",
-      configB,
-      async () => "b",
-      { agentId: "agent-b" },
+    const healthB = expectPresent(
+      healthTracker.getHealth("remote-b"),
+      "remote-b health",
     );
 
-    const healthA = healthTracker.getHealth("local-a");
-    const healthB = healthTracker.getHealth("remote-b");
-
-    expect(healthA).not.toBeNull();
-    expect(healthB).not.toBeNull();
-    expect(healthA!.totalToolCalls).toBe(1);
-    expect(healthB!.totalToolCalls).toBe(1);
+    expect(healthA.totalToolCalls).toBe(1);
+    expect(healthB.totalToolCalls).toBe(1);
 
     const eventsA = healthTracker.getAuditEvents({ upstreamKey: "local-a" });
     const eventsB = healthTracker.getAuditEvents({ upstreamKey: "remote-b" });
@@ -364,12 +380,14 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     healthTracker.recordToolCall("local", 100);
     healthTracker.recordDisconnected("local");
 
-    const health = healthTracker.getHealth("local");
-    expect(health).not.toBeNull();
-    expect(health!.status).toBe("unhealthy");
-    expect(health!.lastConnectedAt).toBeGreaterThan(0);
-    expect(health!.lastDisconnectedAt).toBeGreaterThan(0);
-    expect(health!.totalToolCalls).toBe(1);
+    const health = expectPresent(
+      healthTracker.getHealth("local"),
+      "local health",
+    );
+    expect(health.status).toBe("unhealthy");
+    expect(health.lastConnectedAt).toBeGreaterThan(0);
+    expect(health.lastDisconnectedAt).toBeGreaterThan(0);
+    expect(health.totalToolCalls).toBe(1);
 
     const events = healthTracker.getAuditEvents();
     expect(events.length).toBeGreaterThanOrEqual(3);
@@ -384,7 +402,7 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     leaseManager.acquire("local", "agent-a", { ttlMs: 60_000 });
     healthTracker.recordConnected("local");
 
-    const ctx = {
+    const ctx: MiddlewareContext = {
       upstreamKey: "local",
       callContext: { agentId: "agent-a", sessionId: "sess-1" },
       state: {},
@@ -402,13 +420,15 @@ describe("Integration: Full call path with leases, health, and middleware", () =
 
     expect(result).toEqual({ content: [{ type: "text", text: "done" }] });
 
-    const health = healthTracker.getHealth("local");
-    expect(health!.status).toBe("healthy");
-    expect(health!.totalToolCalls).toBe(1);
+    const health = expectPresent(
+      healthTracker.getHealth("local"),
+      "local health",
+    );
+    expect(health.status).toBe("healthy");
+    expect(health.totalToolCalls).toBe(1);
 
-    const lease = leaseManager.getLease("local");
-    expect(lease).not.toBeNull();
-    expect(lease!.agentId).toBe("agent-a");
+    const lease = expectPresent(leaseManager.getLease("local"), "local lease");
+    expect(lease.agentId).toBe("agent-a");
 
     await healthTracker.save();
 
@@ -418,6 +438,10 @@ describe("Integration: Full call path with leases, health, and middleware", () =
       dataDir: tempDir,
     });
     await newTracker.load();
-    expect(newTracker.getHealth("local")!.totalToolCalls).toBe(1);
+    const persistedHealth = expectPresent(
+      newTracker.getHealth("local"),
+      "persisted local health",
+    );
+    expect(persistedHealth.totalToolCalls).toBe(1);
   });
 });

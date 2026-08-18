@@ -72,6 +72,67 @@ describe("runAuthCommand", () => {
     expect(exit).not.toHaveBeenCalled();
   });
 
+  test("rejects OAuth callback without state and closes resources", async () => {
+    const exit = mock(((_code?: number) => undefined) as never);
+    const close = mock(async () => {});
+    const connect = mock(async () => {
+      throw new UnauthorizedError("auth required");
+    });
+    const finishAuth = mock(async () => {});
+    const stop = mock(() => {});
+    const clearCodeVerifier = mock(() => {});
+    const verifyState = mock(() => true);
+
+    await runAuthCommand("github", {
+      createAuthProvider: mock(() => ({
+        clearCodeVerifier,
+        isTokenExpired: () => true,
+        tokens: () => undefined,
+        verifyState,
+      })),
+      createCallbackServer: mock(() => ({
+        getCallbackUrl: () => "http://localhost:4317/callback",
+        stop,
+        waitForCallback: async () => ({
+          code: "oauth-code",
+        }),
+      })),
+      createClient: mock(() => ({ close, connect })),
+      createTokenStorage: mock(() => ({}) as never),
+      createTransport: mock(() => ({ finishAuth })),
+      loadConfig: async () => ({
+        config: {
+          ...DEFAULT_CONFIG,
+          upstreams: {
+            github: {
+              env: {},
+              enabled: true,
+              sse: {
+                auth: { callbackPort: 4317, clientName: "mcp-squared" },
+                headers: { Authorization: "Bearer token" },
+                url: "https://example.com/sse",
+              },
+              transport: "sse",
+            },
+          },
+        },
+        path: "/tmp/config.toml",
+      }),
+      processRef: { exit },
+      resolveOAuthProviderOptions: mock(() => ({
+        callbackPort: 4317,
+        clientName: "mcp-squared",
+      })),
+    });
+
+    expect(verifyState).not.toHaveBeenCalled();
+    expect(finishAuth).not.toHaveBeenCalled();
+    expect(clearCodeVerifier).not.toHaveBeenCalled();
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
   test("exits successfully when valid tokens already exist", async () => {
     const exit = mock(((_code?: number) => undefined) as never);
     const createCallbackServer = mock(() => ({

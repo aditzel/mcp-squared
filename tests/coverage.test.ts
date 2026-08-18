@@ -93,7 +93,7 @@ describe("parseLcovCoverage", () => {
     expect(summary.branchCoveragePct).toBe(70);
   });
 
-  test("treats missing branch totals as 100% when no branches are instrumented", () => {
+  test("reports missing branch totals separately from percentage", () => {
     const lcov = ["SF:src/a.ts", "LF:2", "LH:2", "end_of_record"].join("\n");
 
     expect(parseLcovCoverage(lcov)).toEqual({
@@ -248,7 +248,7 @@ describe("meetsCoverageThresholds", () => {
     ).toBe(false);
   });
 
-  test("ignores branch threshold when the report has no branch data", () => {
+  test("returns false when the report has no branch data", () => {
     expect(
       meetsCoverageThresholds(
         {
@@ -261,6 +261,24 @@ describe("meetsCoverageThresholds", () => {
           hasBranchCoverage: false,
         },
         80,
+      ),
+    ).toBe(false);
+  });
+
+  test("allows callers to explicitly tolerate missing branch data", () => {
+    expect(
+      meetsCoverageThresholds(
+        {
+          linesFound: 100,
+          linesHit: 85,
+          lineCoveragePct: 85,
+          branchesFound: 0,
+          branchesHit: 0,
+          branchCoveragePct: 100,
+          hasBranchCoverage: false,
+        },
+        80,
+        { requireBranchData: false },
       ),
     ).toBe(true);
   });

@@ -248,7 +248,7 @@ export async function runAuthCommand(
       return;
     }
 
-    if (result.state && !authProvider.verifyState(result.state)) {
+    if (!result.state || !authProvider.verifyState(result.state)) {
       console.error("\nError: OAuth state mismatch - possible CSRF attack.");
       processRef.exit(1);
       return;

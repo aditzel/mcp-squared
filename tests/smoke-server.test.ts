@@ -1,11 +1,23 @@
-import { describe, expect, test, beforeAll, afterAll } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { McpSquaredServer } from "@/server/index";
-import { HealthTracker } from "@/runtime/health-tracker";
-import { AgentLeaseManager } from "@/runtime/agent-lease";
+import { join } from "node:path";
 import { DEFAULT_CONFIG, type McpSquaredConfig } from "@/config/schema";
+import { AgentLeaseManager } from "@/runtime/agent-lease";
+import { HealthTracker } from "@/runtime/health-tracker";
+import { McpSquaredServer } from "@/server/index";
+
+function expectPresent<T>(
+  value: T | null | undefined,
+  label: string,
+): NonNullable<T> {
+  expect(value).not.toBeNull();
+  expect(value).toBeDefined();
+  if (value == null) {
+    throw new Error(`${label} should be present`);
+  }
+  return value;
+}
 
 describe("Smoke test: mcp-squared server with health tracking", () => {
   let tempDir: string;
@@ -57,12 +69,14 @@ describe("Smoke test: mcp-squared server with health tracking", () => {
     });
     healthTracker.recordDisconnected("test-upstream");
 
-    const health = healthTracker.getHealth("test-upstream");
-    expect(health).not.toBeNull();
-    expect(health!.status).toBe("unhealthy");
-    expect(health!.lastConnectedAt).toBeGreaterThan(0);
-    expect(health!.lastDisconnectedAt).toBeGreaterThan(0);
-    expect(health!.totalToolCalls).toBe(1);
+    const health = expectPresent(
+      healthTracker.getHealth("test-upstream"),
+      "test-upstream health",
+    );
+    expect(health.status).toBe("unhealthy");
+    expect(health.lastConnectedAt).toBeGreaterThan(0);
+    expect(health.lastDisconnectedAt).toBeGreaterThan(0);
+    expect(health.totalToolCalls).toBe(1);
 
     const events = healthTracker.getAuditEvents();
     expect(events.length).toBeGreaterThanOrEqual(3);
@@ -83,12 +97,21 @@ describe("Smoke test: mcp-squared server with health tracking", () => {
   });
 
   test("audit events include lease events", () => {
-    healthTracker.recordLeaseEvent("lease_acquired", "test-upstream", "agent-a");
-    healthTracker.recordLeaseEvent("lease_released", "test-upstream", "agent-a");
+    healthTracker.recordLeaseEvent(
+      "lease_acquired",
+      "test-upstream",
+      "agent-a",
+    );
+    healthTracker.recordLeaseEvent(
+      "lease_released",
+      "test-upstream",
+      "agent-a",
+    );
 
     const events = healthTracker.getAuditEvents({ type: "lease_acquired" });
     expect(events).toHaveLength(1);
-    expect(events[0].agentId).toBe("agent-a");
+    const event = expectPresent(events[0], "lease acquired event");
+    expect(event.agentId).toBe("agent-a");
 
     const releaseEvents = healthTracker.getAuditEvents({
       type: "lease_released",
@@ -106,9 +129,11 @@ describe("Smoke test: mcp-squared server with health tracking", () => {
     });
     await newTracker.load();
 
-    const health = newTracker.getHealth("test-upstream");
-    expect(health).not.toBeNull();
-    expect(health!.totalToolCalls).toBe(1);
+    const health = expectPresent(
+      newTracker.getHealth("test-upstream"),
+      "persisted test-upstream health",
+    );
+    expect(health.totalToolCalls).toBe(1);
 
     const events = newTracker.getAuditEvents();
     expect(events.length).toBeGreaterThanOrEqual(3);
@@ -127,13 +152,17 @@ describe("Smoke test: mcp-squared server with health tracking", () => {
     tracker.recordToolCall("upstream-a", 50);
     tracker.recordToolCall("upstream-b", 100);
 
-    const healthA = tracker.getHealth("upstream-a");
-    const healthB = tracker.getHealth("upstream-b");
+    const healthA = expectPresent(
+      tracker.getHealth("upstream-a"),
+      "upstream-a health",
+    );
+    const healthB = expectPresent(
+      tracker.getHealth("upstream-b"),
+      "upstream-b health",
+    );
 
-    expect(healthA).not.toBeNull();
-    expect(healthB).not.toBeNull();
-    expect(healthA!.totalToolCalls).toBe(1);
-    expect(healthB!.totalToolCalls).toBe(1);
+    expect(healthA.totalToolCalls).toBe(1);
+    expect(healthB.totalToolCalls).toBe(1);
 
     const eventsA = tracker.getAuditEvents({ upstreamKey: "upstream-a" });
     const eventsB = tracker.getAuditEvents({ upstreamKey: "upstream-b" });
