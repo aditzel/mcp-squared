@@ -1,11 +1,11 @@
-import { describe, expect, test, beforeAll, afterAll } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { McpSquaredServer } from "@/server/index";
-import { HealthTracker } from "@/runtime/health-tracker";
-import { AgentLeaseManager } from "@/runtime/agent-lease";
+import { join } from "node:path";
 import { DEFAULT_CONFIG, type McpSquaredConfig } from "@/config/schema";
+import { AgentLeaseManager } from "@/runtime/agent-lease";
+import { HealthTracker } from "@/runtime/health-tracker";
+import { McpSquaredServer } from "@/server/index";
 
 describe("Smoke test: mcp-squared server with health tracking", () => {
   let tempDir: string;
@@ -83,12 +83,20 @@ describe("Smoke test: mcp-squared server with health tracking", () => {
   });
 
   test("audit events include lease events", () => {
-    healthTracker.recordLeaseEvent("lease_acquired", "test-upstream", "agent-a");
-    healthTracker.recordLeaseEvent("lease_released", "test-upstream", "agent-a");
+    healthTracker.recordLeaseEvent(
+      "lease_acquired",
+      "test-upstream",
+      "agent-a",
+    );
+    healthTracker.recordLeaseEvent(
+      "lease_released",
+      "test-upstream",
+      "agent-a",
+    );
 
     const events = healthTracker.getAuditEvents({ type: "lease_acquired" });
     expect(events).toHaveLength(1);
-    expect(events[0].agentId).toBe("agent-a");
+    expect(events[0]?.agentId).toBe("agent-a");
 
     const releaseEvents = healthTracker.getAuditEvents({
       type: "lease_released",

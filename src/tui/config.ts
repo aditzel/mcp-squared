@@ -51,34 +51,52 @@ interface ConfigTuiState {
 }
 
 export async function runConfigTui(): Promise<void> {
-  const renderer = await createCliRenderer({
-    exitOnCtrlC: false,
-    targetFps: 30,
-  });
+  return createConfigTuiRunner()();
+}
 
-  const { config, path } = await loadConfig().catch(() => ({
-    config: DEFAULT_CONFIG,
-    path: getDefaultConfigPath().path,
-  }));
+const configDependencies = {
+  createRenderer: createCliRenderer,
+  loadConfig,
+  saveConfig,
+  testUpstreamConnection,
+  exit: (code: number): void => process.exit(code),
+};
 
-  const state: ConfigTuiState = {
-    config: structuredClone(config),
-    configPath: path,
-    isDirty: false,
-    currentScreen: "main",
-    selectedUpstream: null,
+/** @internal Creates an isolated configuration runner with replaceable I/O boundaries. */
+export function createConfigTuiRunner(
+  dependencies: Partial<typeof configDependencies> = {},
+) {
+  const runtime = { ...configDependencies, ...dependencies };
+  return async (): Promise<void> => {
+    const renderer = await runtime.createRenderer({
+      exitOnCtrlC: false,
+      targetFps: 30,
+    });
+
+    const { config, path } = await runtime.loadConfig().catch(() => ({
+      config: DEFAULT_CONFIG,
+      path: getDefaultConfigPath().path,
+    }));
+
+    const state: ConfigTuiState = {
+      config: structuredClone(config),
+      configPath: path,
+      isDirty: false,
+      currentScreen: "main",
+      selectedUpstream: null,
+    };
+
+    renderer.setBackgroundColor("#0f172a");
+
+    const app = new ConfigTuiApp(renderer, state, runtime);
+    app.showMainMenu();
+
+    renderer.keyInput.on("keypress", (key: KeyEvent) => {
+      if (key.name === "c" && key.ctrl) {
+        app.handleExit();
+      }
+    });
   };
-
-  renderer.setBackgroundColor("#0f172a");
-
-  const app = new ConfigTuiApp(renderer, state);
-  app.showMainMenu();
-
-  renderer.keyInput.on("keypress", (key: KeyEvent) => {
-    if (key.name === "c" && key.ctrl) {
-      app.handleExit();
-    }
-  });
 }
 
 class ConfigTuiApp {
@@ -86,7 +104,11 @@ class ConfigTuiApp {
   private state: ConfigTuiState;
   private container: BoxRenderable | null = null;
 
-  constructor(renderer: CliRenderer, state: ConfigTuiState) {
+  constructor(
+    renderer: CliRenderer,
+    state: ConfigTuiState,
+    private readonly runtime: typeof configDependencies,
+  ) {
     this.renderer = renderer;
     this.state = state;
   }
@@ -1106,7 +1128,7 @@ class ConfigTuiApp {
 
     this.addInstructions("Please wait...");
 
-    const result = await testUpstreamConnection(name, upstream);
+    const result = await this.runtime.testUpstreamConnection(name, upstream);
 
     this.clearScreen();
     this.addHeader();
@@ -1401,7 +1423,7 @@ class ConfigTuiApp {
     }
 
     try {
-      await saveConfig(this.state.configPath, this.state.config);
+      await this.runtime.saveConfig(this.state.configPath, this.state.config);
       this.state.isDirty = false;
       this.showMainMenu();
     } catch (err) {
@@ -1415,7 +1437,7 @@ class ConfigTuiApp {
       this.showExitConfirmation();
     } else {
       this.renderer.destroy();
-      process.exit(0);
+      this.runtime.exit(0);
     }
   }
 
@@ -1463,11 +1485,11 @@ class ConfigTuiApp {
           case "save-exit":
             await this.handleSave();
             this.renderer.destroy();
-            process.exit(0);
+            this.runtime.exit(0);
             break;
           case "exit":
             this.renderer.destroy();
-            process.exit(0);
+            this.runtime.exit(0);
             break;
           case "cancel":
             this.showMainMenu();

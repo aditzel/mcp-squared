@@ -21,7 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added mcporter SDK adapter factory for wrapping generated typed SDKs with MCP² policy and audit.
 - Added proxy middleware system (`ProxyMiddleware`) with built-in session affinity, request logging, retry with exponential backoff, and auth injection middlewares.
 
+### Fixed
+- Measure complete source line and branch coverage, including Bun child processes, and reject missing branch data instead of treating it as full coverage. Add isolated behavior tests for TUI navigation and save flows, command orchestration, discovery, OAuth lifecycle, and upstream cleanup.
+- Correct strict TypeScript checks in runtime integration and smoke fixtures while preserving their assertions.
+
 ### Changed
+- Update vulnerable runtime dependencies and refresh compatible transitive packages, including the optional OpenTelemetry SDK and the Sharp override used by local embeddings. Existing audit exceptions remain unchanged.
 - Documented the short-term accepted OpenTUI transitive `file-type` advisory in `docs/DEPENDENCY_EXCEPTIONS.md` and tightened the dependency-maintenance/release process so temporary audit exceptions are only allowed when reviewed reachability remains low and local-only.
 - Routed cataloged upstream tool execution through the runtime call supervisor so local stdio upstreams default to exclusive singleton-safe execution while remote SSE/HTTP upstreams keep proxy-style behavior.
 - Threaded daemon/proxy session identity into `RuntimeCallContext` so remote `session_affine` upstreams serialize per session/client when identity exists, while no-context remote calls remain parallel and direct stdio behavior stays unchanged.

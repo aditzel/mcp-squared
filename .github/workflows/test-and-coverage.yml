@@ -41,7 +41,7 @@ jobs:
         run: |
           mkdir -p coverage
           set -o pipefail
-          bun test --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir coverage |& tee coverage/coverage-summary.txt
+          bun run test:coverage |& tee coverage/coverage-summary.txt
 
       - name: Enforce line and branch coverage thresholds
         run: bun run coverage:check

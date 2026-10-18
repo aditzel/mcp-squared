@@ -224,7 +224,7 @@ export function parseLcovCoverage(lcovContent: string): CoverageSummary {
     branchesHit,
     hasBranchCoverage,
     branchCoveragePct:
-      branchesFound > 0 ? (branchesHit / branchesFound) * 100 : 100,
+      branchesFound > 0 ? (branchesHit / branchesFound) * 100 : 0,
   };
 }
 
@@ -276,7 +276,8 @@ export function meetsCoverageThresholds(
 ): boolean {
   return (
     summary.lineCoveragePct >= thresholdPercent &&
-    (!summary.hasBranchCoverage ||
-      summary.branchCoveragePct >= thresholdPercent)
+    summary.hasBranchCoverage &&
+    summary.branchesFound > 0 &&
+    summary.branchCoveragePct >= thresholdPercent
   );
 }
