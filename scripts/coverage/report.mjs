@@ -21,20 +21,27 @@ export async function reportCoverage(directory, output) {
     );
   }
   const map = createCoverageMap(seed);
-  const processes = readdirSync(directory).filter((name) =>
-    /^process-\d+\.json$/.test(name),
+  const processes = readdirSync(directory).filter(
+    (name) => name.startsWith("process-") && name.endsWith(".json"),
   );
   assert.ok(processes.length > 0, "No instrumented processes ran");
   const records = [];
   for (const filename of processes) {
     const record = read(filename);
+    assert.match(
+      record.id,
+      /^\d+-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/,
+      "Invalid process artifact ID",
+    );
+    assert.equal(filename, `process-${record.id}.json`);
+    assert.equal(record.id.split("-")[0], String(record.pid));
     records.push(record);
     assert.deepEqual(
       record.failures,
       [],
       `Loader failures in process ${record.pid}`,
     );
-    const counters = `counters-${record.pid}.json`;
+    const counters = `counters-${record.id}.json`;
     if (!existsSync(join(directory, counters))) {
       // A terminated SDK/test fixture can have no production imports or counters.
       assert.equal(

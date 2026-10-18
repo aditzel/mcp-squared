@@ -92,6 +92,46 @@ describe("source and child coverage integrity", () => {
     });
   });
 
+  test("retains distinct counters and receipts when a PID is reused", async () => {
+    const { root, raw, env } = fixture("choose(true);");
+    const preload = join(root, "reused-pid-preload.mjs");
+    writeFileSync(
+      preload,
+      `Object.defineProperty(process, "pid", { value: 424242 }); await import(${JSON.stringify(resolve("scripts/coverage/preload.mjs"))});`,
+    );
+    for (const flag of [true, false]) {
+      writeFileSync(
+        join(root, "run.ts"),
+        `import {choose} from './src/branch'; choose(${flag});`,
+      );
+      const child = spawnSync(process.execPath, ["run", join(root, "run.ts")], {
+        env: { ...env, BUN_INSPECT_PRELOAD: preload },
+        encoding: "utf8",
+      });
+      expect(child.status).toBe(0);
+    }
+    const receipts = readdirSync(raw).filter((name) =>
+      name.startsWith("process-424242"),
+    );
+    expect(receipts).toHaveLength(2);
+    const records = receipts.map((name) =>
+      JSON.parse(readFileSync(join(raw, name), "utf8")),
+    );
+    expect(records.map((record) => record.pid)).toEqual([424242, 424242]);
+    expect(new Set(records.map((record) => record.id)).size).toBe(2);
+    expect((await reportCoverage(raw, root)).branches).toMatchObject({
+      covered: 2,
+      total: 4,
+      pct: 50,
+    });
+    const receipt = receipts[0];
+    if (!receipt) throw new Error("Missing process receipt");
+    rmSync(join(raw, receipt.replace(/^process-/, "counters-")));
+    await expect(reportCoverage(raw, root)).rejects.toThrow(
+      "Missing final counters",
+    );
+  });
+
   test("rejects lost counters from a process that loaded production source", async () => {
     const { root, raw, env } = fixture("choose(true);");
     expect(

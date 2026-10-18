@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { plugin } from "bun";
@@ -11,7 +11,9 @@ const manifest = JSON.parse(
 const seed = JSON.parse(readFileSync(join(directory, "seed.json"), "utf8"));
 if (globalThis.__coverage__) throw new Error("Coverage was initialized twice");
 globalThis.__coverage__ = seed;
+const id = `${process.pid}-${randomUUID()}`;
 const record = {
+  id,
   pid: process.pid,
   ppid: process.ppid,
   argv: process.argv,
@@ -19,14 +21,14 @@ const record = {
   failures: [],
   snapshots: [],
 };
-const progressPath = join(directory, `process-${process.pid}.json`);
+const progressPath = join(directory, `process-${id}.json`);
 function progress() {
   writeFileSync(progressPath, JSON.stringify(record));
 }
 function snapshot(phase) {
   record.snapshots.push(phase);
   writeFileSync(
-    join(directory, `counters-${process.pid}.json`),
+    join(directory, `counters-${id}.json`),
     JSON.stringify(globalThis.__coverage__),
   );
   progress();

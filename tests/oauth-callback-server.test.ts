@@ -94,9 +94,10 @@ describe("OAuth callback HTTP lifecycle", () => {
   test("rejects an occupied port without disturbing its listener", async () => {
     const port = await freePort();
     const occupied = createServer();
-    await new Promise<void>((resolve) =>
-      occupied.listen(port, "127.0.0.1", resolve),
-    );
+    await new Promise<void>((resolve, reject) => {
+      occupied.once("error", reject);
+      occupied.listen(port, "127.0.0.1", resolve);
+    });
     try {
       const server = new OAuthCallbackServer({ port, timeoutMs: 1000 });
       servers.push(server);

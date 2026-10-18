@@ -91,7 +91,7 @@ jobs:
         run: bun run typecheck
 
       - name: Smoke tests
-        run: bun test tests/version.test.ts tests/oauth-preflight.test.ts tests/tool-names.test.ts tests/security-policy.test.ts
+        run: bun test tests/version.test.ts tests/oauth-preflight.test.ts tests/tool-names.test.ts tests/security-policy.test.ts tests/transformers-sharp-compatibility.test.ts
 
   standalone-compile:
     name: Standalone compile (${{ matrix.label }})
