@@ -36,8 +36,36 @@ export interface RunMonitorDependencies {
   processRef: Pick<typeof process, "exit" | "platform">;
 }
 
+interface ProcessInfoDependencies {
+  platform: NodeJS.Platform;
+  query: (
+    command: string,
+    args: string[],
+    options: { encoding: "utf8" },
+  ) => {
+    status: number | null;
+    stdout: string | null;
+  };
+}
+
+export function createProcessInfoAugmenter(
+  dependencies: ProcessInfoDependencies,
+) {
+  return (entries: InstanceRegistryEntry[]): void =>
+    augmentProcessInfoWithDependencies(entries, dependencies);
+}
+
 export function augmentProcessInfo(entries: InstanceRegistryEntry[]): void {
-  if (entries.length === 0 || process.platform === "win32") {
+  createProcessInfoAugmenter({ platform: process.platform, query: spawnSync })(
+    entries,
+  );
+}
+
+function augmentProcessInfoWithDependencies(
+  entries: InstanceRegistryEntry[],
+  dependencies: ProcessInfoDependencies,
+): void {
+  if (entries.length === 0 || dependencies.platform === "win32") {
     return;
   }
 
@@ -46,7 +74,7 @@ export function augmentProcessInfo(entries: InstanceRegistryEntry[]): void {
     return;
   }
 
-  const result = spawnSync(
+  const result = dependencies.query(
     "ps",
     ["-p", pids.join(","), "-o", "pid=,ppid=,user=,comm=,command="],
     { encoding: "utf8" },
@@ -94,7 +122,7 @@ export function augmentProcessInfo(entries: InstanceRegistryEntry[]): void {
     return;
   }
 
-  const parentResult = spawnSync(
+  const parentResult = dependencies.query(
     "ps",
     ["-p", parentPids.join(","), "-o", "pid=,comm=,command="],
     { encoding: "utf8" },

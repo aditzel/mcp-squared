@@ -57,7 +57,37 @@ const colors = {
  *
  * @param args - Import CLI arguments
  */
+interface ImportRunnerDependencies {
+  load: typeof loadConfig;
+  save: typeof saveConfig;
+  discover: typeof discoverConfigs;
+  locate: typeof discoverConfigPath;
+  defaultPath: typeof getDefaultConfigPath;
+  prompt: typeof promptUser;
+  exit: (code: number) => never;
+}
+
+export function createImportRunner(dependencies: ImportRunnerDependencies) {
+  return (args: ImportArgs): Promise<void> =>
+    runImportWithDependencies(args, dependencies);
+}
+
 export async function runImport(args: ImportArgs): Promise<void> {
+  return createImportRunner({
+    load: loadConfig,
+    save: saveConfig,
+    discover: discoverConfigs,
+    locate: discoverConfigPath,
+    defaultPath: getDefaultConfigPath,
+    prompt: promptUser,
+    exit: (code) => process.exit(code),
+  })(args);
+}
+
+async function runImportWithDependencies(
+  args: ImportArgs,
+  dependencies: ImportRunnerDependencies,
+): Promise<void> {
   // Build options, only setting defined values
   const options: ImportOptions = {
     scope: args.scope,
@@ -78,21 +108,24 @@ export async function runImport(args: ImportArgs): Promise<void> {
 
   // List mode - just show discovered configs
   if (options.list) {
-    await runListMode(options);
+    await runListMode(options, dependencies);
     return;
   }
 
   // Run full import
-  const result = await performImport(options);
+  const result = await performImport(options, dependencies);
 
   // Exit with appropriate code
-  process.exit(result.success ? 0 : 1);
+  dependencies.exit(result.success ? 0 : 1);
 }
 
 /**
  * Lists discovered MCP configurations without importing.
  */
-async function runListMode(options: ImportOptions): Promise<void> {
+async function runListMode(
+  options: ImportOptions,
+  dependencies: ImportRunnerDependencies,
+): Promise<void> {
   console.log("\nDiscovering MCP configurations...\n");
 
   let discovered: DiscoveredConfig[];
@@ -121,7 +154,7 @@ async function runListMode(options: ImportOptions): Promise<void> {
     if (options.scope !== undefined) {
       discoverOpts.scope = options.scope;
     }
-    discovered = await discoverConfigs(discoverOpts);
+    discovered = await dependencies.discover(discoverOpts);
   }
 
   const existingConfigs = discovered.filter((d) => d.exists && d.readable);
@@ -221,7 +254,10 @@ async function parseConfig(
 /**
  * Performs the full import process.
  */
-async function performImport(options: ImportOptions): Promise<ImportResult> {
+async function performImport(
+  options: ImportOptions,
+  dependencies: ImportRunnerDependencies,
+): Promise<ImportResult> {
   console.log("\nMCP Configuration Import\n");
 
   // Step 1: Load existing MCP² config
@@ -229,7 +265,7 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
   let configPath: string;
 
   try {
-    const loaded = await loadConfig();
+    const loaded = await dependencies.load();
     existingConfig = loaded.config;
     configPath = loaded.path;
     console.log(`${colors.dim}Existing config: ${configPath}${colors.reset}`);
@@ -249,11 +285,11 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
     }
 
     // No existing config - use defaults
-    const pathResult = discoverConfigPath();
+    const pathResult = dependencies.locate();
     if (pathResult) {
       configPath = pathResult.path;
     } else {
-      configPath = getDefaultConfigPath().path;
+      configPath = dependencies.defaultPath().path;
     }
     existingConfig = DEFAULT_CONFIG;
     console.log(
@@ -287,7 +323,7 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
     if (options.scope !== undefined) {
       discoverOpts.scope = options.scope;
     }
-    discovered = await discoverConfigs(discoverOpts);
+    discovered = await dependencies.discover(discoverOpts);
   }
 
   const existingDiscovered = discovered.filter((d) => d.exists && d.readable);
@@ -369,6 +405,7 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
     // Interactive conflict resolution
     const resolutions = await resolveConflictsInteractively(
       detection.conflicts,
+      dependencies.prompt,
     );
     mergeResult = mergeWithResolutions(mergeInput, resolutions);
   }
@@ -408,7 +445,7 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
     }
   } else {
     console.log(`\nWriting to: ${configPath}`);
-    await saveConfig(configPath, mergeResult.config);
+    await dependencies.save(configPath, mergeResult.config);
     console.log(`${colors.green}✓${colors.reset} Configuration saved.`);
   }
 
@@ -435,6 +472,7 @@ async function performImport(options: ImportOptions): Promise<ImportResult> {
  */
 async function resolveConflictsInteractively(
   conflicts: ImportConflict[],
+  ask: typeof promptUser,
 ): Promise<Map<string, MergeStrategy>> {
   const resolutions = new Map<string, MergeStrategy>();
   let applyToAll: MergeStrategy | undefined;
@@ -453,7 +491,7 @@ async function resolveConflictsInteractively(
     console.log(`\nIncoming (${TOOL_DISPLAY_NAMES[conflict.sourceTool]}):`);
     printServerSummary(conflict.incoming, "  ");
 
-    const choice = await promptConflictChoice();
+    const choice = await promptConflictChoice(ask);
 
     if (choice.applyToAll) {
       applyToAll = choice.action;
@@ -482,7 +520,7 @@ function printServerSummary(server: ExternalServer, indent: string): void {
 /**
  * Prompts user for conflict resolution choice.
  */
-async function promptConflictChoice(): Promise<{
+async function promptConflictChoice(ask: typeof promptUser): Promise<{
   action: MergeStrategy;
   applyToAll: boolean;
 }> {
@@ -492,7 +530,7 @@ async function promptConflictChoice(): Promise<{
   console.log("  [n] Rename - import as new name");
   console.log("  [S/R/N] Apply to all remaining conflicts");
 
-  const response = await promptUser("Choice [s/r/n/S/R/N]: ");
+  const response = await ask("Choice [s/r/n/S/R/N]: ");
   const applyToAll = response === response.toUpperCase() && response !== "";
 
   let action: MergeStrategy;

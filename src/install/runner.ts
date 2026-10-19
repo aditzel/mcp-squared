@@ -105,6 +105,7 @@ export function discoverAvailableTools(): DiscoveredTool[] {
  */
 async function promptToolSelection(
   tools: DiscoveredTool[],
+  ask: typeof promptUser,
 ): Promise<DiscoveredTool> {
   console.log("\nAvailable MCP client tools:\n");
 
@@ -120,7 +121,7 @@ async function promptToolSelection(
   console.log("");
 
   while (true) {
-    const answer = await promptUser(`Select tool [1-${tools.length}]: `);
+    const answer = await ask(`Select tool [1-${tools.length}]: `);
     const index = Number.parseInt(answer, 10) - 1;
 
     if (index >= 0 && index < tools.length) {
@@ -142,6 +143,7 @@ async function promptToolSelection(
  */
 async function promptScopeSelection(
   tool: DiscoveredTool,
+  ask: typeof promptUser,
 ): Promise<InstallScope> {
   if (tool.scopes.length === 1) {
     // biome-ignore lint/style/noNonNullAssertion: length checked above
@@ -162,7 +164,7 @@ async function promptScopeSelection(
   console.log("");
 
   while (true) {
-    const answer = await promptUser(`Select scope [1-${tool.scopes.length}]: `);
+    const answer = await ask(`Select scope [1-${tool.scopes.length}]: `);
     const index = Number.parseInt(answer, 10) - 1;
 
     if (index >= 0 && index < tool.scopes.length) {
@@ -179,7 +181,9 @@ async function promptScopeSelection(
  *
  * @returns Selected mode
  */
-async function promptModeSelection(): Promise<InstallMode> {
+async function promptModeSelection(
+  ask: typeof promptUser,
+): Promise<InstallMode> {
   console.log("\nInstallation mode:\n");
   console.log(
     `  ${colors.cyan}1.${colors.reset} Replace - Remove all existing servers, add only mcp-squared`,
@@ -190,7 +194,7 @@ async function promptModeSelection(): Promise<InstallMode> {
   console.log("");
 
   while (true) {
-    const answer = await promptUser("Select mode [1-2]: ");
+    const answer = await ask("Select mode [1-2]: ");
 
     if (answer === "1") {
       return "replace";
@@ -210,7 +214,9 @@ async function promptModeSelection(): Promise<InstallMode> {
  *
  * @returns Args to pass to the installed command (undefined for auto)
  */
-async function promptProxySelection(): Promise<string[] | undefined> {
+async function promptProxySelection(
+  ask: typeof promptUser,
+): Promise<string[] | undefined> {
   console.log("\nShared daemon mode:\n");
   console.log(
     `  ${colors.cyan}1.${colors.reset} Auto (recommended) - Use daemon/proxy automatically`,
@@ -221,7 +227,7 @@ async function promptProxySelection(): Promise<string[] | undefined> {
   console.log("");
 
   while (true) {
-    const answer = await promptUser("Select mode [1-2]: ");
+    const answer = await ask("Select mode [1-2]: ");
     if (answer === "1") return undefined;
     if (answer === "2") return ["--stdio"];
     console.log(
@@ -236,8 +242,11 @@ async function promptProxySelection(): Promise<string[] | undefined> {
  * @param message - Confirmation message
  * @returns True if confirmed
  */
-async function confirmAction(message: string): Promise<boolean> {
-  const answer = await promptUser(`${message} [Y/n]: `);
+async function confirmAction(
+  message: string,
+  ask: typeof promptUser,
+): Promise<boolean> {
+  const answer = await ask(`${message} [Y/n]: `);
   return answer.toLowerCase() !== "n";
 }
 
@@ -378,11 +387,36 @@ function areArgsEqual(a?: string[], b?: string[]): boolean {
  *
  * @param args - Parsed install arguments
  */
+interface InstallRunnerDependencies {
+  prompt: typeof promptUser;
+  discover: typeof discoverAvailableTools;
+  install: typeof performInstallation;
+  exit: (code: number) => never;
+}
+
+/** @internal Supplies process and I/O boundaries without changing installation decisions. */
+export function createInstallRunner(dependencies: InstallRunnerDependencies) {
+  return (args: InstallArgs): Promise<void> =>
+    runInstallWithDependencies(args, dependencies);
+}
+
 export async function runInstall(args: InstallArgs): Promise<void> {
+  return createInstallRunner({
+    prompt: promptUser,
+    discover: discoverAvailableTools,
+    install: performInstallation,
+    exit: (code) => process.exit(code),
+  })(args);
+}
+
+async function runInstallWithDependencies(
+  args: InstallArgs,
+  dependencies: InstallRunnerDependencies,
+): Promise<void> {
   console.log(`\n${colors.cyan}MCP² Installation${colors.reset}\n`);
 
   // Discover available tools
-  const availableTools = discoverAvailableTools();
+  const availableTools = dependencies.discover();
 
   if (availableTools.length === 0) {
     console.log(
@@ -390,7 +424,7 @@ export async function runInstall(args: InstallArgs): Promise<void> {
     );
     console.log("Install one of the supported tools first:");
     console.log("  Claude Desktop, Cursor, VS Code, Windsurf, Cline, etc.");
-    process.exit(1);
+    dependencies.exit(1);
   }
 
   // Select tool
@@ -406,16 +440,19 @@ export async function runInstall(args: InstallArgs): Promise<void> {
       for (const tool of availableTools) {
         console.log(`  - ${tool.tool} (${tool.displayName})`);
       }
-      process.exit(1);
+      dependencies.exit(1);
     }
     selectedTool = found;
   } else if (args.interactive) {
-    selectedTool = await promptToolSelection(availableTools);
+    selectedTool = await promptToolSelection(
+      availableTools,
+      dependencies.prompt,
+    );
   } else {
     console.log(
       `${colors.red}--tool is required in non-interactive mode.${colors.reset}`,
     );
-    process.exit(1);
+    dependencies.exit(1);
   }
 
   // Select scope
@@ -427,19 +464,22 @@ export async function runInstall(args: InstallArgs): Promise<void> {
         `${colors.red}Scope '${args.scope}' not available for ${selectedTool.displayName}.${colors.reset}`,
       );
       console.log(`Available scopes: ${selectedTool.scopes.join(", ")}`);
-      process.exit(1);
+      dependencies.exit(1);
     }
     selectedScope = args.scope;
   } else if (selectedTool.scopes.length === 1) {
     // biome-ignore lint/style/noNonNullAssertion: length checked above
     selectedScope = selectedTool.scopes[0]!;
   } else if (args.interactive) {
-    selectedScope = await promptScopeSelection(selectedTool);
+    selectedScope = await promptScopeSelection(
+      selectedTool,
+      dependencies.prompt,
+    );
   } else {
     console.log(
       `${colors.red}--scope is required for ${selectedTool.displayName} in non-interactive mode.${colors.reset}`,
     );
-    process.exit(1);
+    dependencies.exit(1);
   }
 
   // Select mode
@@ -448,18 +488,18 @@ export async function runInstall(args: InstallArgs): Promise<void> {
   if (args.mode) {
     selectedMode = args.mode;
   } else if (args.interactive) {
-    selectedMode = await promptModeSelection();
+    selectedMode = await promptModeSelection(dependencies.prompt);
   } else {
     console.log(
       `${colors.red}--mode is required in non-interactive mode.${colors.reset}`,
     );
-    process.exit(1);
+    dependencies.exit(1);
   }
 
   // Determine proxy args if not explicitly provided
   let installArgs = args.args;
   if (!installArgs && args.interactive) {
-    installArgs = await promptProxySelection();
+    installArgs = await promptProxySelection(dependencies.prompt);
   }
 
   // Determine target path
@@ -494,15 +534,18 @@ export async function runInstall(args: InstallArgs): Promise<void> {
   // Confirm if interactive
   if (args.interactive && !args.dryRun) {
     console.log("");
-    const confirmed = await confirmAction("Proceed with installation?");
+    const confirmed = await confirmAction(
+      "Proceed with installation?",
+      dependencies.prompt,
+    );
     if (!confirmed) {
       console.log("\nInstallation cancelled.");
-      process.exit(0);
+      dependencies.exit(0);
     }
   }
 
   // Perform installation
-  const result = performInstallation({
+  const result = dependencies.install({
     tool: selectedTool.tool,
     path: targetPath,
     scope: selectedScope,
@@ -553,8 +596,8 @@ export async function runInstall(args: InstallArgs): Promise<void> {
   } else {
     console.log(`${colors.red}✗${colors.reset} Installation failed`);
     console.log(`  Error: ${result.error}`);
-    process.exit(1);
+    dependencies.exit(1);
   }
 
-  process.exit(0);
+  dependencies.exit(0);
 }

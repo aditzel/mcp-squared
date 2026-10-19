@@ -1,16 +1,17 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { UpstreamServerConfig } from "@/config/schema";
 import { AgentLeaseManager } from "@/runtime/agent-lease";
 import { HealthTracker } from "@/runtime/health-tracker";
 import { UpstreamCallSupervisor } from "@/runtime/supervisor";
-import { ProxyMiddleware } from "@/upstream/proxy-middleware";
 import {
-  createSessionAffinityMiddleware,
-  createRetryMiddleware,
   createAuthInjectionMiddleware,
+  createRetryMiddleware,
+  createSessionAffinityMiddleware,
+  type MiddlewareContext,
+  ProxyMiddleware,
 } from "@/upstream/proxy-middleware";
 
 function deferred(): {
@@ -120,10 +121,10 @@ describe("Integration: Full call path with leases, health, and middleware", () =
 
     const events = healthTracker.getAuditEvents({ type: "tool_error" });
     expect(events).toHaveLength(1);
-    expect(events[0].upstreamKey).toBe("local");
-    expect(events[0].agentId).toBe("agent-a");
-    expect(events[0].durationMs).toBe(100);
-    expect(events[0].details).toEqual({ message: "upstream timeout" });
+    expect(events[0]?.upstreamKey).toBe("local");
+    expect(events[0]?.agentId).toBe("agent-a");
+    expect(events[0]?.durationMs).toBe(100);
+    expect(events[0]?.details).toEqual({ message: "upstream timeout" });
   });
 
   test("lease holder calls proceed while lease is active", async () => {
@@ -192,18 +193,15 @@ describe("Integration: Full call path with leases, health, and middleware", () =
 
     const events = healthTracker.getAuditEvents({ type: "tool_call" });
     expect(events).toHaveLength(1);
-    expect(events[0].agentId).toBe("agent-b");
+    expect(events[0]?.agentId).toBe("agent-b");
   });
 
   test("health tracking persists across tracker instances", async () => {
     const config = makeStdioConfig();
 
-    await supervisor.run(
-      "local",
-      config,
-      async () => "ok",
-      { agentId: "agent-a" },
-    );
+    await supervisor.run("local", config, async () => "ok", {
+      agentId: "agent-a",
+    });
 
     await healthTracker.save();
 
@@ -250,12 +248,9 @@ describe("Integration: Full call path with leases, health, and middleware", () =
 
     expect(order).toEqual(["first", "second"]);
 
-    const result = await supervisor.run(
-      "local",
-      config,
-      async () => "ok",
-      { agentId: "agent-a" },
-    );
+    const result = await supervisor.run("local", config, async () => "ok", {
+      agentId: "agent-a",
+    });
 
     expect(result).toBe("ok");
   });
@@ -266,14 +261,14 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     const affinity = createSessionAffinityMiddleware();
     middleware.use(affinity.name, affinity.fn, affinity.options);
 
-    const ctx1 = {
+    const ctx1: MiddlewareContext = {
       upstreamKey: "remote-a",
       callContext: { agentId: "agent-a", sessionId: "sess-1" },
       state: {},
     };
     await middleware.execute("before_call", ctx1);
 
-    const ctx2 = {
+    const ctx2: MiddlewareContext = {
       upstreamKey: "remote-b",
       callContext: { agentId: "agent-b", sessionId: "sess-1" },
       state: {},
@@ -283,12 +278,9 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     expect(ctx2.state["sessionAffinityConflict"]).toBe(true);
     expect(ctx2.state["previousUpstream"]).toBe("remote-a");
 
-    const result = await supervisor.run(
-      "remote-a",
-      config,
-      async () => "ok",
-      { sessionId: "sess-1" },
-    );
+    const result = await supervisor.run("remote-a", config, async () => "ok", {
+      sessionId: "sess-1",
+    });
     expect(result).toBe("ok");
   });
 
@@ -297,7 +289,7 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     const retry = createRetryMiddleware(3, 100);
     middleware.use(retry.name, retry.fn, retry.options);
 
-    const ctx = {
+    const ctx: MiddlewareContext = {
       upstreamKey: "local",
       callContext: { agentId: "agent-a" },
       state: {},
@@ -315,7 +307,7 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     const auth = createAuthInjectionMiddleware();
     middleware.use(auth.name, auth.fn, auth.options);
 
-    const ctx = {
+    const ctx: MiddlewareContext = {
       upstreamKey: "local",
       callContext: { agentId: "agent-a" },
       state: { authToken: "secret-token" },
@@ -332,18 +324,12 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     const configA = makeStdioConfig();
     const configB = makeSseConfig();
 
-    await supervisor.run(
-      "local-a",
-      configA,
-      async () => "a",
-      { agentId: "agent-a" },
-    );
-    await supervisor.run(
-      "remote-b",
-      configB,
-      async () => "b",
-      { agentId: "agent-b" },
-    );
+    await supervisor.run("local-a", configA, async () => "a", {
+      agentId: "agent-a",
+    });
+    await supervisor.run("remote-b", configB, async () => "b", {
+      agentId: "agent-b",
+    });
 
     const healthA = healthTracker.getHealth("local-a");
     const healthB = healthTracker.getHealth("remote-b");
@@ -384,7 +370,7 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     leaseManager.acquire("local", "agent-a", { ttlMs: 60_000 });
     healthTracker.recordConnected("local");
 
-    const ctx = {
+    const ctx: MiddlewareContext = {
       upstreamKey: "local",
       callContext: { agentId: "agent-a", sessionId: "sess-1" },
       state: {},

@@ -31,7 +31,7 @@ bun.lockb
 *.tsbuildinfo
 
 # Test coverage
-coverage/
+/coverage/
 .nyc_output/
 
 # Test artifacts

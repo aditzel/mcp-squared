@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   test-and-coverage:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,7 +41,7 @@ jobs:
         run: |
           mkdir -p coverage
           set -o pipefail
-          bun test --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir coverage |& tee coverage/coverage-summary.txt
+          bun run test:coverage |& tee coverage/coverage-summary.txt
 
       - name: Enforce line and branch coverage thresholds
         run: bun run coverage:check
@@ -91,7 +91,7 @@ jobs:
         run: bun run typecheck
 
       - name: Smoke tests
-        run: bun test tests/version.test.ts tests/oauth-preflight.test.ts tests/tool-names.test.ts tests/security-policy.test.ts
+        run: bun test tests/version.test.ts tests/oauth-preflight.test.ts tests/tool-names.test.ts tests/security-policy.test.ts tests/transformers-sharp-compatibility.test.ts
 
   standalone-compile:
     name: Standalone compile (${{ matrix.label }})
@@ -100,7 +100,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: [self-hosted, Linux, X64]
+          - os: ubuntu-24.04
             label: matrix-cross-target
             compileTargets: bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-windows-x64
           - os: macos-latest

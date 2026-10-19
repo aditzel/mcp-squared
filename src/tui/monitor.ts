@@ -79,31 +79,63 @@ interface DetailModalSpec {
 export async function runMonitorTui(
   options: MonitorTuiOptions = {},
 ): Promise<void> {
-  const hasInstances = options.instances !== undefined;
-  const socketPath =
-    options.socketPath ?? (hasInstances ? undefined : getSocketFilePath());
-  const refreshInterval = options.refreshInterval ?? 2000;
+  return createMonitorTuiRunner()(options);
+}
 
-  const renderer = await createCliRenderer({
-    exitOnCtrlC: false,
-    targetFps: 30,
-  });
+type MonitorConnection = Pick<
+  MonitorClient,
+  | "connect"
+  | "disconnect"
+  | "isClientConnected"
+  | "getStats"
+  | "getTools"
+  | "getUpstreams"
+  | "getClients"
+>;
 
-  renderer.setBackgroundColor("#0f172a");
+const monitorDependencies = {
+  createRenderer: createCliRenderer,
+  createClient: (socketPath: string): MonitorConnection =>
+    new MonitorClient({ socketPath }),
+  setInterval: (callback: () => void, interval: number) =>
+    setInterval(callback, interval),
+  clearInterval: (timer: ReturnType<typeof setInterval>) =>
+    clearInterval(timer),
+  exit: (code: number): void => process.exit(code),
+};
 
-  const appOptions = {
-    refreshInterval,
-    instances: options.instances ?? [],
-  } as {
-    socketPath?: string;
-    refreshInterval: number;
-    instances: InstanceRegistryEntry[];
+/** @internal Creates an isolated monitor runner with replaceable I/O boundaries. */
+export function createMonitorTuiRunner(
+  dependencies: Partial<typeof monitorDependencies> = {},
+) {
+  const runtime = { ...monitorDependencies, ...dependencies };
+  return async (options: MonitorTuiOptions = {}): Promise<void> => {
+    const hasInstances = options.instances !== undefined;
+    const socketPath =
+      options.socketPath ?? (hasInstances ? undefined : getSocketFilePath());
+    const refreshInterval = options.refreshInterval ?? 2000;
+
+    const renderer = await runtime.createRenderer({
+      exitOnCtrlC: false,
+      targetFps: 30,
+    });
+
+    renderer.setBackgroundColor("#0f172a");
+
+    const appOptions = {
+      refreshInterval,
+      instances: options.instances ?? [],
+    } as {
+      socketPath?: string;
+      refreshInterval: number;
+      instances: InstanceRegistryEntry[];
+    };
+    if (socketPath) {
+      appOptions.socketPath = socketPath;
+    }
+    const app = new MonitorTuiApp(renderer, appOptions, runtime);
+    await app.start();
   };
-  if (socketPath) {
-    appOptions.socketPath = socketPath;
-  }
-  const app = new MonitorTuiApp(renderer, appOptions);
-  await app.start();
 }
 
 /**
@@ -113,7 +145,7 @@ class MonitorTuiApp {
   private readonly renderer: CliRenderer;
   private readonly refreshInterval: number;
   private readonly instances: InstanceRegistryEntry[];
-  private client: MonitorClient | null = null;
+  private client: MonitorConnection | null = null;
   private socketPath: string | null;
   private selectionMode = false;
   private selectedIndex = 0;
@@ -219,6 +251,7 @@ class MonitorTuiApp {
       refreshInterval: number;
       instances: InstanceRegistryEntry[];
     },
+    private readonly runtime: typeof monitorDependencies,
   ) {
     this.renderer = renderer;
     this.refreshInterval = options.refreshInterval;
@@ -257,7 +290,7 @@ class MonitorTuiApp {
     this.isRunning = false;
 
     if (this.refreshTimer) {
-      clearInterval(this.refreshTimer);
+      this.runtime.clearInterval(this.refreshTimer);
       this.refreshTimer = null;
     }
 
@@ -904,10 +937,10 @@ class MonitorTuiApp {
 
       if (keyName === "q") {
         this.stop();
-        process.exit(0);
+        this.runtime.exit(0);
       } else if (keyName === "c" && key.ctrl) {
         this.stop();
-        process.exit(0);
+        this.runtime.exit(0);
       } else if (!this.selectionMode && isHelpToggle) {
         this.toggleHelpOverlay();
       } else if (this.helpVisible) {
@@ -1216,7 +1249,7 @@ class MonitorTuiApp {
   private async enterMonitorMode(socketPath: string): Promise<void> {
     this.selectionMode = false;
     this.socketPath = socketPath;
-    this.client = new MonitorClient({ socketPath });
+    this.client = this.runtime.createClient(socketPath);
     this.detailCardId = null;
     this.detailOverlay = null;
     this.focusedCardIndex = 0;
@@ -1225,7 +1258,7 @@ class MonitorTuiApp {
     await this.refreshData();
 
     if (this.refreshInterval > 0) {
-      this.refreshTimer = setInterval(() => {
+      this.refreshTimer = this.runtime.setInterval(() => {
         this.refreshData().catch((error) => {
           console.error("Failed to refresh data:", error);
         });
