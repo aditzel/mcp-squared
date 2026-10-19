@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Prepare protected Janus shadow jobs that preserve measured coverage and standalone compile checks while GitHub Actions remains authoritative during commissioning.
 - Added the 0.9 runtime-supervisor foundation: optional per-upstream runtime policy, transport-aware stdio/SSE defaults, singleton/proxy runtime-handle supervision, and serialized upstream call scheduling.
 - Added verbose status output for effective upstream lifecycle/concurrency policy plus `docs/RUNTIME-SUPERVISOR.md` to capture the dark-factory and multi-agent runtime direction.
 - Added agent lease system (`AgentLeaseManager`) for temporary exclusive access to singleton stdio servers, with configurable TTL and automatic expiry.
