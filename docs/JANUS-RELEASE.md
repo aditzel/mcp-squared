@@ -32,8 +32,15 @@ producer phase failed, measured coverage is uploaded before the workflow
 propagates that failure. Failed measurement skips upload. Invalid evidence
 fails without upload. No failure can authorize a package handoff.
 
-After upload, the handoff authenticates the package again and requires its
-producer and coverage to match the reports selected earlier. The dependent
+The verifier retrieves a distinct coverage-only envelope while Janus is still
+running. After Codecov returns, it acknowledges the authenticated native build,
+job and envelope hash. Janus checks that acknowledgement before starting lint,
+typecheck and packaging, and keeps monitoring it during those phases. The
+handoff then waits for successful final evidence and requires the same source,
+producer, early artifact identity and measured report hashes. Coverage retrieval
+and this wait share one 350-minute verifier budget.
+
+The dependent
 `Publish to npm` job checks out only the pinned Devops helpers. It installs
 Node 24.22.0 with bundled npm 11.19.1, reauthenticates the handoff and native
 producer, and publishes only the verified tarball with lifecycle execution
@@ -42,7 +49,9 @@ The helper never automatically retries an npm publication.
 
 The workflow needs a read-only `JANUS_HELPERS_READ_TOKEN` for the private Devops
 checkout and pipeline-scoped `BUILDKITE_MCP_RELEASE_READ_TOKEN` for native
-evidence. GitHub's token has contents/actions read access during verification;
+evidence. Janus separately needs the protected Actions-read credential
+`github-mcp-squared-actions-token`; it is never exposed to project execution.
+GitHub's token has contents/actions read access during verification;
 OIDC permission is confined to the publisher. `CODECOV_TOKEN` belongs only to
 the coverage-upload step. Reader credentials are removed from the helper
 process environment before npm runs. Private job state is removed after
@@ -53,11 +62,10 @@ success or failure.
 - Commission the native webhook/pipeline and matching producer image/policy,
   including exact source identity, job graph, artifact hashes/storage,
   required status, retries, cancellation and rollback.
-- Resolve coverage timing: the current consumer waits for a terminal producer,
-  while the original upload happens before lint/typecheck/pack. Frozen measured
-  reports preserve later-failure diagnostics, but GitHub cancellation while
-  waiting can still lose an upload that formerly had already happened. A
-  reviewed phase handoff is required before enabling this path.
+- Verify the coordinated early handoff with native artifact transport and
+  GitHub's expanded acknowledgement step names. Prove cancellation before,
+  during and after acknowledgement, plus retry behavior. Local provider
+  fixtures do not prove Codecov transfer or native API visibility.
 - Prove the effective total workflow budget, including both jobs, queueing and
   environment approval. Individual 360-minute job limits and a bounded read
   loop do not establish parity with the original single job.
