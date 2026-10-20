@@ -2,11 +2,11 @@
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
-  printf 'Usage: bash scripts/buildkite/check.sh shadow-test-and-coverage|shadow-standalone-compile\n' >&2
+  printf 'Usage: bash scripts/buildkite/check.sh shadow-test-and-coverage|shadow-standalone-compile|release-measure|release-verify\n' >&2
   exit 2
 fi
 case "$1" in
-  shadow-test-and-coverage|shadow-standalone-compile) ;;
+  shadow-test-and-coverage|shadow-standalone-compile|release-measure|release-verify) ;;
   *) printf 'An explicit shadow command is required\n' >&2; exit 2 ;;
 esac
 
@@ -21,23 +21,32 @@ if [[ "$(bun --version)" != 1.3.5 ]]; then
 fi
 
 export CI=true
-printf 'SHADOW ONLY: GitHub Actions remains authoritative, including Codecov and native-platform jobs.\n'
-bun install --frozen-lockfile
+if [[ "$1" == shadow-* ]]; then
+  printf 'SHADOW ONLY: GitHub Actions remains authoritative, including Codecov and native-platform jobs.\n'
+fi
+if [[ "$1" != release-verify ]]; then
+  bun install --frozen-lockfile
+fi
 
 case "$1" in
-  shadow-test-and-coverage)
+  shadow-test-and-coverage|release-measure)
     bun run audit
     mkdir -p coverage
     bun run test:coverage 2>&1 | tee coverage/coverage-summary.txt
     bun run coverage:check
     bun run eval:routing --strict
     printf 'PENDING: Codecov upload requires a separate authenticated handoff; this shadow job does not satisfy that stage.\n'
-    bun run lint
-    bun run typecheck
     ;;
   shadow-standalone-compile)
     COMPILE_TARGETS='bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-windows-x64' \
     STRICT_INFRA_FAILURES=0 \
       bun run build:compile:matrix
+    ;;
+esac
+
+case "$1" in
+  shadow-test-and-coverage|release-verify)
+    bun run lint
+    bun run typecheck
     ;;
 esac
