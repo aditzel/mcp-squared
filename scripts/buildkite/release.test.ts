@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const roots: string[] = [];
-function invoke(
+async function invoke(
   args: string[],
   options: {
     failure?: string;
@@ -95,19 +95,37 @@ if(invalid==="lock") writeFileSync("bun.lock","changed");
     mkdirSync(output, { recursive: true });
     writeFileSync(join(output, "keep"), "preserve");
   }
-  const result = spawnSync("bash", [join(scripts, "release.sh"), ...args], {
-    cwd: "/",
-    env: {
-      PATH: `${bin}:/usr/bin:/bin`,
-      HOME: root,
-      TEST_REAL_BUN: process.execPath,
-      TEST_BUN: options.bun ?? "1.3.5",
-      TEST_NODE: options.node ?? "v24.22.0",
-      TEST_FAILURE: options.failure ?? "",
-      TEST_INVALID: options.invalid ?? "",
-    },
-    encoding: "utf8",
-    timeout: 15_000,
+  const result = await new Promise<{
+    status: number;
+    stdout: string;
+    stderr: string;
+  }>((resolve, reject) => {
+    // Keep the event loop available for child reaping and the fixture deadline.
+    execFile(
+      "bash",
+      [join(scripts, "release.sh"), ...args],
+      {
+        cwd: "/",
+        env: {
+          PATH: `${bin}:/usr/bin:/bin`,
+          HOME: root,
+          TEST_REAL_BUN: process.execPath,
+          TEST_BUN: options.bun ?? "1.3.5",
+          TEST_NODE: options.node ?? "v24.22.0",
+          TEST_FAILURE: options.failure ?? "",
+          TEST_INVALID: options.invalid ?? "",
+        },
+        encoding: "utf8",
+        timeout: 15_000,
+      },
+      (error, stdout, stderr) => {
+        if (error && typeof error.code !== "number") {
+          reject(error);
+          return;
+        }
+        resolve({ status: error?.code ?? 0, stdout, stderr });
+      },
+    );
   });
   const log = join(root, "commands.log");
   if (existsSync(join(root, "build"))) {
@@ -132,8 +150,8 @@ afterEach(() => {
 });
 
 describe("credential-free release preparation", () => {
-  it("uses the measured release checks and keeps Codecov pending", () => {
-    const { result, calls, output } = invoke(["check"]);
+  it("uses the measured release checks and keeps Codecov pending", async () => {
+    const { result, calls, output } = await invoke(["check"]);
     expect(result.status).toBe(0);
     expect(calls).toEqual([
       "install --frozen-lockfile",
@@ -148,8 +166,8 @@ describe("credential-free release preparation", () => {
     expect(existsSync(output)).toBe(false);
   });
 
-  it("packs through Bun's prepack lifecycle without publication", () => {
-    const { result, calls, output } = invoke(["pack", "v0.8.1"]);
+  it("packs through Bun's prepack lifecycle without publication", async () => {
+    const { result, calls, output } = await invoke(["pack", "v0.8.1"]);
     expect(result.status).toBe(0);
     expect(calls[0]).toBe("install --frozen-lockfile");
     expect(calls[1]).toMatch(/^pm pack --filename .+\/package\.tgz$/);
@@ -178,8 +196,8 @@ describe("credential-free release preparation", () => {
     ["pack", "v0.8.1", "extra"],
     ["pack", "v0.8.2"],
     ["pack", "0.8.1"],
-  ])("rejects invalid invocation before installation: %j", (...args) => {
-    const { result, calls, output } = invoke(args);
+  ])("rejects invalid invocation before installation: %j", async (...args) => {
+    const { result, calls, output } = await invoke(args);
     expect(result.status).not.toBe(0);
     expect(calls).toEqual([]);
     expect(existsSync(output)).toBe(false);
@@ -188,8 +206,8 @@ describe("credential-free release preparation", () => {
   it.each([
     { bun: "1.3.14" },
     { node: "v22.23.3" },
-  ])("rejects the wrong runtime before installation: %j", (options) => {
-    const { result, calls } = invoke(["pack", "v0.8.1"], options);
+  ])("rejects the wrong runtime before installation: %j", async (options) => {
+    const { result, calls } = await invoke(["pack", "v0.8.1"], options);
     expect(result.status).not.toBe(0);
     expect(calls).toEqual([]);
   });
@@ -202,8 +220,8 @@ describe("credential-free release preparation", () => {
     "run eval:routing --strict",
     "run lint",
     "run typecheck",
-  ])("propagates the release check failure from %s", (failure) => {
-    const { result, calls } = invoke(["check"], { failure });
+  ])("propagates the release check failure from %s", async (failure) => {
+    const { result, calls } = await invoke(["check"], { failure });
     expect(result.status).toBe(23);
     expect(calls.at(-1)).toBe(failure);
   });
@@ -214,32 +232,32 @@ describe("credential-free release preparation", () => {
     "empty",
     "metadata",
     "lock",
-  ])("does not export invalid candidate output: %s", (invalid) => {
-    const { result, output } = invoke(["pack", "v0.8.1"], { invalid });
+  ])("does not export invalid candidate output: %s", async (invalid) => {
+    const { result, output } = await invoke(["pack", "v0.8.1"], { invalid });
     expect(result.status).not.toBe(0);
     expect(existsSync(output)).toBe(false);
   });
 
-  it("preserves existing results and refuses symlinked output parents", () => {
-    const first = invoke(["pack", "v0.8.1"], { existing: true });
+  it("preserves existing results and refuses symlinked output parents", async () => {
+    const first = await invoke(["pack", "v0.8.1"], { existing: true });
     expect(first.result.status).not.toBe(0);
     expect(first.calls).toEqual([]);
     expect(readFileSync(join(first.output, "keep"), "utf8")).toBe("preserve");
-    const second = invoke(["pack", "v0.8.1"], { parentLink: true });
+    const second = await invoke(["pack", "v0.8.1"], { parentLink: true });
     expect(second.result.status).not.toBe(0);
     expect(second.calls).toEqual([]);
   });
 
-  it("fails closed when new publication hooks need a lifecycle decision", () => {
-    const { result, calls } = invoke(["pack", "v0.8.1"], {
+  it("fails closed when new publication hooks need a lifecycle decision", async () => {
+    const { result, calls } = await invoke(["pack", "v0.8.1"], {
       publishHook: true,
     });
     expect(result.status).not.toBe(0);
     expect(calls).toEqual([]);
   });
 
-  it("preserves prepublishOnly before packing when present", () => {
-    const { result, calls } = invoke(["pack", "v0.8.1"], {
+  it("preserves prepublishOnly before packing when present", async () => {
+    const { result, calls } = await invoke(["pack", "v0.8.1"], {
       prepublishHook: true,
     });
     expect(result.status).toBe(0);
@@ -254,8 +272,8 @@ describe("credential-free release preparation", () => {
     "install --frozen-lockfile",
     "run prepublishOnly",
     "pm pack",
-  ])("exports no candidate when packaging fails at %s", (failure) => {
-    const { result, output } = invoke(["pack", "v0.8.1"], {
+  ])("exports no candidate when packaging fails at %s", async (failure) => {
+    const { result, output } = await invoke(["pack", "v0.8.1"], {
       prepublishHook: true,
       failure,
     });

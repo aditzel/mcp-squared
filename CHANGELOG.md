@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added proxy middleware system (`ProxyMiddleware`) with built-in session affinity, request logging, retry with exponential backoff, and auth injection middlewares.
 
 ### Fixed
+- Run release test subprocesses asynchronously so child reaping and fixture timeouts remain responsive on the pinned Bun runtime.
 - Use measured branch coverage in the npm tag workflow, matching the repaired coverage gate.
 - Measure complete source line and branch coverage, including Bun child processes, and reject missing branch data instead of treating it as full coverage. Add isolated behavior tests for TUI navigation and save flows, command orchestration, discovery, OAuth lifecycle, and upstream cleanup.
 - Correct strict TypeScript checks in runtime integration and smoke fixtures while preserving their assertions.
