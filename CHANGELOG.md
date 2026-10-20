@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Add `release.sh measure` and `release.sh verify` phases for a protected coverage snapshot before later release checks, while preserving the legacy `check` phase.
 - Prepare credential-free Janus release checks and npm-compatible package tarballs without enabling publication.
 - Prepare protected Janus shadow jobs that preserve measured coverage and standalone compile checks while GitHub Actions remains authoritative during commissioning.
 - Added the 0.9 runtime-supervisor foundation: optional per-upstream runtime policy, transport-aware stdio/SSE defaults, singleton/proxy runtime-handle supervision, and serialized upstream call scheduling.
