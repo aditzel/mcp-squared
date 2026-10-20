@@ -2,9 +2,9 @@
 set -euo pipefail
 
 case "${1-}" in
-  check) [[ $# -eq 1 ]] || exit 2 ;;
+  check|measure|verify) [[ $# -eq 1 ]] || exit 2 ;;
   pack) [[ $# -eq 2 ]] || exit 2 ;;
-  *) printf 'Usage: bash scripts/buildkite/release.sh check | pack VERSION_TAG\n' >&2; exit 2 ;;
+  *) printf 'Usage: bash scripts/buildkite/release.sh check | measure | verify | pack VERSION_TAG\n' >&2; exit 2 ;;
 esac
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
@@ -16,5 +16,8 @@ export CI=true
 if [[ "$1" == check ]]; then
   # Reuse the repaired measured-coverage gate, including its pending Codecov notice.
   exec bash scripts/buildkite/check.sh shadow-test-and-coverage
+fi
+if [[ "$1" == measure || "$1" == verify ]]; then
+  exec bash scripts/buildkite/check.sh "release-$1"
 fi
 exec bun run scripts/buildkite/package-release.ts "$2"
