@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Connect early Janus coverage retrieval and authenticated upload acknowledgement before later release checks, retaining the inactive hosted modes until native commissioning passes.
 - Prepare authenticated Janus release verification and a minimal hosted npm publisher in the original tag workflow, retaining the legacy default until provider and coverage-timing commissioning is complete. See [the migration gates](docs/JANUS-RELEASE.md).
 - Add `release.sh measure` and `release.sh verify` phases for a protected coverage snapshot before later release checks, while preserving the legacy `check` phase.
 - Prepare credential-free Janus release checks and npm-compatible package tarballs without enabling publication.

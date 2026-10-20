@@ -137,19 +137,23 @@ test("unknown modes reach an explicit failure instead of silent success or legac
   }
 });
 
-test("only authenticated measured LCOV is uploaded before the producer failure is propagated", () => {
+test("measured coverage upload is acknowledged before waiting for final producer success", () => {
   const steps = jobs["verify-janus"].steps;
   const coverage = steps.findIndex((step) => step.id === "coverage");
   const upload = steps.findIndex(
-    (step) => step.name === "Upload authenticated coverage",
+    (step) => step.name === "Upload coverage to Codecov",
   );
-  const gate = steps.findIndex(
-    (step) => step.name === "Require successful Janus producer",
+  const gate = steps.findIndex((step) =>
+    step.name.includes("steps.coverage.outputs.acknowledgement"),
   );
   const handoff = steps.findIndex((step) => step.id === "handoff");
   expect(coverage).toBeGreaterThan(-1);
-  expect(coverage).toBeLessThan(upload);
-  expect(upload).toBeLessThan(gate);
+  expect(stepAt(steps, coverage).name).toBe("Retrieve measured Janus coverage");
+  expect(upload).toBe(coverage + 1);
+  expect(gate).toBe(upload + 1);
+  expect(stepAt(steps, gate).if).toBe(
+    "steps.coverage.outputs.acknowledgement != ''",
+  );
   expect(gate).toBeLessThan(handoff);
   expect(stepAt(steps, upload).if).toBe(
     "steps.coverage.outputs.measured == 'true'",
@@ -162,15 +166,14 @@ test("only authenticated measured LCOV is uploaded before the producer failure i
   expect(stepAt(steps, upload).with?.override_commit).toBe(
     `\${{ github.sha }}`,
   );
-  for (const [successful, code] of [
-    ["true", 0],
-    ["false", 1],
+  for (const [acknowledgement, code] of [
+    ["Acknowledge Janus coverage build job digest", 0],
     ["", 1],
   ] as const) {
     const result = Bun.spawnSync(
       ["bash", "-e", "-c", stepAt(steps, gate).run ?? ""],
       {
-        env: { PATH: "/usr/bin:/bin", PRODUCER_SUCCESSFUL: successful },
+        env: { PATH: "/usr/bin:/bin", ACKNOWLEDGEMENT: acknowledgement },
         stdout: "pipe",
         stderr: "pipe",
       },
