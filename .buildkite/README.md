@@ -1,7 +1,8 @@
 # Shadow Linux CI
 
 This is preparation for the protected `mcp-squared-ci` Buildkite pipeline.
-All existing GitHub workflows remain byte-for-byte unchanged and authoritative.
+Existing GitHub workflows remain authoritative. The tag publisher now uses the
+same measured branch-coverage command as the ordinary test workflow.
 The shadow jobs must not replace required checks or imply that Codecov, publishing,
 or the native macOS/Windows jobs have migrated.
 
@@ -37,7 +38,7 @@ Remaining parity gates include restricted Linux execution, authenticated Codecov
 delivery, GitHub status mapping, provider concurrency/cancellation behavior, fork
 PR handling, and publishing authorization. Native macOS/Windows smoke and native
 compile runs remain on their original runners; Linux cross-compilation cannot
-prove those platforms' runtime behavior. Publish and Junie remain unchanged.
+prove those platforms' runtime behavior. Publish routing and Junie remain unchanged.
 
 ## Validation and commissioning
 
@@ -52,3 +53,46 @@ pipeline. Required GitHub checks remain authoritative until the protected
 manifest, provider configuration, live PR/main execution, cancellation, artifacts,
 and authenticated Codecov handoff have all been verified. Do not change required
 checks on the strength of this preparation alone.
+
+## Tag release preparation
+
+The following credential-free project stages prepare the remaining Linux work
+from `.github/workflows/publish.yml`. They require Node 24 and Bun 1.3.5:
+
+```sh
+bash scripts/buildkite/release.sh check
+bash scripts/buildkite/release.sh pack v0.8.1
+```
+
+`check` reuses the measured coverage shadow: frozen install, audit, measured tests,
+80% line and branch thresholds, strict routing evaluation, lint, and typecheck.
+It explicitly leaves authenticated Codecov delivery pending. The retained GitHub
+tag workflow uses that measured test command too; raw `bun test --coverage` does
+not supply the branch measurements required by the repaired coverage gate.
+
+`pack` requires the tag to exactly match `package.json`, performs its own frozen
+install for a fresh build job, and runs `bun pm pack`. Bun's
+[pack lifecycle](https://bun.sh/docs/pm/cli/pm#pack) runs the existing `prepack`
+build and runtime-import verification and respects the package file whitelist.
+Any `prepublishOnly` hook also runs before packing; future `publish` or
+`postpublish` hooks require an explicit publisher design. No registry publication
+occurs. The result is `build/npm-release/package.tgz` with a local size/hash
+report in `package.json`. Existing output is never overwritten, failed packaging
+leaves no result, and package/lockfile changes fail the stage.
+
+These files and their report are untrusted repository output. Before publication,
+the protected controller must authenticate the tag/source and successful check
+dependency, stop repository processes, inspect the tarball members and package
+identity, and snapshot the exact files into its own authenticated envelope.
+Native Buildkite tag/attempt/status/cancellation/timeout behavior, Codecov
+delivery, the hosted handoff, and the minimal supported registry publisher are
+still required. Neither this script nor a successful local container establishes
+those facts. Do not admit a release route or enable publication from this
+preparation alone.
+
+Preserve the original `v*` event, `npm-publish` environment and concurrency group
+with `cancel-in-progress: false`, 360-minute workflow budget, package lifecycle,
+and supported trusted-publication identity when wiring the final workflow.
+Retain native macOS/Windows CI separately. The existing publisher remains the
+authority until the full replacement and rollback have been commissioned; no
+test package, tag, release commit, or GitHub release is needed for this work.
