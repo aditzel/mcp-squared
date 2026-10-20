@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Connect early Janus coverage retrieval and authenticated upload acknowledgement before later release checks, retaining the inactive hosted modes until native commissioning passes.
 - Prepare authenticated Janus release verification and a minimal hosted npm publisher in the original tag workflow, retaining the legacy default until provider and coverage-timing commissioning is complete. See [the migration gates](docs/JANUS-RELEASE.md).
 - Add `release.sh measure` and `release.sh verify` phases for a protected coverage snapshot before later release checks, while preserving the legacy `check` phase.
 - Prepare credential-free Janus release checks and npm-compatible package tarballs without enabling publication.
@@ -26,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added proxy middleware system (`ProxyMiddleware`) with built-in session affinity, request logging, retry with exponential backoff, and auth injection middlewares.
 
 ### Fixed
+- Run release test subprocesses asynchronously so child reaping and fixture timeouts remain responsive on the pinned Bun runtime.
 - Use measured branch coverage in the npm tag workflow, matching the repaired coverage gate.
 - Measure complete source line and branch coverage, including Bun child processes, and reject missing branch data instead of treating it as full coverage. Add isolated behavior tests for TUI navigation and save flows, command orchestration, discovery, OAuth lifecycle, and upstream cleanup.
 - Correct strict TypeScript checks in runtime integration and smoke fixtures while preserving their assertions.

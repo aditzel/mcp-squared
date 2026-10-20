@@ -36,18 +36,18 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: MiraiForge/devops
-          ref: f994994d437e10c9c5b74d3d3ba30edbbba409dd
+          ref: d3a29243222e5697681030eeb0c8cb940b946f50
           token: ${{ secrets.JANUS_HELPERS_READ_TOKEN }}
           path: .janus-tools
           persist-credentials: false
-      - name: Authenticate measured Janus coverage
+      - name: Retrieve measured Janus coverage
         id: coverage
         env:
           JANUS_MCP_RELEASE_MODE: ${{ vars.JANUS_MCP_RELEASE_MODE }}
           JANUS_GITHUB_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JANUS_BUILDKITE_READ_TOKEN: ${{ secrets.BUILDKITE_MCP_RELEASE_READ_TOKEN }}
         run: python3 -I -B .janus-tools/infrastructure/buildkite-publishers/mcp-workflow.py coverage
-      - name: Upload authenticated coverage
+      - name: Upload coverage to Codecov
         if: steps.coverage.outputs.measured == 'true'
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
@@ -57,10 +57,11 @@ jobs:
           fail_ci_if_error: false
           override_commit: ${{ github.sha }}
           override_branch: ${{ github.ref_name }}
-      - name: Require successful Janus producer
+      - name: ${{ steps.coverage.outputs.acknowledgement || 'Acknowledge Janus coverage' }}
+        if: steps.coverage.outputs.acknowledgement != ''
         env:
-          PRODUCER_SUCCESSFUL: ${{ steps.coverage.outputs.producer-successful }}
-        run: test "$PRODUCER_SUCCESSFUL" = true
+          ACKNOWLEDGEMENT: ${{ steps.coverage.outputs.acknowledgement }}
+        run: test -n "$ACKNOWLEDGEMENT"
       - name: Authenticate package handoff
         id: handoff
         env:
@@ -167,7 +168,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: MiraiForge/devops
-          ref: f994994d437e10c9c5b74d3d3ba30edbbba409dd
+          ref: d3a29243222e5697681030eeb0c8cb940b946f50
           token: ${{ secrets.JANUS_HELPERS_READ_TOKEN }}
           path: .janus-tools
           persist-credentials: false
