@@ -22,7 +22,7 @@ if (
   process.argv.length !== 3 ||
   pkg.name !== "mcp-squared" ||
   typeof pkg.version !== "string" ||
-  // Compare the full match because JavaScript's $ also accepts a final newline.
+  // Require the complete package version to match the SemVer grammar.
   /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(
     pkg.version,
   )?.[0] !== pkg.version ||
