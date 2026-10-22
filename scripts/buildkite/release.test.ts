@@ -27,6 +27,7 @@ async function invoke(
     parentLink?: boolean;
     publishHook?: boolean;
     prepublishHook?: boolean;
+    version?: string;
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "mcp-release-test-"));
@@ -42,7 +43,7 @@ async function invoke(
     join(root, "package.json"),
     JSON.stringify({
       name: "mcp-squared",
-      version: "0.8.1",
+      version: options.version ?? "0.8.1",
       scripts: {
         prepack: "bun run build && bun run build:verify",
         ...(options.prepublishHook ? { prepublishOnly: "existing hook" } : {}),
@@ -186,6 +187,61 @@ describe("credential-free release preparation", () => {
       sha256: createHash("sha256").update(tarball).digest("hex"),
       integrity: `sha512-${createHash("sha512").update(tarball).digest("base64")}`,
     });
+  });
+
+  it.each([
+    "01.2.3",
+    "1.02.3",
+    "1.2.03",
+    "1.2.3-01",
+    "1.2.3-alpha.01",
+    "1.2.3-a..b",
+    "1.2.3-.a",
+    "1.2.3-a.",
+    "1.2.3-",
+    "1.2.3+..",
+    "1.2.3+.build",
+    "1.2.3+build.",
+    "1.2.3+build..1",
+    "1.2.3+",
+    "1.2.3-alpha_1",
+    "1.2.3+é",
+    "1.2.3\n",
+    "1.2.3\r\n",
+    " 1.2.3",
+    "1.2.3 ",
+    "1.2",
+    "v1.2.3",
+  ])("rejects malformed package version before installation: %j", async (version) => {
+    const { result, calls, root } = await invoke(["pack", `v${version}`], {
+      version,
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Release tag must match");
+    expect(calls).toEqual([]);
+    expect(existsSync(join(root, "build"))).toBe(false);
+  });
+
+  it.each([
+    "0.0.0",
+    "10.20.30",
+    "1.2.3-alpha.1",
+    "1.2.3-0.3.7",
+    "1.2.3-01a",
+    "1.2.3-x-y-z.--",
+    "1.2.3+001",
+    "1.2.3-alpha.0+exp.sha.001",
+  ])("preserves valid release version in the package report: %s", async (version) => {
+    const { result, calls, output } = await invoke(["pack", `v${version}`], {
+      version,
+    });
+    expect(result.status).toBe(0);
+    expect(calls).toHaveLength(2);
+    const report = JSON.parse(
+      readFileSync(join(output, "package.json"), "utf8"),
+    );
+    expect(report.version).toBe(version);
+    expect(report.tag).toBe(`v${version}`);
   });
 
   it.each([
