@@ -22,9 +22,10 @@ if (
   process.argv.length !== 3 ||
   pkg.name !== "mcp-squared" ||
   typeof pkg.version !== "string" ||
-  !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(
+  // Compare the full match because JavaScript's $ also accepts a final newline.
+  /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(
     pkg.version,
-  ) ||
+  )?.[0] !== pkg.version ||
   tag !== `v${pkg.version}`
 ) {
   throw new Error("Release tag must match the mcp-squared package version");
