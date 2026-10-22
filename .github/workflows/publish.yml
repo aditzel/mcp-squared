@@ -36,7 +36,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: MiraiForge/devops
-          ref: d3a29243222e5697681030eeb0c8cb940b946f50
+          ref: 511d63ea0af8d957b4e288c502d40866fd06d02d
           token: ${{ secrets.JANUS_HELPERS_READ_TOKEN }}
           path: .janus-tools
           persist-credentials: false
@@ -168,7 +168,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: MiraiForge/devops
-          ref: d3a29243222e5697681030eeb0c8cb940b946f50
+          ref: 511d63ea0af8d957b4e288c502d40866fd06d02d
           token: ${{ secrets.JANUS_HELPERS_READ_TOKEN }}
           path: .janus-tools
           persist-credentials: false
