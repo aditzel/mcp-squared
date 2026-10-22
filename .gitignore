@@ -27,6 +27,12 @@ vendor/
 bun.lockb
 *.bun
 
+# Foreign JS lockfiles (bun.lock is authoritative)
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+pnpm-lock.yaml
+
 # TypeScript
 *.tsbuildinfo
 
