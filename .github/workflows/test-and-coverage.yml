@@ -15,7 +15,87 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Unset mode retains hosted Linux CI. Enable only after native commissioning.
+  verify-janus-ci:
+    name: Verify Janus ordinary coverage
+    if: >-
+      vars.JANUS_MCP_CI_MODE != '' &&
+      (github.repository == 'aditzel/mcp-squared' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Validate ordinary CI mode
+        env:
+          CI_MODE: ${{ vars.JANUS_MCP_CI_MODE }}
+        run: |
+          case "$CI_MODE" in
+            janus) ;;
+            *) echo "Invalid JANUS_MCP_CI_MODE" >&2; exit 1 ;;
+          esac
+      - name: Checkout coverage source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Checkout reviewed ordinary CI helpers
+        id: helpers
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: MiraiForge/devops
+          ref: b930c8326d3f96750a7228a57a8e3f27f05315bf
+          token: ${{ secrets.JANUS_HELPERS_READ_TOKEN }}
+          path: .janus-tools
+          persist-credentials: false
+      - name: Retrieve measured Janus ordinary coverage
+        id: coverage
+        env:
+          JANUS_MCP_CI_MODE: ${{ vars.JANUS_MCP_CI_MODE }}
+          JANUS_MCP_CI_POLICY: ${{ vars.JANUS_MCP_CI_POLICY }}
+          JANUS_GITHUB_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JANUS_BUILDKITE_READ_TOKEN: ${{ secrets.BUILDKITE_MCP_CI_READ_TOKEN }}
+          CC_TOKEN: ""
+        run: python3 -I -B .janus-tools/infrastructure/buildkite-publishers/mcp-ci-workflow.py coverage
+      - name: Upload coverage to Codecov
+        if: steps.coverage.outputs.measured == 'true'
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ steps.coverage.outputs.reports-directory }}/lcov.info
+          disable_search: true
+          fail_ci_if_error: false
+          plugins: noop
+          override_commit: ${{ steps.coverage.outputs.source-sha }}
+          override_branch: ${{ steps.coverage.outputs.source-branch }}
+          override_pr: ${{ steps.coverage.outputs.pull-request }}
+      - name: ${{ steps.coverage.outputs.acknowledgement || 'Acknowledge Janus ordinary coverage' }}
+        if: steps.coverage.outputs.acknowledgement != ''
+        env:
+          ACKNOWLEDGEMENT: ${{ steps.coverage.outputs.acknowledgement }}
+          CC_TOKEN: ""
+        run: test -n "$ACKNOWLEDGEMENT"
+      - name: Verify both Janus Linux results
+        id: finish
+        env:
+          JANUS_MCP_CI_MODE: ${{ vars.JANUS_MCP_CI_MODE }}
+          JANUS_MCP_CI_POLICY: ${{ vars.JANUS_MCP_CI_POLICY }}
+          JANUS_GITHUB_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JANUS_BUILDKITE_READ_TOKEN: ${{ secrets.BUILDKITE_MCP_CI_READ_TOKEN }}
+          CC_TOKEN: ""
+        run: python3 -I -B .janus-tools/infrastructure/buildkite-publishers/mcp-ci-workflow.py finish
+      - name: Remove private verification files
+        if: always() && steps.helpers.outcome == 'success'
+        env:
+          JANUS_MCP_CI_MODE: ${{ vars.JANUS_MCP_CI_MODE }}
+          CC_TOKEN: ""
+        run: python3 -I -B .janus-tools/infrastructure/buildkite-publishers/mcp-ci-workflow.py cleanup
+
   test-and-coverage:
+    if: >-
+      vars.JANUS_MCP_CI_MODE != 'janus' ||
+      !(github.repository == 'aditzel/mcp-squared' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -99,16 +179,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-24.04
-            label: matrix-cross-target
-            compileTargets: bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-windows-x64
-          - os: macos-latest
-            label: macos-native-smoke
-            compileTargets: bun-darwin-arm64 bun-darwin-x64
-          - os: windows-latest
-            label: windows-native-smoke
-            compileTargets: bun-windows-x64
+        include: >-
+          ${{ fromJSON(vars.JANUS_MCP_CI_MODE == 'janus' &&
+            (github.repository == 'aditzel/mcp-squared' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)) &&
+            '[{"os":"macos-latest","label":"macos-native-smoke","compileTargets":"bun-darwin-arm64 bun-darwin-x64"},{"os":"windows-latest","label":"windows-native-smoke","compileTargets":"bun-windows-x64"}]' ||
+            '[{"os":"ubuntu-24.04","label":"matrix-cross-target","compileTargets":"bun-darwin-arm64 bun-darwin-x64 bun-linux-x64 bun-windows-x64"},{"os":"macos-latest","label":"macos-native-smoke","compileTargets":"bun-darwin-arm64 bun-darwin-x64"},{"os":"windows-latest","label":"windows-native-smoke","compileTargets":"bun-windows-x64"}]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use OpenTUI's native paste handling so configuration inputs insert Unicode text once at the cursor with the updated terminal library.
 
 ### Added
+- Prepare an opt-in Janus ordinary-CI handoff with authenticated coverage before lint and both-Linux-lane verification, preserving hosted defaults, fork fallback, native platform jobs, and global cancellation. See [ordinary CI commissioning](.buildkite/README.md#ordinary-ci-hosted-handoff).
 - Connect early Janus coverage retrieval and authenticated upload acknowledgement before later release checks, retaining the inactive hosted modes until native commissioning passes.
 - Prepare authenticated Janus release verification and a minimal hosted npm publisher in the original tag workflow, retaining the legacy default until provider and coverage-timing commissioning is complete. See [the migration gates](docs/JANUS-RELEASE.md).
 - Add `release.sh measure` and `release.sh verify` phases for a protected coverage snapshot before later release checks, while preserving the legacy `check` phase.
