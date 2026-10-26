@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: MiraiForge/devops
-          ref: b930c8326d3f96750a7228a57a8e3f27f05315bf
+          ref: 1fa6f0a1c929320df777ab0a6df982396a045d66
           token: ${{ secrets.JANUS_HELPERS_READ_TOKEN }}
           path: .janus-tools
           persist-credentials: false
