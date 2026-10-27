@@ -5,7 +5,6 @@ import {
   createCliRenderer,
   InputRenderable,
   type KeyEvent,
-  type PasteEvent,
   RGBA,
   type SelectOption,
   SelectRenderable,
@@ -494,9 +493,6 @@ class ConfigTuiApp {
       focusedBackgroundColor: "#1e293b",
       textColor: "#e2e8f0",
       marginBottom: 1,
-      onPaste: (event: PasteEvent) => {
-        nameInput.value = (nameInput.value || "") + event.text;
-      },
     });
     formBox.add(nameInput);
     nameInput.value = existingName ?? "";
@@ -516,9 +512,6 @@ class ConfigTuiApp {
       focusedBackgroundColor: "#1e293b",
       textColor: "#e2e8f0",
       marginBottom: 1,
-      onPaste: (event: PasteEvent) => {
-        commandInput.value = (commandInput.value || "") + event.text;
-      },
     });
     formBox.add(commandInput);
     commandInput.value = existingUpstream
@@ -543,9 +536,6 @@ class ConfigTuiApp {
       focusedBackgroundColor: "#1e293b",
       textColor: "#e2e8f0",
       marginBottom: 1,
-      onPaste: (event: PasteEvent) => {
-        envInput.value = (envInput.value || "") + event.text;
-      },
     });
     formBox.add(envInput);
     envInput.value = stringifyKeyValuePairsInput(existingUpstream?.env);
@@ -696,9 +686,6 @@ class ConfigTuiApp {
       focusedBackgroundColor: "#1e293b",
       textColor: "#e2e8f0",
       marginBottom: 1,
-      onPaste: (event: PasteEvent) => {
-        nameInput.value = (nameInput.value || "") + event.text;
-      },
     });
     formBox.add(nameInput);
     nameInput.value = existingName ?? "";
@@ -718,9 +705,6 @@ class ConfigTuiApp {
       focusedBackgroundColor: "#1e293b",
       textColor: "#e2e8f0",
       marginBottom: 1,
-      onPaste: (event: PasteEvent) => {
-        urlInput.value = (urlInput.value || "") + event.text;
-      },
     });
     formBox.add(urlInput);
     urlInput.value = existingUpstream?.sse.url ?? "";
@@ -741,9 +725,6 @@ class ConfigTuiApp {
       focusedBackgroundColor: "#1e293b",
       textColor: "#e2e8f0",
       marginBottom: 1,
-      onPaste: (event: PasteEvent) => {
-        headersInput.value = (headersInput.value || "") + event.text;
-      },
     });
     formBox.add(headersInput);
     headersInput.value = stringifyKeyValuePairsInput(
@@ -806,9 +787,6 @@ class ConfigTuiApp {
       focusedBackgroundColor: "#1e293b",
       textColor: "#e2e8f0",
       marginBottom: 1,
-      onPaste: (event: PasteEvent) => {
-        envInput.value = (envInput.value || "") + event.text;
-      },
     });
     formBox.add(envInput);
     envInput.value = stringifyKeyValuePairsInput(existingUpstream?.env);

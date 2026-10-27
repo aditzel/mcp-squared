@@ -7,61 +7,183 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: npm-publish
   cancel-in-progress: false
 
 jobs:
+  # Unset mode preserves the original path. Do not select either hosted mode
+  # before the documented provider and coverage-timing commissioning gates pass.
+  verify-janus:
+    name: Verify Janus package
+    if: >-
+      github.repository == 'aditzel/mcp-squared' &&
+      contains(fromJSON('["verify","publish"]'), vars.JANUS_MCP_RELEASE_MODE)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout coverage source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Checkout reviewed release helpers
+        id: helpers
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: MiraiForge/devops
+          ref: 511d63ea0af8d957b4e288c502d40866fd06d02d
+          token: ${{ secrets.JANUS_HELPERS_READ_TOKEN }}
+          path: .janus-tools
+          persist-credentials: false
+      - name: Retrieve measured Janus coverage
+        id: coverage
+        env:
+          JANUS_MCP_RELEASE_MODE: ${{ vars.JANUS_MCP_RELEASE_MODE }}
+          JANUS_GITHUB_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JANUS_BUILDKITE_READ_TOKEN: ${{ secrets.BUILDKITE_MCP_RELEASE_READ_TOKEN }}
+        run: python3 -I -B .janus-tools/infrastructure/buildkite-publishers/mcp-workflow.py coverage
+      - name: Upload coverage to Codecov
+        if: steps.coverage.outputs.measured == 'true'
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ steps.coverage.outputs.reports-directory }}/lcov.info
+          disable_search: true
+          fail_ci_if_error: false
+          override_commit: ${{ github.sha }}
+          override_branch: ${{ github.ref_name }}
+      - name: ${{ steps.coverage.outputs.acknowledgement || 'Acknowledge Janus coverage' }}
+        if: steps.coverage.outputs.acknowledgement != ''
+        env:
+          ACKNOWLEDGEMENT: ${{ steps.coverage.outputs.acknowledgement }}
+        run: test -n "$ACKNOWLEDGEMENT"
+      - name: Authenticate package handoff
+        id: handoff
+        env:
+          JANUS_MCP_RELEASE_MODE: ${{ vars.JANUS_MCP_RELEASE_MODE }}
+          JANUS_GITHUB_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JANUS_BUILDKITE_READ_TOKEN: ${{ secrets.BUILDKITE_MCP_RELEASE_READ_TOKEN }}
+        run: python3 -I -B .janus-tools/infrastructure/buildkite-publishers/mcp-workflow.py handoff
+      - name: Upload authenticated handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ steps.handoff.outputs.artifact-name }}
+          path: ${{ steps.handoff.outputs.handoff-file }}
+          if-no-files-found: error
+          overwrite: false
+      - name: Remove private verification files
+        if: always() && steps.helpers.outcome == 'success'
+        run: python3 -I -B .janus-tools/infrastructure/buildkite-publishers/mcp-workflow.py cleanup
+
   publish:
-    runs-on: [self-hosted, Linux, X64]
+    name: Publish to npm
+    needs: verify-janus
+    if: >-
+      !cancelled() && github.repository == 'aditzel/mcp-squared' &&
+      (needs.verify-janus.result == 'success' ||
+       !contains(fromJSON('["verify","publish"]'), vars.JANUS_MCP_RELEASE_MODE))
+    runs-on: ${{ fromJSON(vars.JANUS_MCP_RELEASE_MODE == '' && '["self-hosted","Linux","X64"]' || '["ubuntu-24.04"]') }}
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
     environment:
       name: npm-publish
       url: https://www.npmjs.com/package/mcp-squared
     steps:
+      - name: Validate release mode
+        env:
+          RELEASE_MODE: ${{ vars.JANUS_MCP_RELEASE_MODE }}
+        run: |
+          case "$RELEASE_MODE" in
+            ''|verify|publish) ;;
+            *) echo "Invalid JANUS_MCP_RELEASE_MODE" >&2; exit 1 ;;
+          esac
       - name: Checkout
+        if: vars.JANUS_MCP_RELEASE_MODE == ''
         uses: actions/checkout@v4
 
       - name: Setup Node
+        if: vars.JANUS_MCP_RELEASE_MODE == ''
         uses: actions/setup-node@v4
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
       - name: Setup Bun
+        if: vars.JANUS_MCP_RELEASE_MODE == ''
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.5"
 
       - name: Install
+        if: vars.JANUS_MCP_RELEASE_MODE == ''
         run: bun install --frozen-lockfile
 
       - name: Dependency audit
+        if: vars.JANUS_MCP_RELEASE_MODE == ''
         run: bun run audit
 
       - name: Test
+        if: vars.JANUS_MCP_RELEASE_MODE == ''
         run: |
           mkdir -p coverage
           set -o pipefail
-          bun test --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir coverage |& tee coverage/coverage-summary.txt
+          bun run test:coverage |& tee coverage/coverage-summary.txt
 
       - name: Enforce line and branch coverage thresholds
+        if: vars.JANUS_MCP_RELEASE_MODE == ''
         run: bun run coverage:check
 
       - name: Routing evaluation (strict)
+        if: vars.JANUS_MCP_RELEASE_MODE == ''
         run: bun run eval:routing --strict
 
       - name: Upload coverage reports to Codecov
+        if: vars.JANUS_MCP_RELEASE_MODE == ''
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Lint
+        if: vars.JANUS_MCP_RELEASE_MODE == ''
         run: bun run lint
 
       - name: Typecheck
+        if: vars.JANUS_MCP_RELEASE_MODE == ''
         run: bun run typecheck
 
       - name: Publish
+        if: vars.JANUS_MCP_RELEASE_MODE == ''
         run: npm publish
+      - name: Checkout reviewed release helpers
+        id: helpers
+        if: vars.JANUS_MCP_RELEASE_MODE != ''
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: MiraiForge/devops
+          ref: 511d63ea0af8d957b4e288c502d40866fd06d02d
+          token: ${{ secrets.JANUS_HELPERS_READ_TOKEN }}
+          path: .janus-tools
+          persist-credentials: false
+      - name: Setup hosted publisher Node
+        if: vars.JANUS_MCP_RELEASE_MODE != ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.22.0"
+      - name: Publish authenticated package
+        if: vars.JANUS_MCP_RELEASE_MODE != ''
+        env:
+          JANUS_MCP_RELEASE_MODE: ${{ vars.JANUS_MCP_RELEASE_MODE }}
+          JANUS_GITHUB_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JANUS_BUILDKITE_READ_TOKEN: ${{ secrets.BUILDKITE_MCP_RELEASE_READ_TOKEN }}
+        run: python3 -I -B .janus-tools/infrastructure/buildkite-publishers/mcp-workflow.py publish
+      - name: Remove private publisher files
+        if: always() && steps.helpers.outcome == 'success'
+        run: python3 -I -B .janus-tools/infrastructure/buildkite-publishers/mcp-workflow.py cleanup

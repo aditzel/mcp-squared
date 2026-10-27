@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Update Zod, body-parser, and fast-uri to patched versions and pin OpenTUI 0.2.1 to remove its vulnerable Jimp/Zod 3 dependency chain. Keep the audit gate and existing advisory exceptions unchanged.
+- Use OpenTUI's native paste handling so configuration inputs insert Unicode text once at the cursor with the updated terminal library.
+
 ### Added
+- Connect early Janus coverage retrieval and authenticated upload acknowledgement before later release checks, retaining the inactive hosted modes until native commissioning passes.
+- Prepare authenticated Janus release verification and a minimal hosted npm publisher in the original tag workflow, retaining the legacy default until provider and coverage-timing commissioning is complete. See [the migration gates](docs/JANUS-RELEASE.md).
+- Add `release.sh measure` and `release.sh verify` phases for a protected coverage snapshot before later release checks, while preserving the legacy `check` phase.
+- Prepare credential-free Janus release checks and npm-compatible package tarballs without enabling publication.
+- Prepare protected Janus shadow jobs that preserve measured coverage and standalone compile checks while GitHub Actions remains authoritative during commissioning.
 - Added the 0.9 runtime-supervisor foundation: optional per-upstream runtime policy, transport-aware stdio/SSE defaults, singleton/proxy runtime-handle supervision, and serialized upstream call scheduling.
 - Added verbose status output for effective upstream lifecycle/concurrency policy plus `docs/RUNTIME-SUPERVISOR.md` to capture the dark-factory and multi-agent runtime direction.
 - Added agent lease system (`AgentLeaseManager`) for temporary exclusive access to singleton stdio servers, with configurable TTL and automatic expiry.
@@ -22,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added proxy middleware system (`ProxyMiddleware`) with built-in session affinity, request logging, retry with exponential backoff, and auth injection middlewares.
 
 ### Fixed
+- Preserve measured Janus coverage when the producer finishes during download by pinning the helper that retries validated terminal transitions.
+- Reject malformed release versions before dependency installation or package creation, while preserving valid prerelease and build identifiers.
+- Run release test subprocesses asynchronously so child reaping and fixture timeouts remain responsive on the pinned Bun runtime.
+- Use measured branch coverage in the npm tag workflow, matching the repaired coverage gate.
 - Measure complete source line and branch coverage, including Bun child processes, and reject missing branch data instead of treating it as full coverage. Add isolated behavior tests for TUI navigation and save flows, command orchestration, discovery, OAuth lifecycle, and upstream cleanup.
 - Correct strict TypeScript checks in runtime integration and smoke fixtures while preserving their assertions.
 

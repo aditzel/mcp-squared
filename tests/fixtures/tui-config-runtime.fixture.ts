@@ -107,6 +107,28 @@ test("configuration loads into the actual menu and clean Ctrl-C exits", async ()
   expect(tui.exit).toHaveBeenCalledWith(0);
 });
 
+for (const transport of ["stdio", "sse"] as const) {
+  test(`${transport} inputs paste Unicode once at the cursor`, async () => {
+    const tui = await configTui();
+    await tui.start();
+    tui.add(transport);
+    const fields =
+      transport === "stdio"
+        ? ["name-input", "command-input", "env-input"]
+        : ["name-input", "url-input", "headers-input", "env-input"];
+    for (const id of fields) {
+      const input = tui.node<InputRenderable>(id);
+      input.value = "prefix-";
+      input.focus();
+      await tui.mockInput.pasteBracketedText("日本語");
+      expect(input.value).toBe("prefix-日本語");
+      tui.mockInput.pressArrow("left");
+      await tui.mockInput.pasteBracketedText("é");
+      expect(input.value).toBe("prefix-日本é語");
+    }
+  });
+}
+
 test("missing configuration falls back to defaults and saves at the default path", async () => {
   const tui = await configTui();
   tui.loadConfig.mockRejectedValueOnce(new Error("unreadable configuration"));
