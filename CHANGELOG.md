@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added proxy middleware system (`ProxyMiddleware`) with built-in session affinity, request logging, retry with exponential backoff, and auth injection middlewares.
 
 ### Fixed
+- Accept valid Janus ordinary-CI reruns whose GitHub attempt creation time differs from the original run, while retaining exact attempt, source, cancellation, and coverage acknowledgement checks.
 - Select the newest matching Janus CI build before validation so an older rejected webhook cannot block a valid rerun, while still rejecting an invalid newest build.
 - Retrieve ordinary-CI coverage from Buildkite’s current artifact storage URL format without forwarding provider credentials.
 - Accept authenticated Buildkite push and PR webhook metadata in the pinned ordinary-CI coverage reader while rejecting extra environment variables.
