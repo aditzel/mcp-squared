@@ -110,7 +110,7 @@ original global `test-and-coverage` cancellation group remains literal and keeps
 
 The hosted verifier checks out source for coverage path mapping but executes no
 repository code. It runs only the DevOps helpers pinned at
-`1fa6f0a1c929320df777ab0a6df982396a045d66`, then:
+`e9b3633f79835df813830bd10dc132947be80298`, then:
 
 1. Discovers and pins the native Buildkite build for the authenticated workflow
    source. Its exact policy, pipeline UUID, GitHub run/attempt, frozen PR merge
@@ -142,7 +142,7 @@ finalization. Any timeout is failure, not successful skip.
 Keep the mode unset until all of these are ready:
 
 - Review and land the matching producer/reader/gate/helper stack and this source
-  workflow. The pinned [DevOps operations guide](https://github.com/MiraiForge/devops/blob/1fa6f0a1c929320df777ab0a6df982396a045d66/runbooks/buildkite-mcp-ordinary-coverage.md)
+  workflow. The pinned [DevOps operations guide](https://github.com/MiraiForge/devops/blob/e9b3633f79835df813830bd10dc132947be80298/runbooks/buildkite-mcp-ordinary-coverage.md)
   describes exact image, source and transport validation.
 - Add the ordinary coverage policy narrowly to the deployed fleet manifest;
   preserve unrelated profiles and retain the previous matching image, manifest,

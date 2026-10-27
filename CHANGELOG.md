@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added proxy middleware system (`ProxyMiddleware`) with built-in session affinity, request logging, retry with exponential backoff, and auth injection middlewares.
 
 ### Fixed
+- Accept authenticated Buildkite push and PR webhook metadata in the pinned ordinary-CI coverage reader while rejecting extra environment variables.
 - Preserve measured Janus coverage when the producer finishes during download by pinning the helper that retries validated terminal transitions.
 - Reject malformed release versions before dependency installation or package creation, while preserving valid prerelease and build identifiers.
 - Run release test subprocesses asynchronously so child reaping and fixture timeouts remain responsive on the pinned Bun runtime.
