@@ -92,18 +92,18 @@ describe("Integration: Full call path with leases, health, and middleware", () =
 
     const health = healthTracker.getHealth("local");
     expect(health).not.toBeNull();
-    expect(health!.totalToolCalls).toBe(1);
-    expect(health!.totalErrors).toBe(0);
-    expect(health!.totalResponseTimeMs).toBeGreaterThanOrEqual(0);
+    expect(health?.totalToolCalls).toBe(1);
+    expect(health?.totalErrors).toBe(0);
+    expect(health?.totalResponseTimeMs).toBeGreaterThanOrEqual(0);
 
     const events = healthTracker.getAuditEvents();
     expect(events.length).toBeGreaterThanOrEqual(1);
     const toolCallEvent = events.find((e) => e.type === "tool_call");
     expect(toolCallEvent).toBeDefined();
-    expect(toolCallEvent!.upstreamKey).toBe("local");
-    expect(toolCallEvent!.agentId).toBe("agent-a");
-    expect(toolCallEvent!.sessionId).toBe("sess-1");
-    expect(toolCallEvent!.requestId).toBe("req-1");
+    expect(toolCallEvent?.upstreamKey).toBe("local");
+    expect(toolCallEvent?.agentId).toBe("agent-a");
+    expect(toolCallEvent?.sessionId).toBe("sess-1");
+    expect(toolCallEvent?.requestId).toBe("req-1");
   });
 
   test("health tracker records tool errors", async () => {
@@ -115,9 +115,9 @@ describe("Integration: Full call path with leases, health, and middleware", () =
 
     const health = healthTracker.getHealth("local");
     expect(health).not.toBeNull();
-    expect(health!.totalToolCalls).toBe(1);
-    expect(health!.totalErrors).toBe(1);
-    expect(health!.totalResponseTimeMs).toBe(100);
+    expect(health?.totalToolCalls).toBe(1);
+    expect(health?.totalErrors).toBe(1);
+    expect(health?.totalResponseTimeMs).toBe(100);
 
     const events = healthTracker.getAuditEvents({ type: "tool_error" });
     expect(events).toHaveLength(1);
@@ -164,7 +164,7 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     expect(await Promise.all([first, second])).toEqual(["first", "second"]);
 
     const health = healthTracker.getHealth("local");
-    expect(health!.totalToolCalls).toBe(2);
+    expect(health?.totalToolCalls).toBe(2);
   });
 
   test("non-holder calls queue until lease is released", async () => {
@@ -214,7 +214,7 @@ describe("Integration: Full call path with leases, health, and middleware", () =
 
     const health = newTracker.getHealth("local");
     expect(health).not.toBeNull();
-    expect(health!.totalToolCalls).toBe(1);
+    expect(health?.totalToolCalls).toBe(1);
 
     const events = newTracker.getAuditEvents();
     expect(events.length).toBeGreaterThanOrEqual(1);
@@ -336,8 +336,8 @@ describe("Integration: Full call path with leases, health, and middleware", () =
 
     expect(healthA).not.toBeNull();
     expect(healthB).not.toBeNull();
-    expect(healthA!.totalToolCalls).toBe(1);
-    expect(healthB!.totalToolCalls).toBe(1);
+    expect(healthA?.totalToolCalls).toBe(1);
+    expect(healthB?.totalToolCalls).toBe(1);
 
     const eventsA = healthTracker.getAuditEvents({ upstreamKey: "local-a" });
     const eventsB = healthTracker.getAuditEvents({ upstreamKey: "remote-b" });
@@ -352,10 +352,10 @@ describe("Integration: Full call path with leases, health, and middleware", () =
 
     const health = healthTracker.getHealth("local");
     expect(health).not.toBeNull();
-    expect(health!.status).toBe("unhealthy");
-    expect(health!.lastConnectedAt).toBeGreaterThan(0);
-    expect(health!.lastDisconnectedAt).toBeGreaterThan(0);
-    expect(health!.totalToolCalls).toBe(1);
+    expect(health?.status).toBe("unhealthy");
+    expect(health?.lastConnectedAt).toBeGreaterThan(0);
+    expect(health?.lastDisconnectedAt).toBeGreaterThan(0);
+    expect(health?.totalToolCalls).toBe(1);
 
     const events = healthTracker.getAuditEvents();
     expect(events.length).toBeGreaterThanOrEqual(3);
@@ -389,12 +389,12 @@ describe("Integration: Full call path with leases, health, and middleware", () =
     expect(result).toEqual({ content: [{ type: "text", text: "done" }] });
 
     const health = healthTracker.getHealth("local");
-    expect(health!.status).toBe("healthy");
-    expect(health!.totalToolCalls).toBe(1);
+    expect(health?.status).toBe("healthy");
+    expect(health?.totalToolCalls).toBe(1);
 
     const lease = leaseManager.getLease("local");
     expect(lease).not.toBeNull();
-    expect(lease!.agentId).toBe("agent-a");
+    expect(lease?.agentId).toBe("agent-a");
 
     await healthTracker.save();
 
@@ -404,6 +404,6 @@ describe("Integration: Full call path with leases, health, and middleware", () =
       dataDir: tempDir,
     });
     await newTracker.load();
-    expect(newTracker.getHealth("local")!.totalToolCalls).toBe(1);
+    expect(newTracker.getHealth("local")?.totalToolCalls).toBe(1);
   });
 });

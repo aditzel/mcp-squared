@@ -41,8 +41,8 @@ describe("resolveEnvVars", () => {
     );
   });
 
-  test("resolves ${VAR} syntax", () => {
-    expect(resolveEnvVars("${API_KEY}/api", { API_KEY: "secret" })).toBe(
+  test(`resolves \${VAR} syntax`, () => {
+    expect(resolveEnvVars(`\${API_KEY}/api`, { API_KEY: "secret" })).toBe(
       "secret/api",
     );
   });

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use OpenTUI's native paste handling so configuration inputs insert Unicode text once at the cursor with the updated terminal library.
 
 ### Added
+- Prepare an opt-in Janus ordinary-CI handoff with authenticated coverage before lint and both-Linux-lane verification, preserving hosted defaults, fork fallback, native platform jobs, and global cancellation. See [ordinary CI commissioning](.buildkite/README.md#ordinary-ci-hosted-handoff).
 - Connect early Janus coverage retrieval and authenticated upload acknowledgement before later release checks, retaining the inactive hosted modes until native commissioning passes.
 - Prepare authenticated Janus release verification and a minimal hosted npm publisher in the original tag workflow, retaining the legacy default until provider and coverage-timing commissioning is complete. See [the migration gates](docs/JANUS-RELEASE.md).
 - Add `release.sh measure` and `release.sh verify` phases for a protected coverage snapshot before later release checks, while preserving the legacy `check` phase.
@@ -31,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added proxy middleware system (`ProxyMiddleware`) with built-in session affinity, request logging, retry with exponential backoff, and auth injection middlewares.
 
 ### Fixed
+- Preserve the hosted Codecov report formats in the Janus ordinary-CI handoff, including authenticated Istanbul JSON, instead of uploading LCOV alone.
+- Accept valid Janus ordinary-CI reruns whose GitHub attempt creation time differs from the original run, while retaining exact attempt, source, cancellation, and coverage acknowledgement checks.
+- Select the newest matching Janus CI build before validation so an older rejected webhook cannot block a valid rerun, while still rejecting an invalid newest build.
+- Retrieve ordinary-CI coverage from Buildkite’s current artifact storage URL format without forwarding provider credentials.
+- Accept authenticated Buildkite push and PR webhook metadata in the pinned ordinary-CI coverage reader while rejecting extra environment variables.
 - Preserve measured Janus coverage when the producer finishes during download by pinning the helper that retries validated terminal transitions.
 - Reject malformed release versions before dependency installation or package creation, while preserving valid prerelease and build identifiers.
 - Run release test subprocesses asynchronously so child reaping and fixture timeouts remain responsive on the pinned Bun runtime.

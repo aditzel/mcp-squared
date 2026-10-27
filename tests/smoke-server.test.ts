@@ -59,10 +59,10 @@ describe("Smoke test: mcp-squared server with health tracking", () => {
 
     const health = healthTracker.getHealth("test-upstream");
     expect(health).not.toBeNull();
-    expect(health!.status).toBe("unhealthy");
-    expect(health!.lastConnectedAt).toBeGreaterThan(0);
-    expect(health!.lastDisconnectedAt).toBeGreaterThan(0);
-    expect(health!.totalToolCalls).toBe(1);
+    expect(health?.status).toBe("unhealthy");
+    expect(health?.lastConnectedAt).toBeGreaterThan(0);
+    expect(health?.lastDisconnectedAt).toBeGreaterThan(0);
+    expect(health?.totalToolCalls).toBe(1);
 
     const events = healthTracker.getAuditEvents();
     expect(events.length).toBeGreaterThanOrEqual(3);
@@ -116,7 +116,7 @@ describe("Smoke test: mcp-squared server with health tracking", () => {
 
     const health = newTracker.getHealth("test-upstream");
     expect(health).not.toBeNull();
-    expect(health!.totalToolCalls).toBe(1);
+    expect(health?.totalToolCalls).toBe(1);
 
     const events = newTracker.getAuditEvents();
     expect(events.length).toBeGreaterThanOrEqual(3);
@@ -140,8 +140,8 @@ describe("Smoke test: mcp-squared server with health tracking", () => {
 
     expect(healthA).not.toBeNull();
     expect(healthB).not.toBeNull();
-    expect(healthA!.totalToolCalls).toBe(1);
-    expect(healthB!.totalToolCalls).toBe(1);
+    expect(healthA?.totalToolCalls).toBe(1);
+    expect(healthB?.totalToolCalls).toBe(1);
 
     const eventsA = tracker.getAuditEvents({ upstreamKey: "upstream-a" });
     const eventsB = tracker.getAuditEvents({ upstreamKey: "upstream-b" });

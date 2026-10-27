@@ -96,3 +96,79 @@ and supported trusted-publication identity when wiring the final workflow.
 Retain native macOS/Windows CI separately. The existing publisher remains the
 authority until the full replacement and rollback have been commissioned; no
 test package, tag, release commit, or GitHub release is needed for this work.
+
+## Ordinary CI hosted handoff
+
+The Test and Coverage workflow now contains an **inactive** protected handoff.
+`JANUS_MCP_CI_MODE` unset keeps the existing hosted Linux jobs. After commissioning,
+`janus` selects `Verify Janus ordinary coverage` for main pushes and same-repository
+PRs targeting main. Fork PRs retain hosted Linux checks and never receive the
+helper or Buildkite reader credentials. Unknown nonempty modes fail explicitly.
+Native macOS/Windows smoke and native compile entries remain unchanged. The
+original global `test-and-coverage` cancellation group remains literal and keeps
+`cancel-in-progress: true` across refs.
+
+The hosted verifier checks out source for coverage path mapping but executes no
+repository code. It runs only the DevOps helpers pinned at
+`099956273c55e66c2ab152ba1063abb1a46b31bc`, then:
+
+1. Discovers and pins the native Buildkite build for the authenticated workflow
+   source. Its exact policy, pipeline UUID, GitHub run/attempt, frozen PR merge
+   parents and current producer attempts must match.
+2. Retrieves the four protected measurement files and their index: LCOV, text
+   summary, Istanbul `coverage-final.json`, and `coverage-provenance.json`. It
+   uploads the verified LCOV and Istanbul JSON reports, retaining the summary
+   and provenance as evidence. The upload explicitly uses the authenticated head,
+   branch and PR identity, then acknowledges that exact measurement.
+3. Waits for both independent Linux jobs and the entire build to pass. Janus
+   performs lint/typecheck after the acknowledged upload. A later failure keeps
+   measured coverage but fails the hosted result. A retry or replacement cannot
+   reuse the old acknowledgement.
+
+The Codecov action preserves `fail_ci_if_error: false`; a successful upload step
+is not proof of backend ingestion. Verify the resulting Codecov project report
+during commissioning: LCOV alone changes Codecov's line/branch interpretation
+and is not equivalent to the original upload. Discovery and executable plugins
+are disabled so only those two verified coverage reports are uploaded. The action
+persists `CC_TOKEN`, so subsequent helper steps explicitly clear it.
+Reader tokens are limited to the two Python steps;
+no repository command receives them. No npm publishing or deployment authority
+is part of ordinary CI.
+
+The wrapper shares one 350-minute deadline across discovery, coverage and final
+verification, within the existing 360-minute hosted-job ceiling. Queueing and
+upload time consume this budget; final verification cannot reset it. This keeps
+the inherited maximum, rather than making tests wait six hours by design. The
+prepared producer retains its separate 360-minute command ceiling plus bounded
+finalization. Any timeout is failure, not successful skip.
+
+### Commissioning and rollback
+
+Keep the mode unset until all of these are ready:
+
+- Review and land the matching producer/reader/gate/helper stack and this source
+  workflow. The pinned [DevOps operations guide](https://github.com/MiraiForge/devops/blob/099956273c55e66c2ab152ba1063abb1a46b31bc/runbooks/buildkite-mcp-ordinary-coverage.md)
+  describes exact image, source and transport validation.
+- Add the ordinary coverage policy narrowly to the deployed fleet manifest;
+  preserve unrelated profiles and retain the previous matching image, manifest,
+  Compose and pipeline configuration. Do not deploy the one-project example over
+  the whole fleet. Use fresh builds after an image/policy change.
+- Configure `JANUS_MCP_CI_POLICY` as trusted JSON with exactly `schemaVersion: 1`,
+  `repository: "aditzel/mcp-squared"`, `pipeline: "mcp-squared-ci"`, the observed
+  nonzero `pipelineId`, and reviewed `producerPolicySha256`. Never obtain the
+  expected digest from unreviewed artifacts merely to make them pass.
+- Provision approved `BUILDKITE_MCP_CI_READ_TOKEN` for this pipeline's builds and
+  artifacts, `JANUS_HELPERS_READ_TOKEN` for the pinned DevOps checkout, and the
+  protected Janus `github-mcp-squared-actions-token` for repository Actions reads.
+  GitHub supplies its job-scoped Actions/Contents reader; the existing Codecov
+  token remains in the hosted upload. This change provisions none of them.
+- Prove real main/PR delivery, exact report attribution, upload-before-lint,
+  compile/lint failures, cancellation, retries, stale-attempt rejection and
+  continued native-platform execution. Required-check mapping must account for
+  the replacement verifier before removing old hosted Linux check requirements.
+
+To roll back, unset `JANUS_MCP_CI_MODE`, cancel/drain affected builds, and restore
+that saved matching runner/pipeline set. Launch fresh hosted runs and verify
+Linux plus native checks before treating recovery as complete. A GitHub rerun
+cannot replay an older Janus measurement; recreate matching evidence instead.
+The separate tag release workflow and its mode remain independent.
