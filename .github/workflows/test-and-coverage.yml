@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: MiraiForge/devops
-          ref: 64359071ec584e884d364f6be052ae2d01b30231
+          ref: 099956273c55e66c2ab152ba1063abb1a46b31bc
           token: ${{ secrets.JANUS_HELPERS_READ_TOKEN }}
           path: .janus-tools
           persist-credentials: false
@@ -63,7 +63,7 @@ jobs:
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ${{ steps.coverage.outputs.reports-directory }}/lcov.info
+          files: ${{ steps.coverage.outputs.reports-directory }}/lcov.info,${{ steps.coverage.outputs.reports-directory }}/coverage-final.json
           disable_search: true
           fail_ci_if_error: false
           plugins: noop

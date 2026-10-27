@@ -181,7 +181,9 @@ test("Codecov uploads only verified bytes under authenticated head branch and PR
   expect(upload?.uses).toMatch(/^codecov\/codecov-action@[a-f0-9]{40}$/);
   expect(upload?.with).toMatchObject({
     token: `\${{ secrets.CODECOV_TOKEN }}`,
-    files: `\${{ steps.coverage.outputs.reports-directory }}/lcov.info`,
+    files: ["lcov.info", "coverage-final.json"]
+      .map((name) => `\${{ steps.coverage.outputs.reports-directory }}/${name}`)
+      .join(","),
     disable_search: true,
     fail_ci_if_error: false,
     plugins: "noop",

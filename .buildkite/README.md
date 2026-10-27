@@ -110,13 +110,15 @@ original global `test-and-coverage` cancellation group remains literal and keeps
 
 The hosted verifier checks out source for coverage path mapping but executes no
 repository code. It runs only the DevOps helpers pinned at
-`64359071ec584e884d364f6be052ae2d01b30231`, then:
+`099956273c55e66c2ab152ba1063abb1a46b31bc`, then:
 
 1. Discovers and pins the native Buildkite build for the authenticated workflow
    source. Its exact policy, pipeline UUID, GitHub run/attempt, frozen PR merge
    parents and current producer attempts must match.
-2. Retrieves the two protected measurement reports and their index. It uploads
-   only the verified LCOV to Codecov, explicitly using the authenticated head,
+2. Retrieves the four protected measurement files and their index: LCOV, text
+   summary, Istanbul `coverage-final.json`, and `coverage-provenance.json`. It
+   uploads the verified LCOV and Istanbul JSON reports, retaining the summary
+   and provenance as evidence. The upload explicitly uses the authenticated head,
    branch and PR identity, then acknowledges that exact measurement.
 3. Waits for both independent Linux jobs and the entire build to pass. Janus
    performs lint/typecheck after the acknowledged upload. A later failure keeps
@@ -124,9 +126,12 @@ repository code. It runs only the DevOps helpers pinned at
    reuse the old acknowledgement.
 
 The Codecov action preserves `fail_ci_if_error: false`; a successful upload step
-is not proof of backend ingestion. Its plugins are disabled because only the
-verified LCOV is needed. The action persists `CC_TOKEN`, so subsequent helper
-steps explicitly clear it. Reader tokens are limited to the two Python steps;
+is not proof of backend ingestion. Verify the resulting Codecov project report
+during commissioning: LCOV alone changes Codecov's line/branch interpretation
+and is not equivalent to the original upload. Discovery and executable plugins
+are disabled so only those two verified coverage reports are uploaded. The action
+persists `CC_TOKEN`, so subsequent helper steps explicitly clear it.
+Reader tokens are limited to the two Python steps;
 no repository command receives them. No npm publishing or deployment authority
 is part of ordinary CI.
 
@@ -142,7 +147,7 @@ finalization. Any timeout is failure, not successful skip.
 Keep the mode unset until all of these are ready:
 
 - Review and land the matching producer/reader/gate/helper stack and this source
-  workflow. The pinned [DevOps operations guide](https://github.com/MiraiForge/devops/blob/64359071ec584e884d364f6be052ae2d01b30231/runbooks/buildkite-mcp-ordinary-coverage.md)
+  workflow. The pinned [DevOps operations guide](https://github.com/MiraiForge/devops/blob/099956273c55e66c2ab152ba1063abb1a46b31bc/runbooks/buildkite-mcp-ordinary-coverage.md)
   describes exact image, source and transport validation.
 - Add the ordinary coverage policy narrowly to the deployed fleet manifest;
   preserve unrelated profiles and retain the previous matching image, manifest,
