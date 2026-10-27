@@ -33,6 +33,7 @@ const workflow = parse(
 const jobs = workflow.jobs as Record<string, Job>;
 const hosted = jobs["verify-janus-ci"];
 
+/** Evaluate routing with the event fields GitHub supplies for each trigger. */
 function evaluate(
   expression: string | undefined,
   mode: string,
@@ -49,15 +50,20 @@ function evaluate(
     {
       repository: "aditzel/mcp-squared",
       event_name: event,
-      event: {
-        pull_request: {
-          head: {
-            repo: {
-              full_name: fork ? "someone/mcp-squared" : "aditzel/mcp-squared",
-            },
-          },
-        },
-      },
+      event:
+        event === "pull_request"
+          ? {
+              pull_request: {
+                head: {
+                  repo: {
+                    full_name: fork
+                      ? "someone/mcp-squared"
+                      : "aditzel/mcp-squared",
+                  },
+                },
+              },
+            }
+          : {},
     },
     JSON.parse,
   );
@@ -116,26 +122,30 @@ test("only the Linux compile entry moves; native matrix lanes always remain", ()
   expect(compile?.strategy?.["fail-fast"]).toBe(false);
   for (const mode of ["", "janus", "typo"]) {
     for (const fork of [false, true]) {
-      const matrix = evaluate(
-        compile?.strategy?.matrix.include,
-        mode,
-        fork,
-      ) as { os: string; label: string; compileTargets: string }[];
-      expect(matrix.filter((row) => row.os !== "ubuntu-24.04")).toEqual([
-        {
-          os: "macos-latest",
-          label: "macos-native-smoke",
-          compileTargets: "bun-darwin-arm64 bun-darwin-x64",
-        },
-        {
-          os: "windows-latest",
-          label: "windows-native-smoke",
-          compileTargets: "bun-windows-x64",
-        },
-      ]);
-      expect(matrix.some((row) => row.os === "ubuntu-24.04")).toBe(
-        mode !== "janus" || fork,
-      );
+      for (const event of ["push", "pull_request"]) {
+        const admitted = event === "push" || !fork;
+        const matrix = evaluate(
+          compile?.strategy?.matrix.include,
+          mode,
+          fork,
+          event,
+        ) as { os: string; label: string; compileTargets: string }[];
+        expect(matrix.filter((row) => row.os !== "ubuntu-24.04")).toEqual([
+          {
+            os: "macos-latest",
+            label: "macos-native-smoke",
+            compileTargets: "bun-darwin-arm64 bun-darwin-x64",
+          },
+          {
+            os: "windows-latest",
+            label: "windows-native-smoke",
+            compileTargets: "bun-windows-x64",
+          },
+        ]);
+        expect(matrix.some((row) => row.os === "ubuntu-24.04")).toBe(
+          mode !== "janus" || !admitted,
+        );
+      }
     }
   }
   expect(jobs["cross-platform-smoke"]?.strategy?.matrix.os).toEqual([
