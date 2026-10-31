@@ -5,7 +5,7 @@
     "": {
       "name": "mcp-squared",
       "dependencies": {
-        "@hono/node-server": "^1.19.17",
+        "@hono/node-server": "2.1.3",
         "@huggingface/transformers": "^3.8.1",
         "@modelcontextprotocol/sdk": "^1.32.1",
         "@opentui/core": "0.2.1",
@@ -34,7 +34,7 @@
     },
   },
   "overrides": {
-    "@hono/node-server": "^1.19.17",
+    "@hono/node-server": "2.1.3",
     "ajv": "^8.18.0",
     "body-parser": "^2.4.0",
     "diff": "8.0.3",
@@ -121,7 +121,7 @@
 
     "@emnapi/runtime": ["@emnapi/runtime@1.11.3", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA=="],
 
-    "@hono/node-server": ["@hono/node-server@1.19.17", "", { "peerDependencies": { "hono": "^4" } }, "sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ=="],
+    "@hono/node-server": ["@hono/node-server@2.1.3", "", { "peerDependencies": { "hono": "^4" } }, "sha512-TA//nWMqPhbfdfneACk6t5a9eqbS9lABEPyKn0/xZTah3H3U2XaVg85rJFl0/Fyit0I552YDHgXGVSf3GwqbUw=="],
 
     "@huggingface/jinja": ["@huggingface/jinja@0.5.3", "", {}, "sha512-asqfZ4GQS0hD876Uw4qiUb7Tr/V5Q+JZuo2L+BtdrD4U40QU58nIRq3ZSgAzJgT874VLjhGVacaYfrdpXtEvtA=="],
 

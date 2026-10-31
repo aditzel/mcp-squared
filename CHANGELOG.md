@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- Pin the Hono Node.js adapter to patched 2.1.3 for GHSA-rmxm-3fg6-px4f without expanding the audit exceptions.
 - Update Zod, body-parser, and fast-uri to patched versions and pin OpenTUI 0.2.1 to remove its vulnerable Jimp/Zod 3 dependency chain. Keep the audit gate and existing advisory exceptions unchanged.
 - Use OpenTUI's native paste handling so configuration inputs insert Unicode text once at the cursor with the updated terminal library.
 
