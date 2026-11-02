@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { parse } from "yaml";
 
 type Step = {
@@ -168,7 +175,7 @@ test("coverage retrieval upload and exact acknowledgement precede both-lane veri
   expect(steps[coverage + 2]?.if).toBe(
     "steps.coverage.outputs.acknowledgement != ''",
   );
-  expect(steps[coverage + 3]?.run).toContain("mcp-ci-workflow.py finish");
+  expect(steps[coverage + 3]?.env?.JANUS_MCP_CI_PHASE).toBe("finish");
   expect(steps[coverage + 3]?.if).toBeUndefined();
   expect(steps.every((step) => !("continue-on-error" in step))).toBe(true);
 });
@@ -196,7 +203,7 @@ test("Codecov uploads only verified bytes under authenticated head branch and PR
 test("hosted credentials are scoped and repository code is never executed there", () => {
   expect(hosted?.name).toBe("Verify Janus ordinary coverage");
   expect(hosted?.["runs-on"]).toBe("ubuntu-24.04");
-  expect(hosted?.["timeout-minutes"]).toBe(360);
+  expect(hosted?.["timeout-minutes"]).toBe(60);
   expect(hosted?.permissions).toEqual({ contents: "read", actions: "read" });
   const helpers = hosted?.steps.find((step) => step.id === "helpers");
   expect(helpers?.with?.["repository"]).toBe("MiraiForge/devops");
@@ -225,6 +232,94 @@ test("hosted credentials are scoped and repository code is never executed there"
   const cleanup = hosted?.steps.at(-1);
   expect(cleanup?.if).toBe("always() && steps.helpers.outcome == 'success'");
   expect(cleanup?.run).toContain("mcp-ci-workflow.py cleanup");
+});
+
+test("both hosted phases use the bounded pinned API and sanitize failures", () => {
+  const directory = mkdtempSync(join(tmpdir(), "mcp-ci-budget-"));
+  const helper = join(
+    directory,
+    ".janus-tools/infrastructure/buildkite-publishers",
+  );
+  const log = join(directory, "calls.jsonl");
+  mkdirSync(helper, { recursive: true });
+  writeFileSync(
+    join(helper, "mcp-ci-workflow.py"),
+    String.raw`
+import json, os
+from contextlib import contextmanager
+class Cancelled(Exception): pass
+class Rejected(Exception): pass
+class c: Rejected = Rejected
+class Diagnostics:
+    failure = None
+@contextmanager
+def cancellation():
+    os.environ['FIXTURE_CANCELLATION'] = 'installed'
+    yield
+    os.environ.pop('FIXTURE_CANCELLATION')
+def run(phase, env, *, seconds, diagnostics):
+    assert env['FIXTURE_CANCELLATION'] == 'installed'
+    with open(env['FIXTURE_LOG'], 'a') as stream:
+        stream.write(json.dumps({'phase': phase, 'seconds': seconds}) + '\n')
+    if env.get('FIXTURE_FAILURE'):
+        diagnostics.failure = ('provider-read', 'http-403')
+        raise Rejected('secret-provider-detail')
+`,
+  );
+  try {
+    const phases = ["coverage", "finish"];
+    const commands = phases.map((phase) =>
+      hosted.steps.find((step) => step.id === phase),
+    );
+    expect(commands[0]?.run).toBe(commands[1]?.run);
+    for (const [index, phase] of phases.entries()) {
+      const step = commands[index];
+      expect(step?.env?.JANUS_MCP_CI_PHASE).toBe(phase);
+      const result = Bun.spawnSync(
+        ["bash", "-e", "-c", step?.run ?? "exit 99"],
+        {
+          cwd: directory,
+          env: {
+            PATH: process.env.PATH,
+            JANUS_MCP_CI_PHASE: phase,
+            FIXTURE_LOG: log,
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      expect(result.exitCode).toBe(0);
+    }
+    expect(
+      readFileSync(log, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line)),
+    ).toEqual([
+      { phase: "coverage", seconds: 3000 },
+      { phase: "finish", seconds: 3000 },
+    ]);
+    const failed = Bun.spawnSync(
+      ["bash", "-e", "-c", commands[0]?.run ?? "exit 99"],
+      {
+        cwd: directory,
+        env: {
+          PATH: process.env.PATH,
+          JANUS_MCP_CI_PHASE: "coverage",
+          FIXTURE_LOG: log,
+          FIXTURE_FAILURE: "yes",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    expect(failed.exitCode).toBe(1);
+    const stderr = Buffer.from(failed.stderr).toString();
+    expect(stderr).toContain("[stage=provider-read reason=http-403]");
+    expect(stderr).not.toContain("secret-provider-detail");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("legacy coverage command order and native build commands are preserved", () => {

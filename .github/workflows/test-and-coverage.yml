@@ -22,7 +22,7 @@ jobs:
       vars.JANUS_MCP_CI_MODE != '' &&
       (github.repository == 'aditzel/mcp-squared' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-24.04
-    timeout-minutes: 360
+    timeout-minutes: 60
     permissions:
       contents: read
       actions: read
@@ -52,12 +52,33 @@ jobs:
       - name: Retrieve measured Janus ordinary coverage
         id: coverage
         env:
+          JANUS_MCP_CI_PHASE: coverage
           JANUS_MCP_CI_MODE: ${{ vars.JANUS_MCP_CI_MODE }}
           JANUS_MCP_CI_POLICY: ${{ vars.JANUS_MCP_CI_POLICY }}
           JANUS_GITHUB_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JANUS_BUILDKITE_READ_TOKEN: ${{ secrets.BUILDKITE_MCP_CI_READ_TOKEN }}
           CC_TOKEN: ""
-        run: python3 -I -B .janus-tools/infrastructure/buildkite-publishers/mcp-ci-workflow.py coverage
+        run: &verify-janus-phase |
+          python3 -I -B - <<'PYTHON'
+          import importlib.util
+          import os
+          import sys
+          spec = importlib.util.spec_from_file_location(
+              'janus_mcp_ci', '.janus-tools/infrastructure/buildkite-publishers/mcp-ci-workflow.py')
+          helper = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(helper)
+          os.umask(0o077)
+          diagnostics = helper.Diagnostics()
+          try:
+              with helper.cancellation():
+                  helper.run(os.environ['JANUS_MCP_CI_PHASE'], os.environ,
+                             seconds=3000, diagnostics=diagnostics)
+          except (helper.Cancelled, helper.c.Rejected, OSError, ValueError, TypeError, KeyError, RecursionError):
+              stage, reason = diagnostics.failure or ('startup', 'rejected')
+              print('MCP hosted CI could not authenticate a successful result '
+                    f'[stage={stage} reason={reason}]', file=sys.stderr)
+              sys.exit(1)
+          PYTHON
       - name: Upload coverage to Codecov
         if: steps.coverage.outputs.measured == 'true'
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac
@@ -79,12 +100,13 @@ jobs:
       - name: Verify both Janus Linux results
         id: finish
         env:
+          JANUS_MCP_CI_PHASE: finish
           JANUS_MCP_CI_MODE: ${{ vars.JANUS_MCP_CI_MODE }}
           JANUS_MCP_CI_POLICY: ${{ vars.JANUS_MCP_CI_POLICY }}
           JANUS_GITHUB_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JANUS_BUILDKITE_READ_TOKEN: ${{ secrets.BUILDKITE_MCP_CI_READ_TOKEN }}
           CC_TOKEN: ""
-        run: python3 -I -B .janus-tools/infrastructure/buildkite-publishers/mcp-ci-workflow.py finish
+        run: *verify-janus-phase
       - name: Remove private verification files
         if: always() && steps.helpers.outcome == 'success'
         env:
