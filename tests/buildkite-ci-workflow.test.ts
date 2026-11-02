@@ -175,7 +175,7 @@ test("coverage retrieval upload and exact acknowledgement precede both-lane veri
   expect(steps[coverage + 2]?.if).toBe(
     "steps.coverage.outputs.acknowledgement != ''",
   );
-  expect(steps[coverage + 3]?.env?.JANUS_MCP_CI_PHASE).toBe("finish");
+  expect(steps[coverage + 3]?.env?.["JANUS_MCP_CI_PHASE"]).toBe("finish");
   expect(steps[coverage + 3]?.if).toBeUndefined();
   expect(steps.every((step) => !("continue-on-error" in step))).toBe(true);
 });
@@ -269,18 +269,18 @@ def run(phase, env, *, seconds, diagnostics):
   try {
     const phases = ["coverage", "finish"];
     const commands = phases.map((phase) =>
-      hosted.steps.find((step) => step.id === phase),
+      hosted?.steps.find((step) => step.id === phase),
     );
     expect(commands[0]?.run).toBe(commands[1]?.run);
     for (const [index, phase] of phases.entries()) {
       const step = commands[index];
-      expect(step?.env?.JANUS_MCP_CI_PHASE).toBe(phase);
+      expect(step?.env?.["JANUS_MCP_CI_PHASE"]).toBe(phase);
       const result = Bun.spawnSync(
         ["bash", "-e", "-c", step?.run ?? "exit 99"],
         {
           cwd: directory,
           env: {
-            PATH: process.env.PATH,
+            PATH: process.env["PATH"],
             JANUS_MCP_CI_PHASE: phase,
             FIXTURE_LOG: log,
           },
@@ -304,7 +304,7 @@ def run(phase, env, *, seconds, diagnostics):
       {
         cwd: directory,
         env: {
-          PATH: process.env.PATH,
+          PATH: process.env["PATH"],
           JANUS_MCP_CI_PHASE: "coverage",
           FIXTURE_LOG: log,
           FIXTURE_FAILURE: "yes",
