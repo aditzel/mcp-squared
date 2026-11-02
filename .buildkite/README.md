@@ -135,12 +135,14 @@ Reader tokens are limited to the two Python steps;
 no repository command receives them. No npm publishing or deployment authority
 is part of ordinary CI.
 
-The wrapper shares one 350-minute deadline across discovery, coverage and final
-verification, within the existing 360-minute hosted-job ceiling. Queueing and
-upload time consume this budget; final verification cannot reset it. This keeps
-the inherited maximum, rather than making tests wait six hours by design. The
-prepared producer retains its separate 360-minute command ceiling plus bounded
-finalization. Any timeout is failure, not successful skip.
+The hosted verifier has a 60-minute ceiling. Both Python phases explicitly use
+one shared 50-minute deadline through the pinned helper API; final verification
+reads the original deadline and cannot reset it. The allowance covers a
+10-minute bootstrap, 20-minute coverage job, 10-minute standalone compile job,
+and 10 minutes for queueing and verification. Checkout, coverage upload and
+cleanup also fit inside the outer ceiling. Ordinary builds have been observed
+finishing in minutes; these are failure limits, not expected durations. Release
+workflows retain their separate limits. Any timeout fails the check.
 
 ### Commissioning and rollback
 
